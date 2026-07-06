@@ -28,13 +28,26 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
   height: 100%;
+  /* Use a slightly smaller base font on small screens, larger on tablets */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  font-size: 16px;
+  font-size: clamp(13px, 4vw, 16px);
   color: var(--text);
   background: var(--bg);
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
+  /* CRITICAL: prevent horizontal scroll on mobile when content overflows */
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Any element with long text should wrap, not push layout wide */
+p, span, div, td, th, li, label, button {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 button {
@@ -421,11 +434,38 @@ tbody tr:hover { background: #fafafa; }
 @media (max-width: 768px) {
   .grid-4, .grid-5, .grid-6 { grid-template-columns: repeat(3, 1fr); }
   .grid-3 { grid-template-columns: repeat(2, 1fr); }
-  .app-header h1 { font-size: 1.1rem; }
-  .app-main { padding: 12px; }
+  .app-header h1 { font-size: clamp(0.95rem, 3.5vw, 1.1rem); }
+  .app-main { padding: 10px; }
+  .card { padding: 12px; }
+  .modal { padding: 16px; max-width: 95vw; }
+  .btn { padding: 10px 14px; font-size: 0.95rem; }
+  .btn-lg { padding: 14px 20px; font-size: 1.05rem; }
+  .btn-xl { padding: 16px 24px; font-size: 1.1rem; }
+  /* Tables: enable horizontal scroll if needed */
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+  /* Form rows: stack vertically on mobile */
+  .form-row { flex-direction: column; align-items: stretch; }
+  /* Tabs: smaller padding on mobile */
+  .tab { padding: 8px 12px; font-size: 0.9rem; }
+  /* Pills: smaller */
+  .pill { font-size: 0.78rem; padding: 3px 8px; }
 }
 @media (max-width: 480px) {
   .grid-2, .grid-3, .grid-4, .grid-5, .grid-6, .grid-auto { grid-template-columns: repeat(2, 1fr); }
+  /* Stack the header actions if needed */
+  .app-header { padding: 0 10px; gap: 6px; }
+  .app-header .header-actions { gap: 6px; }
+  .app-header .nav-link { padding: 6px 10px; font-size: 0.85rem; }
+  /* Tables: stack label/value pairs */
+  th, td { padding: 8px; font-size: 0.85rem; }
+  /* Login buttons: smaller on phones */
+  .login-user-btn { padding: 12px 8px; font-size: 0.95rem; }
+  .login-user-grid { grid-template-columns: repeat(2, 1fr); }
+  /* Settings card: full width, less padding */
+  .settings-card { padding: 14px; max-width: 100%; }
+  /* Modal actions: stack buttons vertically */
+  .modal-actions { flex-direction: column; }
+  .modal-actions .btn { width: 100%; }
 }
 
 /* ---------- Login screen ---------- */

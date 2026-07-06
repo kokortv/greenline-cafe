@@ -144,17 +144,22 @@
   .menu-item-card {
     background: white;
     border-radius: var(--radius);
-    padding: 16px;
+    padding: 14px;
     box-shadow: var(--shadow);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     min-height: 130px;
+    /* Prevent cards from blowing out the grid on small screens */
+    min-width: 0;
+    overflow: hidden;
   }
   .menu-item-card .item-name {
     font-weight: 600;
-    font-size: 1.05rem;
+    font-size: clamp(0.85rem, 3vw, 1.05rem);
     flex: 1;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .menu-item-card .item-price {
     color: var(--primary);
@@ -339,6 +344,36 @@
   }
 
   body.has-cart-panel { padding-bottom: 90px; }
+
+  /* Mobile responsive tweaks for waiter page */
+  @media (max-width: 768px) {
+    .table-btn { font-size: clamp(1.2rem, 5vw, 1.8rem); }
+    .table-btn .table-label { font-size: 0.7rem; }
+    .main-cat-btn { font-size: clamp(1rem, 3.5vw, 1.5rem); }
+    .cart-total-display .amount { font-size: clamp(1.5rem, 6vw, 2.5rem); }
+    .cart-total-display .label { font-size: 1rem; }
+    .cart-item .ci-name { font-size: 1rem; }
+    .stepper button { width: 40px; height: 40px; font-size: 1.2rem; }
+    .stepper input { width: 44px; font-size: 1rem; }
+    .guests-stepper button { width: 56px; height: 56px; font-size: 1.6rem; }
+    .guests-stepper .guests-value { font-size: 2rem; min-width: 50px; }
+    .section-title { font-size: 1.1rem; }
+    .ready-alert { padding: 12px 14px; }
+    .ready-alert .ra-title { font-size: 1rem; }
+    .ready-alert .ra-item { font-size: 0.9rem; }
+    .home-order-card { padding: 12px; }
+    .home-order-card .hoc-table { font-size: 1.1rem; }
+    .hoc-actions { flex-wrap: wrap; }
+    .hoc-actions .btn { min-width: 100%; }
+    .subcat-tab { padding: 10px 16px; font-size: 0.9rem; }
+  }
+  @media (max-width: 480px) {
+    .table-grid { grid-template-columns: repeat(3, 1fr); }
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .payment-options { grid-template-columns: 1fr; }
+    .cart-panel { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; }
+    .cart-panel .btn { width: 100%; }
+  }
 
   /* Ready-to-serve alert banner (dishes that just became ready) */
   #ready-alert-panel {
@@ -1140,7 +1175,10 @@ function selectMainCategory(cat) {
     return;
   }
   state.mainCategory = cat;
-  state.cart = [];
+  // NOTE: do NOT clear state.cart here — user may have added items from other
+  // categories and we want them to persist across category switches. The cart
+  // is only cleared when the order is accepted (acceptOrder) or explicitly
+  // cleared via the "Очистить" button on the cart screen.
   state.currentSubcat = null; // reset so renderMenu picks a sensible default
   renderMenu();
   showScreen('menu');
@@ -1202,9 +1240,15 @@ function renderMenu() {
   } else {
     contextLabel = 'Стол <b>' + state.selectedTable + '</b>';
   }
+  // Show cart count in the context bar so the waiter sees items persist
+  // across category switches.
+  const cartCount = state.cart.reduce(function(s, c) { return s + c.quantity; }, 0);
+  const cartInfo = cartCount > 0
+    ? ' · <span style="color:var(--success);font-weight:700;">🛒 ' + cartCount + '</span>'
+    : '';
   document.getElementById('menu-context').innerHTML =
     contextLabel + ' · ' + state.guests + ' чел. · ' +
-    '<b>' + escapeHtml(mainCat.name) + '</b>';
+    '<b>' + escapeHtml(mainCat.name) + '</b>' + cartInfo;
 
   // Subcategory tabs
   // Show tabs only if there are subcategories. If the only items are direct

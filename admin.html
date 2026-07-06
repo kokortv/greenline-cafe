@@ -137,6 +137,36 @@
   .menu-row .menu-cook-flag.no { background: #e0e0e0; color: var(--text-muted); }
   .menu-row .menu-actions { display: flex; gap: 6px; }
 
+  /* Mobile responsive for admin */
+  @media (max-width: 768px) {
+    .menu-row { flex-wrap: wrap; gap: 8px; }
+    .menu-row .menu-name-block { min-width: 100%; }
+    .menu-row .menu-price { min-width: 80px; font-size: 1rem; }
+    .menu-row .menu-actions { margin-left: auto; }
+    .menu-row .menu-cook-flag { font-size: 0.75rem; padding: 3px 8px; }
+    .order-history-row { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .order-history-row .ohr-table { min-width: 100%; font-size: 1rem; }
+    .order-history-row .ohr-cat { min-width: 100%; font-size: 0.85rem; }
+    .order-history-row .ohr-time { min-width: 100%; font-size: 0.8rem; }
+    .order-history-row .ohr-total { min-width: 80px; font-size: 0.95rem; }
+    .order-history-row .ohr-status { min-width: 80px; }
+    .order-history-row .ohr-actions { min-width: 100%; flex-wrap: wrap; }
+    .order-history-row .ohr-actions .btn { flex: 1; min-width: 100px; font-size: 0.85rem; padding: 8px 10px; }
+    .cat-row { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .cat-row .cat-name { min-width: 100%; }
+    .cat-row .cat-actions { margin-left: auto; }
+    .filter-bar { flex-wrap: wrap; gap: 8px; }
+    .filter-bar select, .filter-bar input { min-width: 100%; }
+    .settings-card { max-width: 100%; padding: 14px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .user-row { flex-wrap: wrap; gap: 8px; }
+    .user-row .user-name { min-width: 100%; }
+  }
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .admin-tabs .tab { padding: 8px 10px; font-size: 0.85rem; }
+  }
+
   .filter-bar {
     display: flex;
     gap: 12px;

@@ -261,6 +261,23 @@
   @media (max-width: 900px) {
     .cook-layout { grid-template-columns: 1fr; }
     .orders-sidebar { max-height: 250px; }
+    /* Mobile: smaller fonts on cook items to prevent overflow */
+    .cook-item { padding: 12px 14px; gap: 10px; }
+    .cook-item .ci-qty { font-size: 1.4rem; min-width: 60px; padding: 8px 12px; }
+    .cook-item .ci-name { font-size: 1.1rem; }
+    .cook-item .ci-translation { font-size: 0.95rem; }
+    .cook-item .ci-comment { font-size: 0.9rem; padding: 8px 10px; }
+    .cook-item .check-btn { width: 60px; height: 60px; font-size: 1.6rem; }
+    .odh-table { font-size: 1.5rem !important; }
+    .oli-table { font-size: 1rem; }
+    .order-display { padding: 14px; }
+  }
+  @media (max-width: 480px) {
+    .cook-item { flex-wrap: wrap; }
+    .cook-item .ci-check { min-width: 60px; align-self: center; }
+    .cook-item .ci-body { min-width: 100%; }
+    .sidebar-title { font-size: 1rem; }
+    .all-ready-banner { font-size: 1.1rem; padding: 12px; }
   }
 </style>
 </head>
