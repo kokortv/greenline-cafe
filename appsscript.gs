@@ -290,6 +290,7 @@ function handleRequest(params, body) {
       case 'getTabOrders':   result = getTabOrders(body.tab_id || params.tab_id); break;
       case 'pauseOrder':     result = pauseOrder(body); break;
       case 'resumeOrder':    result = resumeOrder(body); break;
+      case 'cleanupSessions': result = { deleted: cleanupExpiredSessions() }; break;
       case 'ping':           result = { ok: true, time: new Date().toISOString() }; break;
       default: throw new Error('Unknown action: ' + action);
     }
@@ -1258,6 +1259,8 @@ function generateToken() {
  * Response: { token, user: {id, name, role}, expires_at }
  */
 function doLogin(body) {
+  // Clean up expired sessions on each login (keeps the Settings sheet tidy)
+  cleanupExpiredSessions();
   if (!body || !body.user_id || !body.password) {
     return jsonOut({ success: false, error: 'Missing user_id or password' });
   }
@@ -1441,6 +1444,11 @@ function changePassword(body) {
  * List all tabs. Optional filter: status ('open' / 'closed' / 'all').
  */
 function getTabs(body) {
+  // If the Tabs sheet doesn't exist (user deleted it), return empty list
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName(SHEETS.TABS)) {
+    return { tabs: [] };
+  }
   let tabs = readSheet(SHEETS.TABS);
   const status = body && body.status ? body.status : 'open';
   if (status !== 'all') {
@@ -1630,5 +1638,59 @@ function resumeOrder(body) {
     throw new Error('Order not found');
   } finally {
     lock.releaseLock();
+  }
+}
+
+/* ============ SESSION CLEANUP ============ */
+/**
+ * Removes expired session entries from the Settings sheet.
+ * Sessions are stored as rows with key = "session_<token>" and value = JSON
+ * with an expires_at field. This function deletes any session whose
+ * expires_at is in the past.
+ *
+ * Called automatically on each login. Can also be run manually from the
+ * Apps Script editor.
+ */
+function cleanupExpiredSessions() {
+  try {
+    const sheet = getSheet(SHEETS.SETTINGS);
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return 0;
+    const headers = data[0];
+    const keyCol = headers.indexOf('key');
+    const valCol = headers.indexOf('value');
+    if (keyCol < 0 || valCol < 0) return 0;
+    const now = Date.now();
+    const rowsToDelete = [];
+    for (let i = 1; i < data.length; i++) {
+      const key = String(data[i][keyCol] || '');
+      if (key.indexOf('session_') === 0) {
+        try {
+          const session = JSON.parse(data[i][valCol]);
+          if (session && session.expires_at) {
+            if (new Date(session.expires_at).getTime() < now) {
+              rowsToDelete.push(i + 1); // 1-indexed row number
+            }
+          } else {
+            // Malformed session — delete it too
+            rowsToDelete.push(i + 1);
+          }
+        } catch (e) {
+          // Can't parse — delete
+          rowsToDelete.push(i + 1);
+        }
+      }
+    }
+    // Delete rows in reverse order (so indices don't shift)
+    rowsToDelete.reverse().forEach(function(r) {
+      sheet.deleteRow(r);
+    });
+    if (rowsToDelete.length > 0) {
+      SpreadsheetApp.flush();
+    }
+    return rowsToDelete.length;
+  } catch (e) {
+    console.error('cleanupExpiredSessions error:', e);
+    return 0;
   }
 }

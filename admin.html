@@ -259,6 +259,7 @@
         <option value="all" selected>Все</option>
         <option value="accepted">Принятые</option>
         <option value="completed">Завершённые</option>
+        <option value="paused">На паузе</option>
       </select>
       <label>Дата:</label>
       <input type="date" id="filter-date" onchange="loadOrders()">
@@ -354,6 +355,16 @@
     <div class="settings-card" style="border:2px solid var(--danger);">
       <p style="margin-bottom:12px;"><b>Сброс данных</b> — удалит все заказы, но сохранит настройки, категории и меню.</p>
       <button class="btn btn-danger" onclick="resetOrders()">Удалить все заказы</button>
+    </div>
+
+    <h2 class="section-title" style="margin-top:20px;">Очистка сессий</h2>
+    <div class="settings-card">
+      <p style="margin-bottom:12px;">
+        При каждом входе официанта/повара/админа создаётся сессия (токен), которая хранится в листе Settings
+        под ключами <code>session_...</code>. Сессии живут 12 часов, но устаревшие записи могут накапливаться.
+        Нажмите, чтобы удалить все просроченные сессии.
+      </p>
+      <button class="btn btn-warning" onclick="cleanupSessionsBtn()">🧹 Очистить просроченные сессии</button>
     </div>
   </div>
 
@@ -757,6 +768,27 @@ async function resetOrders() {
   }
 }
 
+async function cleanupSessionsBtn() {
+  // Call the cleanupExpiredSessions function on the server via a custom action.
+  // We reuse the 'ping' mechanism but with a dedicated action.
+  try {
+    // We'll use apiPost with a custom action — but since cleanupExpiredSessions
+    // isn't registered as an action, we'll call it via the existing 'logout'
+    // mechanism which already cleans up. Instead, let's just delete all
+    // session_* keys via saveSettings (set them to empty).
+    // Actually, simplest: call the server's cleanupExpiredSessions directly
+    // by adding it as an action. For now, we'll do a client-side approach:
+    // fetch all settings, find session_ keys, and delete them.
+    // But we can't delete settings from the client easily.
+    // Best approach: add 'cleanupSessions' as a server action.
+    const result = await apiPost('cleanupSessions', {});
+    showToast('Удалено просроченных сессий: ' + (result.deleted || 0), 'success');
+  } catch (err) {
+    // If the action doesn't exist (old server), show a helpful message
+    showToast('Функция недоступна. Обновите Apps Script и переразверните Web App.', 'warning');
+  }
+}
+
 /* ---------- ORDERS ---------- */
 async function loadOrders() {
   adminState.filterStatus = document.getElementById('filter-status').value;
@@ -821,6 +853,11 @@ function renderOrders() {
     const itemsCount = order.items ? order.items.length : 0;
     const row = document.createElement('div');
     row.className = 'order-history-row ' + order.status;
+    // Highlight paused orders with yellow background
+    if (order.status === 'paused') {
+      row.style.background = '#fffde7';
+      row.style.borderLeft = '5px solid var(--warning)';
+    }
     row.innerHTML =
       '<div class="ohr-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
       '<div class="ohr-cat">' + escapeHtml(order.main_category_name || '') + ' · ' + order.guests + ' чел.</div>' +
@@ -835,11 +872,13 @@ function renderOrders() {
       '<div class="ohr-status">' +
         (order.status === 'accepted' ?
           '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
+         order.status === 'paused' ?
+          '<span class="pill pill-warning" style="background:#ff9800;color:white;"><span class="status-dot" style="background:white;"></span>⏸ Пауза</span>' :
           '<span class="pill pill-success"><span class="status-dot completed"></span>Завершён</span>') +
       '</div>' +
       '<div class="ohr-actions">' +
         '<button class="btn btn-outline" onclick="viewOrder(\'' + order.id + '\')">Просмотр</button>' +
-        (order.status === 'accepted' ?
+        (order.status === 'accepted' || order.status === 'paused' ?
           '<button class="btn btn-success" onclick="withLoading(this, \'Завершаем...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">Завершить</button>' : '') +
         '<button class="btn btn-danger" onclick="deleteOrderAdmin(\'' + order.id + '\')">Удалить</button>' +
       '</div>';
@@ -884,7 +923,11 @@ async function viewOrder(orderId) {
           (order.payment_method === 'cash' ? '💵 Наличные' :
            order.payment_method === 'card' ? '💳 Карта' : '—') +
         '</div>' +
-        '<div><b>Статус:</b> ' + order.status + '</div>' +
+        '<div><b>Статус:</b> ' +
+          (order.status === 'accepted' ? 'Принят' :
+           order.status === 'paused' ? '⏸ На паузе' :
+           order.status === 'completed' ? 'Завершён' : order.status) +
+        '</div>' +
         '<div><b>Создан:</b> ' + formatDateTime(order.created_at) + '</div>' +
         '<div><b>Завершён:</b> ' + (order.completed_at ? formatDateTime(order.completed_at) : '—') + '</div>' +
       '</div>' +
