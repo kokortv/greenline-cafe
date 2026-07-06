@@ -104,7 +104,25 @@
   .cat-row .cat-name { flex: 1; min-width: 200px; }
   .cat-row .cat-actions { display: flex; gap: 6px; }
 
-  .menu-row .menu-name { flex: 1; min-width: 180px; font-weight: 600; }
+  .menu-row .menu-name-block { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 4px; }
+  .menu-row .menu-name { font-weight: 600; font-size: 1.05rem; }
+  .menu-row .menu-name-translation {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: normal;
+    font-style: italic;
+  }
+  .menu-row .menu-cat-badge {
+    display: inline-block;
+    align-self: flex-start;
+    background: #e3f2fd;
+    color: var(--info);
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    max-width: 100%;
+  }
   .menu-row .menu-cat { min-width: 150px; color: var(--text-muted); font-size: 0.9rem; }
   .menu-row .menu-price { min-width: 100px; font-weight: 700; color: var(--primary); }
   .menu-row .menu-cook-flag {
@@ -774,30 +792,35 @@ function renderMenuList() {
     const parent = APP_DATA.categories.find(function(c) { return c.id === cat.parent_id; });
     return parent ? parent.name + ' → ' + cat.name : cat.name;
   }
-  // Sort by category label, then by sort, then by name
-  items.sort(function(a, b) {
-    const ca = catLabel(a);
-    const cb = catLabel(b);
-    if (ca !== cb) return ca.localeCompare(cb);
-    return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
-           String(a.name).localeCompare(String(b.name));
-  });
+
+  // Sorting:
+  // - When a specific category filter is selected (drag-and-drop mode):
+  //   sort by `sort` field then by name (so manual ordering is respected)
+  // - When no filter (showing all items): sort alphabetically by name
+  // - When "Без категории" filter: also alphabetical
+  const dragEnabled = !!filter && filter !== '__none__';
+  if (dragEnabled) {
+    items.sort(function(a, b) {
+      return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+             String(a.name).localeCompare(String(b.name), 'ru');
+    });
+  } else {
+    items.sort(function(a, b) {
+      return String(a.name).localeCompare(String(b.name), 'ru');
+    });
+  }
 
   if (items.length === 0) {
     div.innerHTML = '<div class="empty-state"><h3>Блюд нет</h3><p>Нажмите «Добавить блюдо»</p></div>';
     return;
   }
 
-  // Drag-and-drop only enabled when a specific category filter is selected
-  // (so dragging doesn't cross categories). Otherwise just render normally.
-  const dragEnabled = !!filter && filter !== '__none__';
-
   // Hint banner
   let html = '';
   if (dragEnabled) {
     html += '<div class="reorder-hint">⇅ Перетащите карточки, чтобы изменить порядок внутри выбранной категории</div>';
   } else if (filter === '' ) {
-    html += '<div class="reorder-hint">ℹ Чтобы менять порядок товаров перетаскиванием — выберите конкретную категорию в фильтре выше</div>';
+    html += '<div class="reorder-hint">ℹ Сортировка по алфавиту. Чтобы менять порядок товаров перетаскиванием — выберите конкретную категорию в фильтре выше</div>';
   }
   div.innerHTML = html;
 
@@ -811,10 +834,12 @@ function renderMenuList() {
     }
     row.innerHTML =
       (dragEnabled ? '<div class="drag-handle" title="Перетащите">⠿</div>' : '') +
-      '<div class="menu-name">' + escapeHtml(item.name) +
-        (item.name_translation ? '<div style="font-size:0.85rem;color:var(--text-muted);font-weight:normal;">' + escapeHtml(item.name_translation) + '</div>' : '') +
+      '<div class="menu-name-block">' +
+        '<div class="menu-cat-badge">' + escapeHtml(catLabel(item)) + '</div>' +
+        '<div class="menu-name">' + escapeHtml(item.name) +
+          (item.name_translation ? '<div class="menu-name-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
+        '</div>' +
       '</div>' +
-      '<div class="menu-cat">' + escapeHtml(catLabel(item)) + '</div>' +
       '<div class="menu-price">' + formatMoney(item.price) + '</div>' +
       '<div class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '">' +
         (needsCook ? 'готовка' : 'без готовки') +

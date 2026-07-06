@@ -776,7 +776,9 @@ function saveMenuItem(body) {
     if (data[i][idCol] === id) {
       data[i][headers.indexOf('category_id')] = body.category_id || '';
       data[i][headers.indexOf('name')] = body.name;
-      data[i][headers.indexOf('name_translation')] = body.name_translation || '';
+      // name_translation may or may not exist as a column (depends on when setup/migrate ran)
+      const ntCol = headers.indexOf('name_translation');
+      if (ntCol >= 0) data[i][ntCol] = body.name_translation || '';
       data[i][headers.indexOf('price')] = Number(body.price) || 0;
       data[i][headers.indexOf('needs_cooking')] = body.needs_cooking === true || body.needs_cooking === 'true';
       data[i][headers.indexOf('sort')] = body.sort || 0;
@@ -786,10 +788,26 @@ function saveMenuItem(body) {
     }
   }
   if (!found) {
-    sheet.appendRow([id, body.category_id || '', body.name, body.name_translation || '',
-      Number(body.price) || 0,
-      body.needs_cooking === true || body.needs_cooking === 'true',
-      body.sort || 0, body.is_active !== false]);
+    // Build row by header name to be column-order-agnostic.
+    // The Menu sheet may have been created with an older setup() that didn't
+    // include name_translation (added later by migrate()). Reading headers
+    // and writing by name avoids the column-shift bug.
+    const headersNow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const row = new Array(headersNow.length).fill('');
+    headersNow.forEach(function(h, idx) {
+      switch (h) {
+        case 'id':               row[idx] = id; break;
+        case 'category_id':      row[idx] = body.category_id || ''; break;
+        case 'name':             row[idx] = body.name; break;
+        case 'name_translation': row[idx] = body.name_translation || ''; break;
+        case 'price':            row[idx] = Number(body.price) || 0; break;
+        case 'needs_cooking':    row[idx] = body.needs_cooking === true || body.needs_cooking === 'true'; break;
+        case 'sort':             row[idx] = body.sort || 0; break;
+        case 'is_active':        row[idx] = body.is_active !== false; break;
+        default:                 row[idx] = ''; break;
+      }
+    });
+    sheet.appendRow(row);
   } else {
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
   }
@@ -934,15 +952,22 @@ function saveUser(body) {
     }
   }
   if (!found) {
-    sheet.appendRow([
-      id,
-      body.name,
-      body.role || 'waiter',
-      body.pin || '',
-      body.is_active !== false,
-      body.sort || 0,
-      new Date().toISOString()
-    ]);
+    // Build row by header name (column-order-agnostic)
+    const headersNow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const row = new Array(headersNow.length).fill('');
+    headersNow.forEach(function(h, idx) {
+      switch (h) {
+        case 'id':         row[idx] = id; break;
+        case 'name':       row[idx] = body.name; break;
+        case 'role':       row[idx] = body.role || 'waiter'; break;
+        case 'pin':        row[idx] = body.pin || ''; break;
+        case 'is_active':  row[idx] = body.is_active !== false; break;
+        case 'sort':       row[idx] = body.sort || 0; break;
+        case 'created_at': row[idx] = new Date().toISOString(); break;
+        default:           row[idx] = ''; break;
+      }
+    });
+    sheet.appendRow(row);
   } else {
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
   }
