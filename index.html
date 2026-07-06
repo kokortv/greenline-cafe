@@ -1667,11 +1667,7 @@ function renderHomeActiveOrders() {
     card.className = 'home-order-card' + (allReady ? ' all-ready' : (hasReady ? ' has-ready' : ''));
     let html =
       '<div class="hoc-row1">' +
-        '<div class="hoc-table">' +
-          (order.table_type === 'tab' ? '💳 ' + escapeHtml(order.table_number || state.selectedTabName || '') :
-           order.table_type === 'virtual' ? escapeHtml(order.table_number || '') :
-           'Столик №' + escapeHtml(String(order.table_number))) +
-        '</div>' +
+        '<div class="hoc-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
         '<div class="hoc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>';
     html += '<div class="hoc-items">' +
@@ -1761,7 +1757,7 @@ function renderActiveOrdersList() {
     card.className = 'order-card';
     card.innerHTML =
       '<div class="oc-header">' +
-        '<div class="oc-table">Столик №' + order.table_number + '</div>' +
+        '<div class="oc-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
         '<div class="oc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>' +
       '<div class="oc-items">' +
@@ -1796,7 +1792,7 @@ async function renderOrderDetail() {
       '<div class="card">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<div>' +
-            '<div style="font-size:1.5rem;font-weight:700;">Столик №' + order.table_number + '</div>' +
+            '<div style="font-size:1.5rem;font-weight:700;">' + escapeHtml(formatTableLabel(order)) + '</div>' +
             '<div style="color:var(--text-muted);">' +
               (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' + formatTime(order.created_at) +
             '</div>' +
@@ -1974,7 +1970,7 @@ async function completeOrderById(orderId) {
   // Fill order info
   const info = document.getElementById('payment-order-info');
   info.innerHTML =
-    '<div><b>Столик №' + order.table_number + '</b> · ' + (order.main_category_name || '') + ' · ' + order.guests + ' чел.</div>' +
+    '<div><b>' + escapeHtml(formatTableLabel(order)) + '</b> · ' + (order.main_category_name || '') + ' · ' + order.guests + ' чел.</div>' +
     '<div style="font-size:1.5rem;font-weight:800;color:var(--primary);margin-top:6px;">' + formatMoney(order.total) + '</div>';
 
   // Pre-fill payment amounts (same total for both, just for visual clarity)

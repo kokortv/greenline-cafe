@@ -42,6 +42,20 @@ async function apiPost(action, payload) {
 }
 
 /* ---------- Format ---------- */
+// Format a table label for an order, depending on its table_type.
+//  - 'tab'     → just the client name (e.g. "Иван П.")
+//  - 'virtual' → just the virtual name (e.g. "Бар — Иван" or "Бар")
+//  - 'numbered' (or undefined for legacy orders) → "Столик №5"
+// NEVER prepend "Столик №" to virtual or tab orders — they are not tables.
+function formatTableLabel(order) {
+  if (!order) return '';
+  const type = order.table_type || 'numbered';
+  const num = order.table_number;
+  if (type === 'tab') return String(num || '');
+  if (type === 'virtual') return String(num || '');
+  return 'Столик №' + num;
+}
+
 function formatMoney(amount, currency) {
   const n = Number(amount) || 0;
   // Resolve currency: explicit param → APP_DATA.settings.currency → CONFIG default

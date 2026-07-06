@@ -517,6 +517,10 @@ async function fetchOrders() {
     updateCount();
   } catch (err) {
     console.error('fetch error', err);
+    if (!cookState._apiErrorShown) {
+      showToast('Ошибка связи с сервером: ' + err.message, 'error');
+      cookState._apiErrorShown = true;
+    }
   }
 }
 
@@ -562,7 +566,7 @@ function renderSidebar() {
       (order.id === cookState.currentOrderId ? ' active' : '') +
       (allReady ? ' all-ready' : '');
     item.innerHTML =
-      '<div class="oli-table">Столик №' + order.table_number +
+      '<div class="oli-table">' + escapeHtml(formatTableLabel(order)) +
         (order.waiter_name ? ' <span class="waiter-tag">' + escapeHtml(order.waiter_name) + '</span>' : '') +
       '</div>' +
       '<div class="oli-meta">' + formatTime(order.created_at) + ' · ' + order.guests + ' чел.</div>' +
@@ -618,7 +622,7 @@ function renderOrder() {
   let html =
     '<div class="order-display-header">' +
       '<div>' +
-        '<div class="odh-table">Столик №' + order.table_number + '</div>' +
+        '<div class="odh-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
         '<div style="color:#bbb;margin-top:4px;">' +
           (order.main_category_name || '') + ' · ' + order.guests + ' гостей' +
           (order.waiter_name ? ' · <span style="color:#90caf9;">официант: ' + escapeHtml(order.waiter_name) + '</span>' : '') +
