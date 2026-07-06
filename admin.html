@@ -371,8 +371,13 @@
         </p>
       </div>
       <div class="form-group">
-        <label>Налог (%) — добавляется к итогу</label>
-        <input type="number" id="set-tax" min="0" max="100" step="0.1" value="0">
+        <label>Виртуальный столик (название)</label>
+        <input type="text" id="set-virtual-table" placeholder="Например: Бар" value="Бар">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+          Название виртуального столика, который появится у официантов на главной.
+          Можно указать несколько через запятую (например: «Бар, Терраса»), но
+          обычно нужен один.
+        </p>
       </div>
       <div class="form-group checkbox-field">
         <input type="checkbox" id="set-sound">
@@ -731,7 +736,7 @@ function populateSettingsForm() {
   document.getElementById('set-translation-lang').value = APP_DATA.settings.translation_lang || '';
   document.getElementById('set-poll-waiter').value = APP_DATA.settings.poll_interval_waiter || 20;
   document.getElementById('set-poll-cook').value = APP_DATA.settings.poll_interval_cook || 10;
-  document.getElementById('set-tax').value = APP_DATA.settings.tax_percent || 0;
+  document.getElementById('set-virtual-table').value = APP_DATA.settings.virtual_tables || 'Бар';
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
   updateTranslationLangLabel();
@@ -761,7 +766,7 @@ async function saveSettings() {
     translation_lang: document.getElementById('set-translation-lang').value,
     poll_interval_waiter: String(pollWaiter),
     poll_interval_cook: String(pollCook),
-    tax_percent: document.getElementById('set-tax').value,
+    virtual_tables: document.getElementById('set-virtual-table').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false'
   };
   try {
