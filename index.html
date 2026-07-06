@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Официант — Ресторан</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 <style>
   /* Waiter-specific styles */
@@ -620,6 +621,33 @@
   </div>
 </div>
 
+<!-- Virtual order modal (Бар / С собой — each click opens a new order) -->
+<div class="modal-backdrop" id="modal-virtual-order">
+  <div class="modal">
+    <h2 id="virtual-order-title">Бар</h2>
+    <p style="margin-bottom:12px;color:var(--text-muted);font-size:0.9rem;">
+      Новый заказ «<span id="virtual-order-context"></span>». Все поля необязательны —
+      можно просто нажать «Продолжить» для разового заказа (например, мороженое с оплатой сразу).
+    </p>
+    <div class="form-group">
+      <label>Имя клиента (необязательно)</label>
+      <input type="text" id="virtual-order-name" placeholder="Например: Иван">
+    </div>
+    <div class="form-group">
+      <label>Номер комнаты (необязательно)</label>
+      <input type="text" id="virtual-order-room" placeholder="Например: 5">
+    </div>
+    <div class="form-group">
+      <label>Заметка (необязательно)</label>
+      <input type="text" id="virtual-order-notes" placeholder="Например: без сахара">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-virtual-order')">Отмена</button>
+      <button class="btn btn-primary" onclick="confirmVirtualOrder()">Продолжить</button>
+    </div>
+  </div>
+</div>
+
 <!-- Payment method modal -->
 <div class="modal-backdrop" id="modal-payment">
   <div class="modal">
@@ -665,10 +693,12 @@ window.addEventListener('error', function(e) {
 <script>
 let state = {
   currentUser: null,           // {id, name, role}
-  selectedTable: null,         // table number (for numbered) or name (for virtual)
+  selectedTable: null,         // table number (for numbered) or label (for virtual)
   selectedTableType: null,     // 'numbered' | 'virtual' | 'tab'
   selectedTabId: null,         // for 'tab' type — the tab id
   selectedTabName: null,       // for 'tab' type — the tab name (for display)
+  selectedVirtualBase: null,   // for 'virtual' — base name like "Бар"
+  selectedVirtualLabel: null,  // for 'virtual' — full label like "Бар — Иван"
   guests: 1,
   mainCategory: null,
   currentSubcat: null,
@@ -917,7 +947,10 @@ function renderHome() {
     tableGrid.appendChild(btn);
   }
 
-  // Virtual tables (Бар, С собой, etc.)
+  // Virtual tables (Бар, С собой, etc.) — these are NEVER "occupied" in the
+  // exclusive sense. Each click opens a NEW virtual order, so multiple can
+  // be open in parallel. We just show a small badge with the count of active
+  // orders for each, so the waiter has situational awareness.
   const virtualNames = (APP_DATA.settings.virtual_tables || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
   const virtualSection = document.getElementById('virtual-tables-section');
   const virtualGrid = document.getElementById('virtual-table-grid');
@@ -925,16 +958,18 @@ function renderHome() {
     virtualSection.style.display = 'block';
     virtualGrid.innerHTML = '';
     virtualNames.forEach(function(name) {
-      // Count active orders for this virtual table
-      const hasOrder = state.activeOrders.some(function(o) {
-        return o.table_type === 'virtual' && o.table_number === name;
-      });
-      const isSelected = state.selectedTable === name && state.selectedTableType === 'virtual';
+      // Count active virtual orders with this base name
+      const activeCount = state.activeOrders.filter(function(o) {
+        return o.table_type === 'virtual' && String(o.table_number).indexOf(name) === 0;
+      }).length;
+      // Check if THIS virtual button is the currently selected one
+      const isSelected = state.selectedTableType === 'virtual' &&
+                         state.selectedVirtualBase === name;
       const btn = document.createElement('button');
       let cls = 'table-btn virtual';
-      let label = 'свободен';
-      if (hasOrder) { cls += ' has-order'; label = 'есть заказы'; }
-      if (isSelected) { cls += ' selected'; label = '✓ выбран'; }
+      let label = 'новый заказ';
+      if (activeCount > 0) { cls += ' has-order'; label = activeCount + ' активн.'; }
+      if (isSelected) { cls += ' selected'; label = '✓ ' + (state.selectedVirtualLabel || name); }
       btn.className = cls;
       btn.innerHTML = escapeHtml(name) + '<span class="table-label">' + label + '</span>';
       btn.onclick = function(e) { selectTable(name, 'virtual', e); };
@@ -964,11 +999,54 @@ function renderHome() {
 }
 
 function selectTable(num, type, evt) {
+  // For virtual tables: ask for optional name/room, then proceed (each click
+  // creates a NEW virtual order — virtual tables are never "occupied" in the
+  // exclusive sense, they can be opened as many times as needed in parallel).
+  if (type === 'virtual') {
+    openVirtualOrderModal(num);
+    return;
+  }
   state.selectedTable = num;
   state.selectedTableType = type || 'numbered';
   state.selectedTabId = null;  // table and tab are mutually exclusive
+  state.selectedTabName = null;
   showToast('Выбран: ' + (type === 'virtual' ? num : 'Столик ' + num), 'info');
   // Re-render to apply `selected` class persistently
+  renderHome();
+}
+
+/* ---------- Virtual order modal ---------- */
+function openVirtualOrderModal(virtualName) {
+  document.getElementById('virtual-order-title').textContent = virtualName;
+  document.getElementById('virtual-order-name').value = '';
+  document.getElementById('virtual-order-room').value = '';
+  document.getElementById('virtual-order-notes').value = '';
+  document.getElementById('virtual-order-context').textContent = virtualName;
+  // Store the virtual name for use when the user confirms
+  state._pendingVirtualName = virtualName;
+  openModal('modal-virtual-order');
+}
+
+function confirmVirtualOrder() {
+  const virtualName = state._pendingVirtualName;
+  const name = document.getElementById('virtual-order-name').value.trim();
+  const room = document.getElementById('virtual-order-room').value.trim();
+  const notes = document.getElementById('virtual-order-notes').value.trim();
+  // Build a display label: "Бар — Иван" or "Бар — комната 5" or just "Бар"
+  let label = virtualName;
+  if (name) label += ' — ' + name;
+  else if (room) label += ' — комната ' + room;
+  if (notes) label += ' (' + notes + ')';
+  // Set as selected
+  state.selectedTable = label;
+  state.selectedTableType = 'virtual';
+  state.selectedTabId = null;
+  state.selectedTabName = null;
+  // Store the raw virtual name (e.g. "Бар") separately — backend uses it
+  state.selectedVirtualBase = virtualName;
+  state.selectedVirtualLabel = label;
+  closeModal('modal-virtual-order');
+  showToast('Выбран: ' + label, 'info');
   renderHome();
 }
 
@@ -1057,8 +1135,8 @@ function changeGuests(delta) {
 }
 
 function selectMainCategory(cat) {
-  if (!state.selectedTable && !state.selectedTabId) {
-    showToast('Сначала выберите столик или счёт клиента', 'warning');
+  if (!state.selectedTable && !state.selectedTabId && !state.selectedVirtualBase) {
+    showToast('Сначала выберите столик, виртуальный заказ или счёт клиента', 'warning');
     return;
   }
   state.mainCategory = cat;
@@ -1115,12 +1193,12 @@ function renderMenu() {
   }
 
   // Context
-  // Context: show table number / virtual name / tab name
+  // Context: show table number / virtual label / tab name
   let contextLabel = '';
   if (state.selectedTabId) {
     contextLabel = 'Счёт: <b>' + escapeHtml(state.selectedTabName || '') + '</b>';
   } else if (state.selectedTableType === 'virtual') {
-    contextLabel = 'Стол: <b>' + escapeHtml(state.selectedTable) + '</b>';
+    contextLabel = '<b>' + escapeHtml(state.selectedVirtualLabel || state.selectedVirtualBase || '') + '</b>';
   } else {
     contextLabel = 'Стол <b>' + state.selectedTable + '</b>';
   }
@@ -1338,10 +1416,28 @@ async function acceptOrder() {
   }
   _orderSubmitting = true;
   try {
+    // Determine what to send as table_number based on selection type
+    let tableNumber, tableType, tabId;
+    if (state.selectedTabId) {
+      // Tab order — table_number is the tab name for display
+      tableNumber = state.selectedTabName || '';
+      tableType = 'tab';
+      tabId = state.selectedTabId;
+    } else if (state.selectedTableType === 'virtual') {
+      // Virtual order — use the full label (e.g. "Бар — Иван" or just "Бар")
+      tableNumber = state.selectedVirtualLabel || state.selectedVirtualBase || state.selectedTable || '';
+      tableType = 'virtual';
+      tabId = '';
+    } else {
+      // Numbered table
+      tableNumber = state.selectedTable;
+      tableType = 'numbered';
+      tabId = '';
+    }
     const payload = {
-      table_number: state.selectedTable,
-      table_type: state.selectedTabId ? 'tab' : (state.selectedTableType || 'numbered'),
-      tab_id: state.selectedTabId || '',
+      table_number: tableNumber,
+      table_type: tableType,
+      tab_id: tabId,
       guests: state.guests,
       main_category_id: state.mainCategory.id,
       main_category_name: state.mainCategory.name,
@@ -1352,13 +1448,15 @@ async function acceptOrder() {
     const order = await apiPost('createOrder', payload);
     const displayLabel = state.selectedTabId
       ? 'счёт «' + state.selectedTabName + '»'
-      : (state.selectedTableType === 'virtual' ? state.selectedTable : 'столик ' + state.selectedTable);
+      : (state.selectedTableType === 'virtual' ? (state.selectedVirtualLabel || state.selectedVirtualBase) : 'столик ' + state.selectedTable);
     showToast('Заказ для ' + displayLabel + ' принят!', 'success');
     state.cart = [];
     state.selectedTable = null;
     state.selectedTableType = null;
     state.selectedTabId = null;
     state.selectedTabName = null;
+    state.selectedVirtualBase = null;
+    state.selectedVirtualLabel = null;
     state.mainCategory = null;
     state.currentSubcat = null;
     document.body.classList.remove('has-cart-panel');
@@ -1480,17 +1578,31 @@ function renderReadyAlerts() {
     return;
   }
   panel.style.display = 'block';
-  // Group alerts by table for compactness
+  // Group alerts by table (table can be a number or a virtual-table name string)
   const byTable = {};
   state.readyAlerts.forEach(function(a) {
-    if (!byTable[a.tableNumber]) byTable[a.tableNumber] = [];
-    byTable[a.tableNumber].push(a);
+    const key = String(a.tableNumber);
+    if (!byTable[key]) byTable[key] = [];
+    byTable[key].push(a);
   });
   let html = '';
-  Object.keys(byTable).sort(function(a, b) { return Number(a) - Number(b); }).forEach(function(table) {
+  // Sort: numeric tables first (ascending), then string tables alphabetically
+  const tableKeys = Object.keys(byTable).sort(function(a, b) {
+    const na = Number(a), nb = Number(b);
+    const aIsNum = !isNaN(na) && String(na) === a;
+    const bIsNum = !isNaN(nb) && String(nb) === b;
+    if (aIsNum && bIsNum) return na - nb;
+    if (aIsNum) return -1;
+    if (bIsNum) return 1;
+    return a.localeCompare(b);
+  });
+  tableKeys.forEach(function(table) {
     const alerts = byTable[table];
-    html += '<div class="ready-alert" onclick="dismissTableAlerts(' + table + ')">';
-    html += '<div class="ra-title">🔔 Столик №' + table + ' — можно подавать!</div>';
+    // Escape table name for safe embedding in JS string and HTML
+    const tableEscaped = String(table).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const tableLabel = isNaN(Number(table)) ? escapeHtml(table) : 'Столик №' + escapeHtml(table);
+    html += '<div class="ready-alert" onclick="dismissTableAlerts(\'' + tableEscaped + '\')">';
+    html += '<div class="ra-title">🔔 ' + tableLabel + ' — можно подавать!</div>';
     alerts.forEach(function(a) {
       html += '<div class="ra-item">✓ ' + escapeHtml(a.itemName) + ' ×' + a.quantity + '</div>';
     });
@@ -1501,8 +1613,9 @@ function renderReadyAlerts() {
 }
 
 function dismissTableAlerts(tableNumber) {
+  const key = String(tableNumber);
   state.readyAlerts = state.readyAlerts.filter(function(a) {
-    if (Number(a.tableNumber) === Number(tableNumber)) {
+    if (String(a.tableNumber) === key) {
       state.dismissedReadyAlerts.add(a.orderId + '_' + a.itemId);
       return false;
     }
@@ -1549,9 +1662,9 @@ function renderHomeActiveOrders() {
     let html =
       '<div class="hoc-row1">' +
         '<div class="hoc-table">' +
-          (order.table_type === 'tab' ? '💳 Счёт: ' + escapeHtml(state.selectedTabName || order.table_number || '') :
-           order.table_type === 'virtual' ? escapeHtml(order.table_number || '') + ' (вирт.)' :
-           'Столик №' + order.table_number) +
+          (order.table_type === 'tab' ? '💳 ' + escapeHtml(order.table_number || state.selectedTabName || '') :
+           order.table_type === 'virtual' ? escapeHtml(order.table_number || '') :
+           'Столик №' + escapeHtml(String(order.table_number))) +
         '</div>' +
         '<div class="hoc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>';
