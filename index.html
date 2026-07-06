@@ -965,6 +965,27 @@ function showScreen(name) {
 }
 
 /* ---------- HOME ---------- */
+
+// Helper: get a display label for an order item that includes its subcategory
+// name (e.g. "Салаты: Греческий" instead of just "Греческий").
+// Uses the item's stored category_name if available (orders created after the
+// category_name fix), otherwise falls back to the current menu + categories.
+function formatItemLabel(item) {
+  let categoryName = item.category_name || '';
+  if (!categoryName && item.menu_item_id && APP_DATA && APP_DATA.menu) {
+    const dish = APP_DATA.menu.find(function(m) { return m.id === item.menu_item_id; });
+    if (dish && dish.category_id && APP_DATA.categories) {
+      const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
+      // Only use real subcategories (those with parent_id)
+      if (cat && cat.parent_id) categoryName = cat.name || '';
+    }
+  }
+  if (categoryName) {
+    return '<span class="ci-cat-badge">' + escapeHtml(categoryName) + '</span> ' + escapeHtml(item.name);
+  }
+  return escapeHtml(item.name);
+}
+
 function renderHome() {
   // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other
   const tableCount = Number(APP_DATA.settings.table_count) || 20;
@@ -1420,11 +1441,18 @@ function renderCartItems() {
   let total = 0;
   state.cart.forEach(function(item, idx) {
     total += item.price * item.quantity;
+    // Build the name line with optional category badge
+    let nameLine = '';
+    if (item.category_name) {
+      nameLine = '<span class="ci-cat-badge">' + escapeHtml(item.category_name) + '</span> ' + escapeHtml(item.name);
+    } else {
+      nameLine = escapeHtml(item.name);
+    }
     const card = document.createElement('div');
     card.className = 'cart-item';
     card.innerHTML =
       '<div class="ci-top">' +
-        '<div class="ci-name">' + escapeHtml(item.name) + '</div>' +
+        '<div class="ci-name">' + nameLine + '</div>' +
         '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
       '</div>' +
       '<div class="stepper">' +
@@ -1554,6 +1582,8 @@ async function refreshActiveOrders() {
             orderId: order.id,
             tableNumber: order.table_number,
             itemName: item.name,
+            categoryName: item.category_name || '',
+            menuItemId: item.menu_item_id || '',
             quantity: item.quantity,
             itemId: item.id
           });
@@ -1583,7 +1613,17 @@ async function refreshActiveOrders() {
       if (state.initialLoadDone) {
         notifySound();
         newReadyItems.forEach(function(r) {
-          const msg = '✓ Готово: ' + r.itemName + ' ×' + r.quantity + ' — столик ' + r.tableNumber;
+          // Build the item label with category (e.g. "Салаты: Греческий")
+          let catName = r.categoryName || '';
+          if (!catName && r.menuItemId && APP_DATA && APP_DATA.menu) {
+            const dish = APP_DATA.menu.find(function(m) { return m.id === r.menuItemId; });
+            if (dish && dish.category_id && APP_DATA.categories) {
+              const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
+              if (cat && cat.parent_id) catName = cat.name || '';
+            }
+          }
+          const fullItemName = catName ? catName + ': ' + r.itemName : r.itemName;
+          const msg = '✓ Готово: ' + fullItemName + ' ×' + r.quantity + ' — ' + formatTableLabel({ table_number: r.tableNumber, table_type: 'numbered' });
           showToast(msg, 'success');
           // Also fire a system notification (works when tab is hidden)
           showSystemNotification('🍽 Блюдо готово!', msg, 'ready_' + r.itemId);
@@ -1671,7 +1711,16 @@ function renderReadyAlerts() {
     html += '<div class="ready-alert" onclick="dismissTableAlerts(\'' + tableEscaped + '\')">';
     html += '<div class="ra-title">🔔 ' + tableLabel + ' — можно подавать!</div>';
     alerts.forEach(function(a) {
-      html += '<div class="ra-item">✓ ' + escapeHtml(a.itemName) + ' ×' + a.quantity + '</div>';
+      // Find the full item object to get category info
+      let alertItem = null;
+      for (const o of state.activeOrders) {
+        if (o.id === a.orderId) {
+          alertItem = (o.items || []).find(function(i) { return i.id === a.itemId; });
+          break;
+        }
+      }
+      const itemLabel = alertItem ? formatItemLabel(alertItem) : escapeHtml(a.itemName);
+      html += '<div class="ra-item">✓ ' + itemLabel + ' ×' + a.quantity + '</div>';
     });
     html += '<div style="font-size:0.85rem;margin-top:6px;opacity:0.9;">Нажмите, чтобы скрыть</div>';
     html += '</div>';
@@ -1751,7 +1800,7 @@ function renderHomeActiveOrders() {
     // List ready dishes if any (but not all — if all, just say "всё готово")
     if (hasReady && !allReady) {
       const readyNames = readyItems.map(function(i) {
-        return escapeHtml(i.name) + ' ×' + i.quantity;
+        return formatItemLabel(i) + ' ×' + i.quantity;
       }).join(', ');
       html += '<div class="hoc-ready-list"><b>Готово к подаче:</b> ' + readyNames + '</div>';
     }
@@ -1932,25 +1981,11 @@ async function renderOrderDetail() {
       // refreshActiveOrders() so we don't double-fire them here.
 
       order.items.forEach(function(item, idx) {
-        // Resolve category name for this item — same logic as the cook screen.
-        // For old orders (created before category_name was added to OrderItems)
-        // we fall back to the current menu + categories list.
-        let categoryName = item.category_name || '';
-        if (!categoryName && item.menu_item_id && APP_DATA && APP_DATA.menu) {
-          const dish = APP_DATA.menu.find(function(m) { return m.id === item.menu_item_id; });
-          if (dish && dish.category_id && APP_DATA.categories) {
-            const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
-            if (cat && cat.parent_id) categoryName = cat.name || '';
-          }
-        }
         const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
         const card = document.createElement('div');
         card.className = 'cart-item' + (isReady ? ' ready' : '');
-        // Build the dish name line: optional category badge + dish name
-        const nameLine = (categoryName
-            ? '<span class="ci-cat-badge">' + escapeHtml(categoryName) + '</span> ' : '')
-          + escapeHtml(item.name)
-          + (isReady ? ' <span class="ci-ready-badge">✓ ГОТОВО</span>' : '');
+        // Build the dish name line: optional category badge + dish name + ready badge
+        const nameLine = formatItemLabel(item) + (isReady ? ' <span class="ci-ready-badge">✓ ГОТОВО</span>' : '');
         card.innerHTML =
           '<div class="ci-top">' +
             '<div class="ci-name">' + nameLine + '</div>' +
