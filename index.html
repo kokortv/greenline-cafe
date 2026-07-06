@@ -1565,6 +1565,8 @@ async function refreshActiveOrders() {
 
 function updateBadge() {
   const badge = document.getElementById('active-orders-badge');
+  // Count ALL active orders (accepted + paused). Paused ones are hidden from
+  // the home screen but still tracked in the badge so the waiter can find them.
   const count = state.activeOrders.length;
   if (count > 0) {
     badge.style.display = 'inline-flex';
@@ -1638,15 +1640,21 @@ function renderHomeActiveOrders() {
   const countSpan = document.getElementById('home-active-count');
   if (!container) return;
 
-  if (state.activeOrders.length === 0) {
+  // On the home screen, show ONLY 'accepted' orders (not 'paused').
+  // Paused orders are tucked away in the active-orders list (the badge button
+  // in the top-right) so they don't clutter the home screen. The user can
+  // still find them there and resume.
+  const homeOrders = state.activeOrders.filter(function(o) { return o.status === 'accepted'; });
+
+  if (homeOrders.length === 0) {
     container.style.display = 'none';
     return;
   }
   container.style.display = 'block';
-  countSpan.textContent = state.activeOrders.length;
+  countSpan.textContent = homeOrders.length;
 
   // Sort by created_at ascending (oldest first — cook handles oldest first too)
-  const sorted = state.activeOrders.slice().sort(function(a, b) {
+  const sorted = homeOrders.slice().sort(function(a, b) {
     return new Date(a.created_at) - new Date(b.created_at);
   });
 
@@ -1688,36 +1696,32 @@ function renderHomeActiveOrders() {
       }).join(', ');
       html += '<div class="hoc-ready-list"><b>Готово к подаче:</b> ' + readyNames + '</div>';
     }
-    // Actions — depend on status
-    const isPaused = order.status === 'paused';
+    // Actions — only 'accepted' orders reach here (paused are filtered out above)
     let actions =
-      '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>';
-    if (isPaused) {
-      actions += '<button class="btn btn-info" onclick="resumeOrderById(\'' + order.id + '\')">▶ Возобновить</button>';
-    } else {
-      actions += '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>';
-    }
+      '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>' +
+      '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>';
     if (order.table_type === 'virtual' || order.table_type === 'tab') {
-      // For virtual/tab orders — show pause option (only if not already paused)
-      if (!isPaused) {
-        actions += '<button class="btn btn-warning" onclick="pauseOrderById(\'' + order.id + '\')">⏸ На паузу</button>';
-      }
+      actions += '<button class="btn btn-warning" onclick="pauseOrderById(\'' + order.id + '\')">⏸ На паузу</button>';
     }
     html += '<div class="hoc-actions">' + actions + '</div>';
-    if (isPaused) {
-      html = '<div style="background:#fff8e1;border-left:5px solid var(--warning);padding:8px 12px;border-radius:8px;margin-bottom:8px;font-size:0.9rem;">⏸ Заказ на паузе — клиент не оплатил. Виден всем официантам.</div>' + html;
-    }
     card.innerHTML = html;
     listDiv.appendChild(card);
   });
 }
 
 async function pauseOrderById(orderId) {
-  if (!confirm('Поставить заказ на паузу? Он будет виден всем официантам — можно вернуться и добавить ещё блюда.')) return;
+  if (!confirm('Поставить заказ на паузу? Он уйдёт с главного экрана, но будет виден в списке активных заказов (кнопка справа сверху).')) return;
   try {
     await apiPost('pauseOrder', { order_id: orderId });
-    showToast('Заказ на паузе', 'info');
-    await refreshActiveOrders();
+    showToast('Заказ на паузе — найдёте его в списке активных заказов', 'info');
+    // Optimistically mark the order as paused locally so it disappears from
+    // the home screen immediately (without waiting for the next poll).
+    const o = state.activeOrders.find(function(x) { return x.id === orderId; });
+    if (o) o.status = 'paused';
+    // Re-render home so the paused card disappears right away
+    renderHomeActiveOrders();
+    // After a short delay, refresh from server to sync
+    setTimeout(function() { refreshActiveOrders(); }, 800);
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
@@ -1726,8 +1730,19 @@ async function pauseOrderById(orderId) {
 async function resumeOrderById(orderId) {
   try {
     await apiPost('resumeOrder', { order_id: orderId });
-    showToast('Заказ возобновлён', 'success');
-    await refreshActiveOrders();
+    showToast('Заказ возобновлён — вернулся на главный экран', 'success');
+    // Optimistically mark as accepted locally so it shows on home right away
+    const o = state.activeOrders.find(function(x) { return x.id === orderId; });
+    if (o) o.status = 'accepted';
+    // If we're on the active-orders list screen, re-render it (paused badge
+    // should disappear). If on home, the card re-appears.
+    if (document.getElementById('screen-orders').classList.contains('active')) {
+      renderActiveOrdersList();
+    }
+    if (document.getElementById('screen-home').classList.contains('active')) {
+      renderHomeActiveOrders();
+    }
+    setTimeout(function() { refreshActiveOrders(); }, 800);
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
@@ -1748,16 +1763,47 @@ function renderActiveOrdersList() {
     div.innerHTML = '<div class="empty-state"><h3>Нет активных заказов</h3><p>Все заказы завершены</p></div>';
     return;
   }
+  // Sort: accepted first (newest first), then paused (newest first)
+  const sorted = state.activeOrders.slice().sort(function(a, b) {
+    if (a.status !== b.status) return a.status === 'accepted' ? -1 : 1;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
   div.innerHTML = '';
-  state.activeOrders.forEach(function(order) {
+  // Section header for paused orders
+  let pausedHeaderShown = false;
+  sorted.forEach(function(order) {
+    // Insert a divider before the first paused order
+    if (order.status === 'paused' && !pausedHeaderShown) {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'margin:20px 0 8px;font-size:1.1rem;font-weight:700;color:var(--accent-dark);';
+      hdr.innerHTML = '⏸ На паузе (клиент не оплатил)';
+      div.appendChild(hdr);
+      pausedHeaderShown = true;
+    }
     const itemsCount = order.items ? order.items.length : 0;
     const readyCount = order.items ? order.items.filter(function(i) { return i.is_ready; }).length : 0;
     const total = Number(order.total) || 0;
+    const isPaused = order.status === 'paused';
     const card = document.createElement('div');
-    card.className = 'order-card';
+    card.className = 'order-card' + (isPaused ? ' paused' : '');
+    card.style.cssText = isPaused ? 'border-left:5px solid var(--warning);background:#fffde7;' : '';
+    let actions =
+      '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть / изменить</button>';
+    if (isPaused) {
+      actions += '<button class="btn btn-info" onclick="resumeOrderById(\'' + order.id + '\')">▶ Возобновить</button>';
+    } else {
+      actions += '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>';
+    }
+    if (order.table_type === 'virtual' || order.table_type === 'tab') {
+      if (!isPaused) {
+        actions += '<button class="btn btn-warning" onclick="pauseOrderById(\'' + order.id + '\')">⏸ На паузу</button>';
+      }
+    }
     card.innerHTML =
       '<div class="oc-header">' +
-        '<div class="oc-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
+        '<div class="oc-table">' + escapeHtml(formatTableLabel(order)) +
+          (isPaused ? ' <span class="pill pill-warning">пауза</span>' : '') +
+        '</div>' +
         '<div class="oc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>' +
       '<div class="oc-items">' +
@@ -1767,10 +1813,7 @@ function renderActiveOrdersList() {
       '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;">' +
         formatMoney(total) +
       '</div>' +
-      '<div class="oc-actions">' +
-        '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть / изменить</button>' +
-        '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>' +
-      '</div>';
+      '<div class="oc-actions">' + actions + '</div>';
     div.appendChild(card);
   });
 }
