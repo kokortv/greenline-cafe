@@ -189,27 +189,69 @@ function playCustomSound(name, fallback) {
 }
 
 /* ---------- Current user (login) ---------- */
-// Stored in localStorage. Each page (waiter/cook) uses its own role key.
-const USER_STORAGE_KEY = 'restaurant_current_user';
+// Session token + user info are stored in localStorage.
+// The token is verified by the server on each request (sent as a param).
+const USER_STORAGE_KEY = 'restaurant_session';
+const OLD_USER_STORAGE_KEY = 'restaurant_current_user'; // legacy key, cleaned up
 
-function getCurrentUser() {
+function getCurrentSession() {
   try {
+    // Clean up legacy key from older versions
+    if (localStorage.getItem(OLD_USER_STORAGE_KEY)) {
+      localStorage.removeItem(OLD_USER_STORAGE_KEY);
+    }
     const raw = localStorage.getItem(USER_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) { return null; }
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    // Validate structure
+    if (!session || !session.user || !session.token) {
+      localStorage.removeItem(USER_STORAGE_KEY);
+      return null;
+    }
+    return session;
+  } catch (e) {
+    try { localStorage.removeItem(USER_STORAGE_KEY); } catch (_) {}
+    return null;
+  }
 }
 
-function setCurrentUser(user) {
-  if (user) {
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+function getCurrentUser() {
+  const session = getCurrentSession();
+  return session ? session.user : null;
+}
+
+function getCurrentToken() {
+  const session = getCurrentSession();
+  return session ? session.token : null;
+}
+
+function setCurrentSession(session) {
+  if (session) {
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(session));
   } else {
     localStorage.removeItem(USER_STORAGE_KEY);
   }
 }
 
-function logoutUser() {
-  localStorage.removeItem(USER_STORAGE_KEY);
+async function logoutUser() {
+  const token = getCurrentToken();
+  if (token) {
+    try { await apiPost('logout', { token: token }); } catch (e) { /* ignore */ }
+  }
+  setCurrentSession(null);
   location.reload();
+}
+
+/* Login: returns session {token, user, expires_at} or throws Error */
+async function loginWithPassword(userId, password) {
+  const res = await fetch(CONFIG.API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'login', user_id: userId, password: password })
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Ошибка входа');
+  return json.data;
 }
 
 /* ---------- Config check ---------- */

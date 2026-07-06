@@ -383,20 +383,22 @@
   <h1>Официант</h1>
   <p class="login-subtitle">Выберите своё имя и введите пароль</p>
   <div class="login-user-grid" id="login-users"></div>
-  <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
-    <label>Пароль для <span id="login-selected-name"></span>:</label>
-    <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
-  </div>
-  <div style="max-width:400px;margin:16px auto 0;">
-    <button class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
-            onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
-      Войти
-    </button>
-    <button class="btn btn-outline" id="login-back-btn" style="width:100%;margin-top:8px;display:none;"
-            onclick="resetLoginSelection();">
-      ← Назад к выбору
-    </button>
-  </div>
+  <form id="login-form" onsubmit="event.preventDefault(); document.getElementById('login-submit-btn').click();" autocomplete="off">
+    <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
+      <label>Пароль для <span id="login-selected-name"></span>:</label>
+      <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
+    </div>
+    <div style="max-width:400px;margin:16px auto 0;">
+      <button type="button" class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
+              onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
+        Войти
+      </button>
+      <button type="button" class="btn btn-outline" id="login-back-btn" style="width:100%;margin-top:8px;display:none;"
+              onclick="resetLoginSelection();">
+        ← Назад к выбору
+      </button>
+    </div>
+  </form>
   <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
     Если вас нет в списке или нет пароля — обратитесь к администратору.
   </p>
@@ -539,6 +541,16 @@
 <script src="config.js"></script>
 <script src="common.js"></script>
 <script>
+window.addEventListener('error', function(e) {
+  console.error('Global error:', e.error || e.message);
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c62828;color:white;padding:12px 16px;font-size:0.9rem;z-index:9999;font-family:sans-serif;';
+  banner.textContent = 'JS Error: ' + (e.message || 'Unknown error') + ' (см. консоль F12)';
+  document.body.appendChild(banner);
+  setTimeout(function() { banner.remove(); }, 10000);
+});
+</script>
+<script>
 let state = {
   currentUser: null,           // {id, name, role}
   selectedTable: null,
@@ -559,8 +571,10 @@ let state = {
 /* ---------- Boot ---------- */
 async function init() {
   if (!checkConfig()) return;
+  let dataLoaded = false;
   try {
     await loadAppData();
+    dataLoaded = true;
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан');
 
@@ -580,23 +594,25 @@ async function init() {
     state.currentUser = session.user;
     startApp();
   } catch (err) {
+    console.error('init error:', err);
     showToast('Ошибка загрузки: ' + err.message, 'error');
+    showLoginScreen(!dataLoaded);
   }
 }
 
 let _selectedLoginUser = null;
 
-function showLoginScreen() {
+function showLoginScreen(dataFailed) {
   document.getElementById('app-header').style.display = 'none';
   document.getElementById('app-main').style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
   resetLoginSelection();
   const grid = document.getElementById('login-users');
   grid.innerHTML = '';
-  const waiters = APP_DATA.users.filter(function(u) { return u.role === 'waiter'; })
+  const waiters = (APP_DATA && APP_DATA.users ? APP_DATA.users : []).filter(function(u) { return u.role === 'waiter'; })
     .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
   if (waiters.length === 0) {
-    grid.innerHTML = '<div class="empty-state"><h3>Нет ни одного официанта</h3><p>Добавьте сотрудников в админ-панели</p></div>';
+    grid.innerHTML = '<div class="empty-state"><h3>Нет ни одного официанта</h3><p>' + (dataFailed ? 'Не удалось загрузить данные. Проверьте Apps Script и config.js, обновите страницу.' : 'Добавьте сотрудников в админ-панели') + '</p></div>';
     return;
   }
   waiters.forEach(function(w) {
@@ -660,17 +676,7 @@ async function submitLogin() {
   }
 }
 
-// Allow Enter key in password field to submit
-document.addEventListener('DOMContentLoaded', function() {
-  const pwdInput = document.getElementById('login-password');
-  if (pwdInput) {
-    pwdInput.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        document.getElementById('login-submit-btn').click();
-      }
-    });
-  }
-});
+// Enter key in the password field submits the form (handled by <form onsubmit> in HTML).
 
 async function startApp() {
   document.getElementById('app-header').style.display = 'flex';

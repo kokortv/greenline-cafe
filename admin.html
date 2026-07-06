@@ -220,22 +220,24 @@
 <div class="login-screen" id="login-screen" style="display:none;">
   <h1>Администратор</h1>
   <p class="login-subtitle">Вход только для администратора</p>
-  <div class="form-group" style="max-width:400px;margin:0 auto;">
-    <label>Имя:</label>
-    <select id="login-user-select" onchange="selectAdminUser();">
-      <option value="">— Выберите —</option>
-    </select>
-  </div>
-  <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
-    <label>Пароль:</label>
-    <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
-  </div>
-  <div style="max-width:400px;margin:16px auto 0;">
-    <button class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
-            onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
-      Войти
-    </button>
-  </div>
+  <form id="login-form" onsubmit="event.preventDefault(); document.getElementById('login-submit-btn').click();" autocomplete="off">
+    <div class="form-group" style="max-width:400px;margin:0 auto;">
+      <label>Имя:</label>
+      <select id="login-user-select" onchange="selectAdminUser();">
+        <option value="">— Выберите —</option>
+      </select>
+    </div>
+    <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
+      <label>Пароль:</label>
+      <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
+    </div>
+    <div style="max-width:400px;margin:16px auto 0;">
+      <button type="button" class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
+              onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
+        Войти
+      </button>
+    </div>
+  </form>
   <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
     Если у вас нет пароля — обратитесь к другому администратору или запустите migrate() в Apps Script.
   </p>
@@ -501,21 +503,23 @@
     <h2>Установка пароля</h2>
     <p style="margin-bottom:12px;color:var(--text-muted);">Сотрудник: <b id="pwd-user-name">—</b></p>
     <input type="hidden" id="pwd-user-id">
-    <div class="form-group">
-      <label>Новый пароль</label>
-      <input type="password" id="pwd-new" placeholder="Минимум 3 символа" autocomplete="off">
-    </div>
-    <div class="form-group">
-      <label>Повторите пароль</label>
-      <input type="password" id="pwd-confirm" placeholder="Ещё раз" autocomplete="off">
-    </div>
-    <div class="modal-actions" style="flex-direction:column;gap:8px;">
-      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return savePassword(); })" style="width:100%;">
-        Установить пароль
-      </button>
-      <button class="btn btn-outline" onclick="closeModal('modal-password')" style="width:100%;">Отмена</button>
-      <button class="btn btn-danger" onclick="clearPassword()" style="width:100%;">Удалить пароль (отключить вход)</button>
-    </div>
+    <form onsubmit="event.preventDefault(); document.getElementById('pwd-save-btn').click();" autocomplete="off">
+      <div class="form-group">
+        <label>Новый пароль</label>
+        <input type="password" id="pwd-new" placeholder="Минимум 3 символа" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Повторите пароль</label>
+        <input type="password" id="pwd-confirm" placeholder="Ещё раз" autocomplete="off">
+      </div>
+      <div class="modal-actions" style="flex-direction:column;gap:8px;">
+        <button type="button" class="btn btn-primary" id="pwd-save-btn" onclick="withLoading(this, 'Сохраняем...', function() { return savePassword(); })" style="width:100%;">
+          Установить пароль
+        </button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-password')" style="width:100%;">Отмена</button>
+        <button type="button" class="btn btn-danger" onclick="clearPassword()" style="width:100%;">Удалить пароль (отключить вход)</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -533,6 +537,18 @@
 <script src="config.js"></script>
 <script src="common.js"></script>
 <script>
+// Global error handler — shows errors as a visible banner so the user can
+// see what went wrong (instead of a blank page).
+window.addEventListener('error', function(e) {
+  console.error('Global error:', e.error || e.message);
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c62828;color:white;padding:12px 16px;font-size:0.9rem;z-index:9999;font-family:sans-serif;';
+  banner.textContent = 'JS Error: ' + (e.message || 'Unknown error') + ' (см. консоль F12)';
+  document.body.appendChild(banner);
+  setTimeout(function() { banner.remove(); }, 10000);
+});
+</script>
+<script>
 let adminState = {
   orders: [],
   filterStatus: 'all',
@@ -544,8 +560,10 @@ let adminState = {
 
 async function init() {
   if (!checkConfig()) return;
+  let dataLoaded = false;
   try {
     await loadAppData();
+    dataLoaded = true;
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан') + ' — Админ';
 
@@ -566,18 +584,22 @@ async function init() {
     adminState.sessionToken = session.token;
     startApp();
   } catch (err) {
+    console.error('init error:', err);
     showToast('Ошибка загрузки: ' + err.message, 'error');
+    // Even if data failed to load, show login screen so user isn't stuck
+    // on a blank page. They can retry after refreshing.
+    showLoginScreen(!dataLoaded);
   }
 }
 
-function showLoginScreen() {
+function showLoginScreen(dataFailed) {
   document.getElementById('app-header').style.display = 'none';
   document.getElementById('app-main').style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
-  // Populate admin users in select
+  // Populate admin users in select (may be empty if data failed to load)
   const sel = document.getElementById('login-user-select');
   sel.innerHTML = '<option value="">— Выберите —</option>';
-  const admins = APP_DATA.users.filter(function(u) { return u.role === 'admin'; })
+  const admins = (APP_DATA && APP_DATA.users ? APP_DATA.users : []).filter(function(u) { return u.role === 'admin'; })
     .sort(function(a, b) { return String(a.name).localeCompare(String(b.name)); });
   admins.forEach(function(a) {
     const opt = document.createElement('option');
@@ -587,6 +609,19 @@ function showLoginScreen() {
   });
   document.getElementById('login-password-group').style.display = 'none';
   document.getElementById('login-submit-btn').style.display = 'none';
+  // If data failed to load, show a warning at the top of the login screen
+  if (dataFailed) {
+    const existing = document.getElementById('login-data-error');
+    if (!existing) {
+      const warn = document.createElement('div');
+      warn.id = 'login-data-error';
+      warn.className = 'card';
+      warn.style.cssText = 'background:#ffebee;color:#c62828;border:2px solid #c62828;margin-bottom:16px;font-size:0.9rem;';
+      warn.innerHTML = '⚠ Не удалось загрузить данные с сервера. Проверьте, что Apps Script развёрнут (Deploy → New version) и URL в config.js правильный. Обновите страницу через Ctrl+Shift+R.';
+      const loginScreen = document.getElementById('login-screen');
+      loginScreen.insertBefore(warn, loginScreen.firstChild);
+    }
+  }
 }
 
 function selectAdminUser() {
