@@ -216,30 +216,25 @@
   </div>
 </header>
 
-<!-- Login screen for admin -->
+<!-- Login screen for admin: just a password field (single admin user) -->
 <div class="login-screen" id="login-screen" style="display:none;">
   <h1>Администратор</h1>
-  <p class="login-subtitle">Вход только для администратора</p>
+  <p class="login-subtitle">Введите пароль для входа</p>
   <form id="login-form" onsubmit="event.preventDefault(); document.getElementById('login-submit-btn').click();" autocomplete="off">
     <div class="form-group" style="max-width:400px;margin:0 auto;">
-      <label>Имя:</label>
-      <select id="login-user-select" onchange="selectAdminUser();">
-        <option value="">— Выберите —</option>
-      </select>
-    </div>
-    <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
       <label>Пароль:</label>
-      <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
+      <input type="password" id="login-password" placeholder="Введите пароль администратора" autocomplete="off" autofocus>
     </div>
     <div style="max-width:400px;margin:16px auto 0;">
-      <button type="button" class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
+      <button type="button" class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;"
               onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
         Войти
       </button>
     </div>
   </form>
   <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
-    Если у вас нет пароля — обратитесь к другому администратору или запустите migrate() в Apps Script.
+    Пароль задаётся в Google Sheets → лист <b>Users</b> → колонка <b>pin</b> для пользователя с ролью <b>admin</b>.
+    Если пароль не задан — введите любой текст в колонке pin и сохраните.
   </p>
 </div>
 
@@ -506,7 +501,10 @@
     <form onsubmit="event.preventDefault(); document.getElementById('pwd-save-btn').click();" autocomplete="off">
       <div class="form-group">
         <label>Новый пароль</label>
-        <input type="password" id="pwd-new" placeholder="Минимум 3 символа" autocomplete="off">
+        <input type="text" id="pwd-new" placeholder="Любой пароль или PIN" autocomplete="off">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+          Пароль будет сохранён в лист Users, колонка pin. Можно также задать пароль напрямую в таблице.
+        </p>
       </div>
       <div class="form-group">
         <label>Повторите пароль</label>
@@ -596,19 +594,11 @@ function showLoginScreen(dataFailed) {
   document.getElementById('app-header').style.display = 'none';
   document.getElementById('app-main').style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
-  // Populate admin users in select (may be empty if data failed to load)
-  const sel = document.getElementById('login-user-select');
-  sel.innerHTML = '<option value="">— Выберите —</option>';
-  const admins = (APP_DATA && APP_DATA.users ? APP_DATA.users : []).filter(function(u) { return u.role === 'admin'; })
-    .sort(function(a, b) { return String(a.name).localeCompare(String(b.name)); });
-  admins.forEach(function(a) {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = a.name + (a.has_password ? '' : ' (нет пароля)');
-    sel.appendChild(opt);
-  });
-  document.getElementById('login-password-group').style.display = 'none';
-  document.getElementById('login-submit-btn').style.display = 'none';
+  // Focus password field
+  setTimeout(function() {
+    const pwd = document.getElementById('login-password');
+    if (pwd) pwd.focus();
+  }, 50);
   // If data failed to load, show a warning at the top of the login screen
   if (dataFailed) {
     const existing = document.getElementById('login-data-error');
@@ -624,37 +614,22 @@ function showLoginScreen(dataFailed) {
   }
 }
 
-function selectAdminUser() {
-  const userId = document.getElementById('login-user-select').value;
-  if (!userId) {
-    document.getElementById('login-password-group').style.display = 'none';
-    document.getElementById('login-submit-btn').style.display = 'none';
-    adminState.selectedLoginUser = null;
-    return;
-  }
-  adminState.selectedLoginUser = APP_DATA.users.find(function(u) { return u.id === userId; });
-  document.getElementById('login-password-group').style.display = 'block';
-  document.getElementById('login-submit-btn').style.display = 'block';
-  setTimeout(function() { document.getElementById('login-password').focus(); }, 50);
-}
+// Admin user id is fixed — there is only one admin
+const ADMIN_USER_ID = 'u_admin';
 
 async function submitLogin() {
-  if (!adminState.selectedLoginUser) {
-    showToast('Выберите пользователя', 'warning');
-    return;
-  }
   const password = document.getElementById('login-password').value;
   if (!password) {
     showToast('Введите пароль', 'warning');
     return;
   }
   try {
-    const session = await loginWithPassword(adminState.selectedLoginUser.id, password);
+    const session = await loginWithPassword(ADMIN_USER_ID, password);
     setCurrentSession(session);
     adminState.currentUser = session.user;
     adminState.sessionToken = session.token;
     document.getElementById('login-screen').style.display = 'none';
-    showToast('Добро пожаловать, ' + session.user.name + '!', 'success');
+    showToast('Добро пожаловать!', 'success');
     startApp();
   } catch (err) {
     showToast('Ошибка входа: ' + err.message, 'error');
@@ -1575,12 +1550,12 @@ async function savePassword() {
   const pwd = document.getElementById('pwd-new').value;
   const confirm = document.getElementById('pwd-confirm').value;
   if (!pwd) { showToast('Введите пароль', 'warning'); return; }
-  if (pwd.length < 3) { showToast('Минимум 3 символа', 'warning'); return; }
   if (pwd !== confirm) { showToast('Пароли не совпадают', 'warning'); return; }
   try {
     await apiPost('setPassword', {
       user_id: userId,
       new_password: pwd,
+      plaintext: true,  // store as plaintext (simpler — admin can edit in Sheets)
       admin_token: adminState.sessionToken
     });
     showToast('Пароль установлен', 'success');
@@ -1599,6 +1574,7 @@ async function clearPassword() {
     await apiPost('setPassword', {
       user_id: userId,
       new_password: '',
+      plaintext: true,
       admin_token: adminState.sessionToken
     });
     showToast('Пароль удалён', 'info');

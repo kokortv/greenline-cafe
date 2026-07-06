@@ -1166,12 +1166,25 @@ function doLogin(body) {
   if (!user) {
     return jsonOut({ success: false, error: 'Пользователь не найден' });
   }
-  // If user has no password set yet, reject (admin must set one)
+  // If user has no password set yet, reject
   if (!user.pin) {
-    return jsonOut({ success: false, error: 'Пароль не установлен. Обратитесь к администратору.' });
+    return jsonOut({ success: false, error: 'Пароль не установлен. Задайте пароль в колонке pin листа Users.' });
   }
-  const hash = hashPassword(user.id, body.password);
-  if (hash !== user.pin) {
+  // Password verification:
+  // - If pin is 64 hex chars → it's a SHA-256 hash, compare with hash of entered password
+  // - Otherwise → treat pin as plaintext password, compare directly
+  // This way admin can either set passwords via the UI (hashed) OR type
+  // plaintext passwords directly into the Users sheet (simpler).
+  const entered = body.password;
+  const stored = String(user.pin);
+  const isHex64 = /^[a-f0-9]{64}$/.test(stored);
+  let match = false;
+  if (isHex64) {
+    match = (hashPassword(user.id, entered) === stored);
+  } else {
+    match = (entered === stored);
+  }
+  if (!match) {
     return jsonOut({ success: false, error: 'Неверный пароль' });
   }
 
@@ -1256,12 +1269,21 @@ function doLogout(body) {
  */
 function setPassword(body) {
   if (!body || !body.user_id) throw new Error('Missing user_id');
-  // Verify admin token if provided
+  // Verify admin token if provided. If not provided, allow only if target user
+  // is admin themselves (bootstrap: admin can set own password without auth).
   if (body.admin_token) {
     const session = verifyToken(body.admin_token);
     if (!session || session.user_role !== 'admin') {
       throw new Error('Недостаточно прав');
     }
+  }
+  // If no admin_token, only allow setting password for admin user (bootstrap)
+  // For other users, admin_token is required.
+  const users = readSheet(SHEETS.USERS);
+  const targetUser = users.find(function(u) { return u.id === body.user_id; });
+  if (!targetUser) throw new Error('User not found');
+  if (!body.admin_token && targetUser.role !== 'admin') {
+    throw new Error('Недостаточно прав: нужен admin_token');
   }
   const sheet = getSheet(SHEETS.USERS);
   const data = sheet.getDataRange().getValues();
@@ -1272,8 +1294,14 @@ function setPassword(body) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][idCol] === body.user_id) {
       // Allow setting empty password (which disables password login)
-      const newHash = body.new_password ? hashPassword(body.user_id, body.new_password) : '';
-      data[i][pinCol] = newHash;
+      // By default passwords are hashed (SHA-256, salted with user_id).
+      // If body.plaintext is true, store the password as-is — this way the
+      // admin can read and edit passwords directly in the Users sheet.
+      let storedValue = '';
+      if (body.new_password) {
+        storedValue = body.plaintext ? body.new_password : hashPassword(body.user_id, body.new_password);
+      }
+      data[i][pinCol] = storedValue;
       sheet.getRange(1, 1, data.length, headers.length).setValues(data);
       SpreadsheetApp.flush();
       return { ok: true };
