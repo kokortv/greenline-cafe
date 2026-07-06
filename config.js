@@ -6,7 +6,7 @@
  * and paste it below.
  */
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbxmy-3d1hX1K32lPXgkPmuZxt0Xts1Jp_OJxcSg4T0zAIaqUsqBgOJvV7RNsz8aN_qW/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbyK6hltYCFuPS6hnuL-55eGpAAXF-cwGWFno72Ai_FeQvfK6T9OV33NWMtMnAEYf5Hu/exec',
 
   // Default polling intervals (ms). These are FALLBACKS used only when
   // the corresponding settings are not set in the Google Sheet.

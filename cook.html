@@ -492,7 +492,7 @@ function startApp() {
       }
       _lastCookInterval = newInterval;
     }).catch(function(err) { console.warn('Cook background refresh failed:', err); });
-  }, 30000);
+  }, 60000);
 }
 
 async function fetchOrders() {

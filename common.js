@@ -101,10 +101,34 @@ function timeAgo(iso) {
 // Use var (not let) so APP_DATA is accessible as a global across scripts
 // and as a property of window (some code paths check window.APP_DATA).
 var APP_DATA = null;
+var _cachedDataVersion = null;
+
 async function loadAppData(force) {
   if (APP_DATA && !force) return APP_DATA;
+  // Optimization: before doing a full getData() (which can be slow), check
+  // the version hash. If it hasn't changed since our last fetch, skip the
+  // full fetch and reuse the cached APP_DATA.
+  if (APP_DATA && force && !force._skipVersionCheck) {
+    try {
+      const v = await apiGet('getDataVersion', {});
+      if (v && v._version && v._version === _cachedDataVersion) {
+        // Version unchanged — no need to re-fetch full data
+        return APP_DATA;
+      }
+      // Version changed (or first time) — proceed with full fetch
+      if (v && v._version) _cachedDataVersion = v._version;
+    } catch (e) {
+      // If version check fails, just proceed with full fetch
+    }
+  }
   APP_DATA = await apiGet('getData');
+  if (APP_DATA && APP_DATA._version) _cachedDataVersion = APP_DATA._version;
   return APP_DATA;
+}
+
+// Force-refresh that skips the version check (use after admin saves changes)
+async function loadAppDataForce() {
+  return loadAppData({ _skipVersionCheck: true });
 }
 
 /* ---------- Toast / notifications ---------- */

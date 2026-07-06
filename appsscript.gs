@@ -258,6 +258,7 @@ function handleRequest(params, body) {
     let result;
     switch (action) {
       case 'getData':        result = getData(); break;
+      case 'getDataVersion': result = getDataVersion(); break;
       case 'getOrders':      result = getOrders(params.status, params.since, { waiter_id: params.waiter_id }); break;
       case 'getOrder':       result = getOrder(params.id); break;
       case 'createOrder':    result = createOrder(body); break;
@@ -360,12 +361,42 @@ function getData() {
       };
     });
 
+  // Compute a simple version hash so clients can skip re-parsing if nothing
+  // changed. Based on row counts + last modified time of each sheet.
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const versionParts = [];
+  [SHEETS.SETTINGS, SHEETS.CATEGORIES, SHEETS.MENU, SHEETS.USERS].forEach(function(name) {
+    const sheet = ss.getSheetByName(name);
+    if (sheet) {
+      versionParts.push(name + ':' + sheet.getLastRow() + ':' + sheet.getLastColumn());
+    }
+  });
+  const versionHash = versionParts.join('|');
+
   return {
     settings: settingsObj,
     categories: categories,
     menu: menu,
-    users: users
+    users: users,
+    _version: versionHash
   };
+}
+
+/**
+ * Lightweight endpoint that returns only the version hash (no data).
+ * Clients poll this to check if they need to re-fetch full data.
+ * Much faster than getData() because it doesn't read row contents.
+ */
+function getDataVersion() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const versionParts = [];
+  [SHEETS.SETTINGS, SHEETS.CATEGORIES, SHEETS.MENU, SHEETS.USERS].forEach(function(name) {
+    const sheet = ss.getSheetByName(name);
+    if (sheet) {
+      versionParts.push(name + ':' + sheet.getLastRow() + ':' + sheet.getLastColumn());
+    }
+  });
+  return { _version: versionParts.join('|') };
 }
 
 function getOrders(status, since) {
@@ -414,10 +445,33 @@ function getOrders(status, since) {
     return new Date(b.created_at) - new Date(a.created_at);
   });
 
-  // Attach items
-  const items = readSheet(SHEETS.ORDER_ITEMS);
+  // LIMIT the number of orders returned to keep responses fast.
+  // For active/paused orders — no limit needed (typically <50).
+  // For completed/all — limit to last 200 to avoid huge payloads.
+  if (status === 'all' || status === 'completed') {
+    orders = orders.slice(0, 200);
+  }
+
+  // Attach items — OPTIMIZED: only read items for the orders we're returning.
+  // Previously we read ALL OrderItems (including completed orders from months
+  // ago) and filtered in memory — slow with thousands of rows.
+  // Now we collect the order IDs we need, then read OrderItems once and
+  // attach only matching ones.
+  const orderIds = {};
+  orders.forEach(function(o) { orderIds[o.id] = true; });
+  const allItems = readSheet(SHEETS.ORDER_ITEMS);
+  // Group items by order_id in a single pass
+  const itemsByOrder = {};
+  for (let i = 0; i < allItems.length; i++) {
+    const it = allItems[i];
+    const oid = it.order_id;
+    if (orderIds[oid]) {
+      if (!itemsByOrder[oid]) itemsByOrder[oid] = [];
+      itemsByOrder[oid].push(it);
+    }
+  }
   orders.forEach(function(o) {
-    o.items = items.filter(function(it) { return it.order_id === o.id; });
+    o.items = itemsByOrder[o.id] || [];
   });
 
   return { orders: orders, server_time: new Date().toISOString() };

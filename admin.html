@@ -1183,7 +1183,7 @@ async function saveMenuOrder(container) {
     showToast('Порядок сохранён', 'success');
   } catch (err) {
     showToast('Ошибка сохранения порядка: ' + err.message, 'error');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderMenuList();
   }
 }
@@ -1268,7 +1268,7 @@ async function saveMenuItem() {
     await apiPost('saveMenuItem', payload);
     showToast('Блюдо сохранено', 'success');
     closeModal('modal-menu');
-    await loadAppData(true);
+    await loadAppDataForce();
     populateCategoryFilter();
     renderMenuList();
   } catch (err) {
@@ -1281,7 +1281,7 @@ async function deleteMenuItem(id) {
   try {
     await apiPost('deleteMenuItem', { id: id });
     showToast('Блюдо удалено', 'info');
-    await loadAppData(true);
+    await loadAppDataForce();
     populateCategoryFilter();
     renderMenuList();
   } catch (err) {
@@ -1429,7 +1429,7 @@ async function saveCategoryOrder(container) {
     showToast('Порядок категорий сохранён', 'success');
   } catch (err) {
     showToast('Ошибка сохранения порядка: ' + err.message, 'error');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderCategoryList();
   }
 }
@@ -1513,7 +1513,7 @@ async function saveCategory() {
     await apiPost('saveCategory', payload);
     showToast('Категория сохранена', 'success');
     closeModal('modal-cat');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderCategoryList();
     populateCategoryFilter();
   } catch (err) {
@@ -1532,7 +1532,7 @@ async function deleteCategory(id) {
   try {
     await apiPost('deleteCategory', { id: id });
     showToast('Категория удалена', 'info');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderCategoryList();
     populateCategoryFilter();
   } catch (err) {
@@ -1614,7 +1614,7 @@ async function saveUserBtn() {
     await apiPost('saveUser', payload);
     showToast('Сотрудник сохранён', 'success');
     closeModal('modal-user');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderStaffList();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
@@ -1626,7 +1626,7 @@ async function deleteUserBtn(id) {
   try {
     await apiPost('deleteUser', { id: id });
     showToast('Сотрудник удалён', 'info');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderStaffList();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
@@ -1687,7 +1687,7 @@ async function savePassword() {
     });
     showToast('Пароль установлен', 'success');
     closeModal('modal-password');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderStaffList();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
@@ -1706,7 +1706,7 @@ async function clearPassword() {
     });
     showToast('Пароль удалён', 'info');
     closeModal('modal-password');
-    await loadAppData(true);
+    await loadAppDataForce();
     renderStaffList();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');

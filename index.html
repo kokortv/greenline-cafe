@@ -902,6 +902,9 @@ async function startApp() {
   // (currency, menu items, category changes, polling intervals).
   // Also restarts polling if the interval setting changed.
   let _lastWaiterInterval = null;
+  // Background refresh: check if APP_DATA changed (lightweight version check
+  // first, only do full fetch if needed). Run every 60 seconds — not 30 —
+  // to reduce server load.
   setInterval(function() {
     loadAppData(true).then(function() {
       document.getElementById('restaurant-name').textContent =
@@ -914,12 +917,11 @@ async function startApp() {
       if (_lastWaiterInterval !== null && _lastWaiterInterval !== newInterval) {
         console.log('Waiter polling interval changed:', _lastWaiterInterval + 'ms →', newInterval + 'ms', '— restarting');
         startBadgePolling();
-        // Also restart order polling if it's running
         if (state.pollingTimer) startOrderPolling();
       }
       _lastWaiterInterval = newInterval;
     }).catch(function(err) { console.warn('Background refresh failed:', err); });
-  }, 30000);
+  }, 60000);
 }
 
 /* Refresh APP_DATA and re-render home (used when entering home screen) */
