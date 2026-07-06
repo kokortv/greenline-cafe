@@ -621,13 +621,13 @@
   </div>
 </div>
 
-<!-- Virtual order modal (Бар / С собой — each click opens a new order) -->
+<!-- Virtual order modal (Бар — each click opens a new order) -->
 <div class="modal-backdrop" id="modal-virtual-order">
   <div class="modal">
     <h2 id="virtual-order-title">Бар</h2>
     <p style="margin-bottom:12px;color:var(--text-muted);font-size:0.9rem;">
-      Новый заказ «<span id="virtual-order-context"></span>». Все поля необязательны —
-      можно просто нажать «Продолжить» для разового заказа (например, мороженое с оплатой сразу).
+      Все поля необязательны. Для быстрого заказа (мороженое/вода с оплатой сразу) —
+      просто нажмите «Продолжить».
     </p>
     <div class="form-group">
       <label>Имя клиента (необязательно)</label>
@@ -1686,14 +1686,49 @@ function renderHomeActiveOrders() {
       }).join(', ');
       html += '<div class="hoc-ready-list"><b>Готово к подаче:</b> ' + readyNames + '</div>';
     }
-    // Actions
-    html += '<div class="hoc-actions">' +
-      '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>' +
-      '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>' +
-    '</div>';
+    // Actions — depend on status
+    const isPaused = order.status === 'paused';
+    let actions =
+      '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>';
+    if (isPaused) {
+      actions += '<button class="btn btn-info" onclick="resumeOrderById(\'' + order.id + '\')">▶ Возобновить</button>';
+    } else {
+      actions += '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>';
+    }
+    if (order.table_type === 'virtual' || order.table_type === 'tab') {
+      // For virtual/tab orders — show pause option (only if not already paused)
+      if (!isPaused) {
+        actions += '<button class="btn btn-warning" onclick="pauseOrderById(\'' + order.id + '\')">⏸ На паузу</button>';
+      }
+    }
+    html += '<div class="hoc-actions">' + actions + '</div>';
+    if (isPaused) {
+      html = '<div style="background:#fff8e1;border-left:5px solid var(--warning);padding:8px 12px;border-radius:8px;margin-bottom:8px;font-size:0.9rem;">⏸ Заказ на паузе — клиент не оплатил. Виден всем официантам.</div>' + html;
+    }
     card.innerHTML = html;
     listDiv.appendChild(card);
   });
+}
+
+async function pauseOrderById(orderId) {
+  if (!confirm('Поставить заказ на паузу? Он будет виден всем официантам — можно вернуться и добавить ещё блюда.')) return;
+  try {
+    await apiPost('pauseOrder', { order_id: orderId });
+    showToast('Заказ на паузе', 'info');
+    await refreshActiveOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function resumeOrderById(orderId) {
+  try {
+    await apiPost('resumeOrder', { order_id: orderId });
+    showToast('Заказ возобновлён', 'success');
+    await refreshActiveOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
 }
 
 function showActiveOrders() {

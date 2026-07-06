@@ -480,7 +480,8 @@ function startApp() {
 
 async function fetchOrders() {
   try {
-    const data = await apiGet('getOrders', { status: 'accepted' });
+    // Use 'accepted_only' so paused orders don't appear in the kitchen queue
+    const data = await apiGet('getOrders', { status: 'accepted_only' });
     const newOrders = data.orders || [];
 
     // Detect new orders (notification + sound)

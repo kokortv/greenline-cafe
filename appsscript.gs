@@ -55,8 +55,10 @@ function setup() {
     ['poll_interval_cook', '10'],     // cook: refresh for new orders + readiness
     // Virtual tables — comma-separated names. Appear at the bottom of the
     // waiter's table grid. Orders to these tables are visible to ALL waiters
-    // (not isolated). Examples: "Бар", "С собой", "Терраса".
-    ['virtual_tables', 'Бар,С собой']
+    // (not isolated). Examples: "Бар", "Терраса", "Гардероб".
+    // Each click on a virtual table opens a NEW parallel order — they're
+    // never "occupied" in the exclusive sense.
+    ['virtual_tables', 'Бар']
   ];
   settingsSheet.getRange(2, 1, settings.length, 2).setValues(settings);
 
@@ -207,7 +209,7 @@ function migrate() {
     ensureSetting('translation_lang', '');
     ensureSetting('poll_interval_waiter', '20');
     ensureSetting('poll_interval_cook', '10');
-    ensureSetting('virtual_tables', 'Бар,С собой');
+    ensureSetting('virtual_tables', 'Бар');
   }
 
   // Ensure Tabs sheet exists
@@ -286,6 +288,8 @@ function handleRequest(params, body) {
       case 'createTab':      result = createTab(body); break;
       case 'closeTab':       result = closeTab(body); break;
       case 'getTabOrders':   result = getTabOrders(body.tab_id || params.tab_id); break;
+      case 'pauseOrder':     result = pauseOrder(body); break;
+      case 'resumeOrder':    result = resumeOrder(body); break;
       case 'ping':           result = { ok: true, time: new Date().toISOString() }; break;
       default: throw new Error('Unknown action: ' + action);
     }
@@ -365,10 +369,22 @@ function getData() {
 
 function getOrders(status, since) {
   // Optional filters from params: status, since, waiter_id, cook_id
-  // (waiter_id is used by waiter UI to see only own orders)
+  // Status values: 'accepted', 'paused', 'completed', 'all'
+  // Special: 'accepted_only' — strictly accepted (used by cook UI to exclude
+  // paused orders from the kitchen queue).
+  // For waiters: when status='accepted' (default), return both 'accepted'
+  // AND 'paused' (paused = client hasn't paid yet, account on hold — visible
+  // to all waiters so they can resume and add more items).
   let orders = readSheet(SHEETS.ORDERS);
   if (status && status !== 'all') {
-    orders = orders.filter(function(o) { return o.status === status; });
+    if (status === 'accepted_only') {
+      orders = orders.filter(function(o) { return o.status === 'accepted'; });
+    } else if (status === 'accepted') {
+      // Default waiter query — include both accepted and paused
+      orders = orders.filter(function(o) { return o.status === 'accepted' || o.status === 'paused'; });
+    } else {
+      orders = orders.filter(function(o) { return o.status === status; });
+    }
   }
   if (since) {
     const sinceTime = new Date(since).getTime();
@@ -1549,4 +1565,70 @@ function getTabOrders(tabId) {
   });
   orders.sort(function(a, b) { return new Date(a.created_at) - new Date(b.created_at); });
   return { orders: orders };
+}
+
+/* ============ PAUSE / RESUME ORDER (for virtual tables) ============ */
+
+/**
+ * Pause an order. Used for virtual table orders where the client hasn't paid
+ * yet but the order should be put on hold (e.g. hotel guest will pay later).
+ * Order becomes visible to ALL waiters, can be resumed and added to.
+ */
+function pauseOrder(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!body || !body.order_id) throw new Error('Missing order_id');
+    const sheet = getSheet(SHEETS.ORDERS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const idCol = headers.indexOf('id');
+    const statusCol = headers.indexOf('status');
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idCol] === body.order_id) {
+        // Only accept → paused transition (don't pause completed orders)
+        if (data[i][statusCol] !== 'accepted') {
+          throw new Error('Можно поставить на паузу только активный заказ (текущий статус: ' + data[i][statusCol] + ')');
+        }
+        data[i][statusCol] = 'paused';
+        sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+        SpreadsheetApp.flush();
+        return getOrder(body.order_id);
+      }
+    }
+    throw new Error('Order not found');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Resume a paused order — bring it back to 'accepted' so the kitchen can
+ * continue preparing and the waiter can add more items.
+ */
+function resumeOrder(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!body || !body.order_id) throw new Error('Missing order_id');
+    const sheet = getSheet(SHEETS.ORDERS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const idCol = headers.indexOf('id');
+    const statusCol = headers.indexOf('status');
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idCol] === body.order_id) {
+        if (data[i][statusCol] !== 'paused') {
+          throw new Error('Можно возобновить только приостановленный заказ');
+        }
+        data[i][statusCol] = 'accepted';
+        sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+        SpreadsheetApp.flush();
+        return getOrder(body.order_id);
+      }
+    }
+    throw new Error('Order not found');
+  } finally {
+    lock.releaseLock();
+  }
 }

@@ -254,6 +254,26 @@ async function loginWithPassword(userId, password) {
   return json.data;
 }
 
+/* ---------- Modal helpers (shared across pages) ---------- */
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('open');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+}
+// Close modal when clicking on the backdrop (outside the modal content)
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.modal-backdrop').forEach(function(m) {
+      m.addEventListener('click', function(e) {
+        if (e.target === m) m.classList.remove('open');
+      });
+    });
+  });
+}
+
 /* ---------- Notifications (system-level, work when tab is hidden) ---------- */
 // Uses the Notifications API + a service worker so that alerts fire even when
 // the user has switched to another tab/app. On iOS, requires the page to be
