@@ -254,6 +254,72 @@ async function loginWithPassword(userId, password) {
   return json.data;
 }
 
+/* ---------- Dynamic polling intervals ---------- */
+// Reads interval (in seconds) from APP_DATA.settings, falls back to CONFIG defaults.
+// Returns milliseconds (for use with setInterval).
+//
+// Settings keys (set in admin UI):
+//   poll_interval_waiter — refresh rate for waiter (active orders + ready alerts)
+//   poll_interval_cook   — refresh rate for cook (new orders + readiness)
+//
+// Minimum 5 seconds enforced (to prevent abuse / quota burn).
+function getPollInterval(settingKey, configKey) {
+  let seconds = null;
+  if (typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
+    const v = APP_DATA.settings[settingKey];
+    if (v) seconds = Number(v);
+  }
+  if (!seconds || isNaN(seconds) || seconds < 5) {
+    seconds = (CONFIG[configKey] || 15000) / 1000;
+  }
+  if (seconds < 5) seconds = 5;
+  return seconds * 1000;
+}
+
+/* ---------- Wake Lock (keep screen awake) ---------- */
+// Uses the Screen Wake Lock API to prevent the screen from turning off while
+// the page is open. Supported in Chrome/Edge Android (84+), Safari iOS (16.4+).
+// On unsupported browsers (older Safari, desktop Firefox without flag) this
+// silently does nothing — the page still works, just may sleep normally.
+//
+// The wake lock is RELEASED when the tab is hidden, minimized, or navigated
+// away. We re-acquire it on visibilitychange.
+let _wakeLockSentinel = null;
+
+async function requestWakeLock() {
+  try {
+    if (!('wakeLock' in navigator)) return;
+    // Don't request if the page is hidden — would fail
+    if (document.visibilityState !== 'visible') return;
+    // Don't double-acquire
+    if (_wakeLockSentinel !== null) return;
+    _wakeLockSentinel = await navigator.wakeLock.request('screen');
+    _wakeLockSentinel.addEventListener('release', function() {
+      _wakeLockSentinel = null;
+    });
+    console.log('Wake Lock acquired — screen will stay awake');
+  } catch (err) {
+    // Not fatal — fall back to normal screen behavior
+    console.warn('Wake Lock request failed:', err.message);
+  }
+}
+
+function releaseWakeLock() {
+  if (_wakeLockSentinel !== null) {
+    try { _wakeLockSentinel.release(); } catch (e) {}
+    _wakeLockSentinel = null;
+  }
+}
+
+// Re-acquire on visibility change (e.g. user switches back to the tab)
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      requestWakeLock();
+    }
+  });
+}
+
 /* ---------- Config check ---------- */
 function checkConfig() {
   if (!CONFIG.API_URL || CONFIG.API_URL.indexOf('PASTE_YOUR') === 0) {

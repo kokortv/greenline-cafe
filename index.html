@@ -694,6 +694,8 @@ async function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = state.currentUser.name;
+  // Keep the screen awake while the waiter is on shift (tablets on tables)
+  requestWakeLock();
   renderHome();
   // Preload custom sound for waiter (ready notification)
   preloadSounds(['waiter_ready']);
@@ -703,6 +705,9 @@ async function startApp() {
   renderHomeActiveOrders();
   startBadgePolling();
   // Periodically refresh APP_DATA in background to catch admin changes
+  // (currency, menu items, category changes, polling intervals).
+  // Also restarts polling if the interval setting changed.
+  let _lastWaiterInterval = null;
   setInterval(function() {
     loadAppData(true).then(function() {
       document.getElementById('restaurant-name').textContent =
@@ -710,6 +715,15 @@ async function startApp() {
       if (document.getElementById('screen-home').classList.contains('active')) {
         renderHome();
       }
+      // Restart polling if the interval setting changed
+      const newInterval = getPollInterval('poll_interval_waiter', 'POLL_BADGE');
+      if (_lastWaiterInterval !== null && _lastWaiterInterval !== newInterval) {
+        console.log('Waiter polling interval changed:', _lastWaiterInterval + 'ms →', newInterval + 'ms', '— restarting');
+        startBadgePolling();
+        // Also restart order polling if it's running
+        if (state.pollingTimer) startOrderPolling();
+      }
+      _lastWaiterInterval = newInterval;
     }).catch(function(err) { console.warn('Background refresh failed:', err); });
   }, 30000);
 }
@@ -1647,7 +1661,9 @@ acceptOrder = async function() {
 /* ---------- Polling ---------- */
 function startBadgePolling() {
   stopBadgePolling();
-  state.badgePollingTimer = setInterval(refreshActiveOrders, CONFIG.POLL_BADGE);
+  const interval = getPollInterval('poll_interval_waiter', 'POLL_BADGE');
+  state.badgePollingTimer = setInterval(refreshActiveOrders, interval);
+  console.log('Waiter badge polling started:', interval + 'ms');
 }
 function stopBadgePolling() {
   if (state.badgePollingTimer) {
@@ -1658,7 +1674,9 @@ function stopBadgePolling() {
 function startOrderPolling() {
   stopOrderPolling();
   renderOrderDetail(); // initial render
-  state.pollingTimer = setInterval(renderOrderDetail, CONFIG.POLL_ORDERS);
+  const interval = getPollInterval('poll_interval_waiter', 'POLL_ORDERS');
+  state.pollingTimer = setInterval(renderOrderDetail, interval);
+  console.log('Waiter order polling started:', interval + 'ms');
 }
 function stopOrderPolling() {
   if (state.pollingTimer) {

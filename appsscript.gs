@@ -47,7 +47,10 @@ function setup() {
     ['restaurant_name', 'Мой Ресторан'],
     ['tax_percent', '0'],
     ['sound_notifications', 'true'],
-    ['translation_lang', '']  // e.g. "English", "ქართული", "Türkçe" — empty = no translation
+    ['translation_lang', ''],  // e.g. "English", "ქართული", "Türkçe" — empty = no translation
+    // Polling intervals (in seconds). Admin can change these in the UI.
+    ['poll_interval_waiter', '20'],  // waiter: refresh active orders + ready alerts
+    ['poll_interval_cook', '10']     // cook: refresh for new orders + readiness
   ];
   settingsSheet.getRange(2, 1, settings.length, 2).setValues(settings);
 
@@ -185,14 +188,19 @@ function migrate() {
     });
   });
 
-  // Ensure translation_lang setting exists
+  // Ensure optional settings exist (added in later versions)
   const settingsSheet = ss.getSheetByName(SHEETS.SETTINGS);
   if (settingsSheet) {
     const settingsData = settingsSheet.getDataRange().getValues();
-    const hasTranslationLang = settingsData.some(function(row) { return row[0] === 'translation_lang'; });
-    if (!hasTranslationLang) {
-      settingsSheet.appendRow(['translation_lang', '']);
-    }
+    const existingKeys = settingsData.map(function(row) { return row[0]; });
+    const ensureSetting = function(key, defaultValue) {
+      if (existingKeys.indexOf(key) === -1) {
+        settingsSheet.appendRow([key, defaultValue]);
+      }
+    };
+    ensureSetting('translation_lang', '');
+    ensureSetting('poll_interval_waiter', '20');
+    ensureSetting('poll_interval_cook', '10');
   }
 
   SpreadsheetApp.flush();

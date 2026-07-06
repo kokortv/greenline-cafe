@@ -452,8 +452,23 @@ function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('cook-layout').style.display = 'grid';
   document.getElementById('user-chip-name').textContent = cookState.currentUser.name;
+  // Keep the screen awake while the cook is on shift (kitchen tablet)
+  requestWakeLock();
   preloadSounds(['cook_new_order']);
   startPolling();
+  // Periodically refresh APP_DATA to pick up menu/category/setting changes,
+  // and restart polling if the interval setting changed.
+  let _lastCookInterval = null;
+  setInterval(function() {
+    loadAppData(true).then(function() {
+      const newInterval = getPollInterval('poll_interval_cook', 'POLL_COOK');
+      if (_lastCookInterval !== null && _lastCookInterval !== newInterval) {
+        console.log('Cook polling interval changed:', _lastCookInterval + 'ms →', newInterval + 'ms', '— restarting');
+        startPolling();
+      }
+      _lastCookInterval = newInterval;
+    }).catch(function(err) { console.warn('Cook background refresh failed:', err); });
+  }, 30000);
 }
 
 async function fetchOrders() {
@@ -714,7 +729,9 @@ async function toggleReady(btnEl, itemId, newValue) {
 
 function startPolling() {
   fetchOrders();
-  cookState.pollingTimer = setInterval(fetchOrders, CONFIG.POLL_COOK);
+  const interval = getPollInterval('poll_interval_cook', 'POLL_COOK');
+  cookState.pollingTimer = setInterval(fetchOrders, interval);
+  console.log('Cook polling started:', interval + 'ms');
 }
 
 init();

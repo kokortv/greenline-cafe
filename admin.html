@@ -325,6 +325,20 @@
         </p>
       </div>
       <div class="form-group">
+        <label>Частота обновления у официанта (секунд)</label>
+        <input type="number" id="set-poll-waiter" min="5" max="120" step="1" value="20">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+          Как часто официант получает обновления — новые готовые блюда, активные заказы. Рекомендуется 15-30 сек. Минимум 5 сек (не чаще — иначе Google Apps Script упрётся в лимит запросов).
+        </p>
+      </div>
+      <div class="form-group">
+        <label>Частота обновления у повара (секунд)</label>
+        <input type="number" id="set-poll-cook" min="5" max="120" step="1" value="10">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+          Как часто повар видит новые заказы. Рекомендуется 10-15 сек. Слишком частое обновление расходует лимит Google Apps Script.
+        </p>
+      </div>
+      <div class="form-group">
         <label>Налог (%) — добавляется к итогу</label>
         <input type="number" id="set-tax" min="0" max="100" step="0.1" value="0">
       </div>
@@ -643,6 +657,8 @@ function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = adminState.currentUser.name;
+  // Keep the screen awake on the admin terminal (front desk)
+  requestWakeLock();
   populateSettingsForm();
   populateCategoryFilter();
   renderMenuList();
@@ -671,6 +687,8 @@ function populateSettingsForm() {
   document.getElementById('set-currency').value = APP_DATA.settings.currency || '₽';
   document.getElementById('set-table-count').value = APP_DATA.settings.table_count || 20;
   document.getElementById('set-translation-lang').value = APP_DATA.settings.translation_lang || '';
+  document.getElementById('set-poll-waiter').value = APP_DATA.settings.poll_interval_waiter || 20;
+  document.getElementById('set-poll-cook').value = APP_DATA.settings.poll_interval_cook || 10;
   document.getElementById('set-tax').value = APP_DATA.settings.tax_percent || 0;
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
@@ -686,11 +704,21 @@ function updateTranslationLangLabel() {
 }
 
 async function saveSettings() {
+  // Validate polling intervals (5-120 sec)
+  let pollWaiter = Number(document.getElementById('set-poll-waiter').value) || 20;
+  let pollCook = Number(document.getElementById('set-poll-cook').value) || 10;
+  if (pollWaiter < 5) { showToast('Минимум 5 секунд для официанта', 'warning'); return; }
+  if (pollWaiter > 120) { showToast('Максимум 120 секунд для официанта', 'warning'); return; }
+  if (pollCook < 5) { showToast('Минимум 5 секунд для повара', 'warning'); return; }
+  if (pollCook > 120) { showToast('Максимум 120 секунд для повара', 'warning'); return; }
+
   const settings = {
     restaurant_name: document.getElementById('set-restaurant-name').value,
     currency: document.getElementById('set-currency').value,
     table_count: document.getElementById('set-table-count').value,
     translation_lang: document.getElementById('set-translation-lang').value,
+    poll_interval_waiter: String(pollWaiter),
+    poll_interval_cook: String(pollCook),
     tax_percent: document.getElementById('set-tax').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false'
   };
