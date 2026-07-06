@@ -454,6 +454,12 @@ function startApp() {
   document.getElementById('user-chip-name').textContent = cookState.currentUser.name;
   // Keep the screen awake while the cook is on shift (kitchen tablet)
   requestWakeLock();
+  // Initialize service worker for system notifications (works when tab is hidden)
+  initServiceWorker().then(function() {
+    if (typeof APP_DATA !== 'undefined' && APP_DATA.settings.sound_notifications !== 'false') {
+      requestNotificationPermission();
+    }
+  });
   preloadSounds(['cook_new_order']);
   startPolling();
   // Periodically refresh APP_DATA to pick up menu/category/setting changes,
@@ -482,8 +488,10 @@ async function fetchOrders() {
         cookState.knownOrderIds.add(o.id);
         // Only beep if we already had orders before (not on initial load)
         if (cookState.orders.length > 0 || cookState.knownOrderIds.size > 1) {
-          showToast('🔔 Новый заказ! Столик ' + o.table_number + (o.waiter_name ? ' (официант: ' + o.waiter_name + ')' : ''), 'info');
+          const msg = '🔔 Новый заказ! Столик ' + o.table_number + (o.waiter_name ? ' (официант: ' + o.waiter_name + ')' : '');
+          showToast(msg, 'info');
           cookNotifySound();
+          showSystemNotification('🔔 Новый заказ!', msg, 'new_order_' + o.id);
         }
       }
     });

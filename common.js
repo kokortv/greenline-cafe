@@ -254,6 +254,65 @@ async function loginWithPassword(userId, password) {
   return json.data;
 }
 
+/* ---------- Notifications (system-level, work when tab is hidden) ---------- */
+// Uses the Notifications API + a service worker so that alerts fire even when
+// the user has switched to another tab/app. On iOS, requires the page to be
+// added to Home Screen (PWA mode).
+//
+// Workflow:
+//   1. requestNotificationPermission() — ask user once (returns Promise<boolean>)
+//   2. showSystemNotification(title, body, tag) — fires a notification via SW
+
+let _swReady = false;
+
+async function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) return false;
+  try {
+    const reg = await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    _swReady = true;
+    console.log('Service Worker registered for notifications');
+    return true;
+  } catch (err) {
+    console.warn('SW registration failed:', err);
+    return false;
+  }
+}
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  try {
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  } catch (e) {
+    return false;
+  }
+}
+
+function showSystemNotification(title, body, tag) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    if (_swReady && navigator.serviceWorker.controller) {
+      // Use service worker so it works when tab is hidden
+      navigator.serviceWorker.controller.postMessage({
+        type: 'NOTIFY',
+        title: title,
+        body: body,
+        tag: tag || 'restaurant',
+        requireInteraction: true,
+        vibrate: true
+      });
+    } else {
+      // Fallback: plain Notification (only works when tab is focused)
+      new Notification(title, { body: body, tag: tag || 'restaurant', requireInteraction: true });
+    }
+  } catch (e) {
+    console.warn('Notification failed:', e);
+  }
+}
+
 /* ---------- Dynamic polling intervals ---------- */
 // Reads interval (in seconds) from APP_DATA.settings, falls back to CONFIG defaults.
 // Returns milliseconds (for use with setInterval).

@@ -47,6 +47,64 @@
   .table-btn .table-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
   .table-btn.has-order .table-label { color: var(--text); }
 
+  /* Virtual tables (Бар, С собой) — different color, shared */
+  .table-btn.virtual {
+    background: #e3f2fd;
+    color: var(--info);
+    border-color: var(--info);
+  }
+  .table-btn.virtual.has-order {
+    background: var(--info);
+    color: white;
+    border-color: var(--info);
+  }
+  .table-btn.virtual.has-order .table-label { color: white; }
+  .table-btn.virtual.selected {
+    background: var(--info) !important;
+    color: white !important;
+    box-shadow: 0 0 0 4px rgba(25,118,210,0.3);
+  }
+
+  /* Open tabs section */
+  .tabs-section {
+    background: white;
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+  }
+  .tabs-section h3 {
+    font-size: 1.1rem;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tab-card {
+    background: #f5f5f5;
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 8px;
+    border-left: 4px solid var(--info);
+    cursor: pointer;
+  }
+  .tab-card:hover { background: #eeeeee; }
+  .tab-card .tc-name {
+    font-weight: 700;
+    font-size: 1.05rem;
+  }
+  .tab-card .tc-meta {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .tab-card .tc-total {
+    color: var(--info);
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-top: 6px;
+  }
+
   .main-cat-btn {
     aspect-ratio: 2;
     background: white;
@@ -435,6 +493,21 @@
     <h3 style="font-size:1rem;color:var(--text-muted);margin-bottom:8px;">Выберите столик</h3>
     <div class="table-grid" id="table-grid"></div>
 
+    <!-- Virtual tables (Бар, С собой) — populated from settings.virtual_tables -->
+    <div id="virtual-tables-section" style="display:none;">
+      <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Виртуальные столики (общие)</h3>
+      <div class="table-grid" id="virtual-table-grid"></div>
+    </div>
+
+    <!-- Open tabs (long-running client accounts) -->
+    <div id="open-tabs-section" style="display:none;">
+      <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center;">
+        Открытые счета клиентов
+        <button class="btn btn-info" style="font-size:0.85rem;padding:6px 12px;" onclick="openNewTabModal()">+ Новый счёт</button>
+      </h3>
+      <div id="open-tabs-list"></div>
+    </div>
+
     <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Количество гостей</h3>
     <div class="guests-stepper">
       <button onclick="changeGuests(-1)">−</button>
@@ -520,6 +593,33 @@
   </div>
 </div>
 
+<!-- New tab modal -->
+<div class="modal-backdrop" id="modal-new-tab">
+  <div class="modal">
+    <h2>Новый счёт клиента</h2>
+    <p style="margin-bottom:12px;color:var(--text-muted);font-size:0.9rem;">
+      Для постоянных клиентов, которые накапливают заказы и оплачивают при выезде.
+      Счёт виден всем официантам.
+    </p>
+    <div class="form-group">
+      <label>Имя клиента *</label>
+      <input type="text" id="new-tab-name" placeholder="Например: Иван П.">
+    </div>
+    <div class="form-group">
+      <label>Телефон (необязательно)</label>
+      <input type="tel" id="new-tab-phone" placeholder="+7...">
+    </div>
+    <div class="form-group">
+      <label>Заметка (необязательно)</label>
+      <textarea id="new-tab-notes" rows="2" placeholder="Например: живёт в номере 5, уезжает 15 июля"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-new-tab')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Создаём...', function() { return createTabBtn(); })">Создать счёт</button>
+    </div>
+  </div>
+</div>
+
 <!-- Payment method modal -->
 <div class="modal-backdrop" id="modal-payment">
   <div class="modal">
@@ -565,7 +665,10 @@ window.addEventListener('error', function(e) {
 <script>
 let state = {
   currentUser: null,           // {id, name, role}
-  selectedTable: null,
+  selectedTable: null,         // table number (for numbered) or name (for virtual)
+  selectedTableType: null,     // 'numbered' | 'virtual' | 'tab'
+  selectedTabId: null,         // for 'tab' type — the tab id
+  selectedTabName: null,       // for 'tab' type — the tab name (for display)
   guests: 1,
   mainCategory: null,
   currentSubcat: null,
@@ -577,7 +680,7 @@ let state = {
   dismissedReadyAlerts: new Set(), // alert keys the waiter dismissed
   pollingTimer: null,
   badgePollingTimer: null,
-  tableStatuses: []              // from getTables(): [{table, status, waiter_name}]
+  tableStatuses: []              // from getTables(): [{table, type, status, waiter_name}]
 };
 
 /* ---------- Boot ---------- */
@@ -696,6 +799,19 @@ async function startApp() {
   document.getElementById('user-chip-name').textContent = state.currentUser.name;
   // Keep the screen awake while the waiter is on shift (tablets on tables)
   requestWakeLock();
+  // Initialize service worker for system notifications (works when tab is hidden)
+  await initServiceWorker();
+  // Ask for notification permission once (on first login). If denied, we
+  // just rely on in-page toasts + sound.
+  if (APP_DATA.settings.sound_notifications !== 'false') {
+    requestNotificationPermission().then(function(granted) {
+      if (granted) {
+        console.log('Notification permission granted — will fire system notifications');
+      } else {
+        console.log('Notification permission not granted — using in-page toasts only');
+      }
+    });
+  }
   renderHome();
   // Preload custom sound for waiter (ready notification)
   preloadSounds(['waiter_ready']);
@@ -770,16 +886,18 @@ function showScreen(name) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
-  // Tables — show 3 statuses: free / mine (has my active order) / locked-by-other
+  // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other
   const tableCount = Number(APP_DATA.settings.table_count) || 20;
   const tableGrid = document.getElementById('table-grid');
   tableGrid.innerHTML = '';
   for (let i = 1; i <= tableCount; i++) {
-    const hasOrder = state.activeOrders.some(function(o) { return Number(o.table_number) === i; });
+    const hasOrder = state.activeOrders.some(function(o) {
+      return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered');
+    });
     // Find table status (free / mine / other)
-    const ts = state.tableStatuses.find(function(t) { return t.table === i; });
+    const ts = state.tableStatuses.find(function(t) { return t.table === i && t.type === 'numbered'; });
     const lockedByOther = ts && ts.status === 'other';
-    const isSelected = state.selectedTable === i;
+    const isSelected = state.selectedTable === i && state.selectedTableType === 'numbered';
     const btn = document.createElement('button');
     let cls = 'table-btn';
     let label = 'свободен';
@@ -794,10 +912,40 @@ function renderHome() {
         showToast('Столик №' + i + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
       };
     } else {
-      btn.onclick = function(e) { selectTable(i, e); };
+      btn.onclick = function(e) { selectTable(i, 'numbered', e); };
     }
     tableGrid.appendChild(btn);
   }
+
+  // Virtual tables (Бар, С собой, etc.)
+  const virtualNames = (APP_DATA.settings.virtual_tables || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  const virtualSection = document.getElementById('virtual-tables-section');
+  const virtualGrid = document.getElementById('virtual-table-grid');
+  if (virtualNames.length > 0) {
+    virtualSection.style.display = 'block';
+    virtualGrid.innerHTML = '';
+    virtualNames.forEach(function(name) {
+      // Count active orders for this virtual table
+      const hasOrder = state.activeOrders.some(function(o) {
+        return o.table_type === 'virtual' && o.table_number === name;
+      });
+      const isSelected = state.selectedTable === name && state.selectedTableType === 'virtual';
+      const btn = document.createElement('button');
+      let cls = 'table-btn virtual';
+      let label = 'свободен';
+      if (hasOrder) { cls += ' has-order'; label = 'есть заказы'; }
+      if (isSelected) { cls += ' selected'; label = '✓ выбран'; }
+      btn.className = cls;
+      btn.innerHTML = escapeHtml(name) + '<span class="table-label">' + label + '</span>';
+      btn.onclick = function(e) { selectTable(name, 'virtual', e); };
+      virtualGrid.appendChild(btn);
+    });
+  } else {
+    virtualSection.style.display = 'none';
+  }
+
+  // Open tabs (long-running client accounts)
+  renderOpenTabs();
 
   // Guests
   document.getElementById('guests-value').textContent = state.guests;
@@ -815,32 +963,91 @@ function renderHome() {
   });
 }
 
-function selectTable(num, evt) {
+function selectTable(num, type, evt) {
   state.selectedTable = num;
-  showToast('Столик ' + num + ' выбран', 'info');
-  // Re-render tables to apply the `selected` class persistently.
-  // (We can't just set outline inline because renderHome() runs every ~3s
-  // during refreshActiveOrders and would wipe it.)
-  const tableGrid = document.getElementById('table-grid');
-  if (tableGrid) {
-    // Lightweight re-render of just the tables block (avoid full renderHome
-    // which would also reset the active-orders panel etc.)
-    const buttons = tableGrid.querySelectorAll('.table-btn');
-    buttons.forEach(function(b, idx) {
-      const tableNum = idx + 1;
-      // Toggle the `selected` class
-      b.classList.toggle('selected', tableNum === num);
-      // Update label
-      const labelEl = b.querySelector('.table-label');
-      if (labelEl) {
-        // Only change label for non-locked tables (locked ones keep their
-        // "⨉ name" label so user still sees who locked it)
-        if (!b.classList.contains('locked-by-other')) {
-          const hasOrder = b.classList.contains('has-order');
-          labelEl.textContent = tableNum === num ? '✓ выбран' : (hasOrder ? 'мой заказ' : 'свободен');
-        }
-      }
+  state.selectedTableType = type || 'numbered';
+  state.selectedTabId = null;  // table and tab are mutually exclusive
+  showToast('Выбран: ' + (type === 'virtual' ? num : 'Столик ' + num), 'info');
+  // Re-render to apply `selected` class persistently
+  renderHome();
+}
+
+/* ---------- OPEN TABS ---------- */
+async function renderOpenTabs() {
+  const section = document.getElementById('open-tabs-section');
+  const list = document.getElementById('open-tabs-list');
+  try {
+    const data = await apiGet('getTabs', { status: 'open' });
+    const tabs = data.tabs || [];
+    if (tabs.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    list.innerHTML = '';
+    tabs.forEach(function(tab) {
+      const card = document.createElement('div');
+      card.className = 'tab-card';
+      card.innerHTML =
+        '<div class="tc-name">' + escapeHtml(tab.name) +
+          (tab.phone ? ' · ' + escapeHtml(tab.phone) : '') +
+        '</div>' +
+        '<div class="tc-meta">' +
+          (tab.orders_count || 0) + ' заказов · открыт ' + timeAgo(tab.created_at) +
+          (tab.created_by_waiter_name ? ' · официант: ' + escapeHtml(tab.created_by_waiter_name) : '') +
+        '</div>' +
+        '<div class="tc-total">' + formatMoney(tab.total) + '</div>';
+      card.onclick = function() { selectTab(tab); };
+      list.appendChild(card);
     });
+  } catch (err) {
+    console.warn('renderOpenTabs failed:', err);
+    section.style.display = 'none';
+  }
+}
+
+function selectTab(tab) {
+  state.selectedTabId = tab.id;
+  state.selectedTable = null;
+  state.selectedTableType = null;
+  state.selectedTabName = tab.name;
+  showToast('Выбран счёт: ' + tab.name, 'info');
+  // Highlight in UI
+  document.querySelectorAll('.tab-card').forEach(function(c) { c.style.borderColor = 'var(--info)'; });
+  event.currentTarget.style.borderColor = 'var(--success)';
+  event.currentTarget.style.background = '#e8f5e9';
+}
+
+function openNewTabModal() {
+  document.getElementById('new-tab-name').value = '';
+  document.getElementById('new-tab-phone').value = '';
+  document.getElementById('new-tab-notes').value = '';
+  openModal('modal-new-tab');
+}
+
+async function createTabBtn() {
+  const name = document.getElementById('new-tab-name').value.trim();
+  if (!name) { showToast('Введите имя клиента', 'warning'); return; }
+  const phone = document.getElementById('new-tab-phone').value.trim();
+  const notes = document.getElementById('new-tab-notes').value.trim();
+  try {
+    const result = await apiPost('createTab', {
+      name: name,
+      phone: phone,
+      notes: notes,
+      waiter_id: state.currentUser.id,
+      waiter_name: state.currentUser.name
+    });
+    showToast('Счёт создан', 'success');
+    closeModal('modal-new-tab');
+    await renderOpenTabs();
+    // Auto-select the new tab
+    state.selectedTabId = result.id;
+    state.selectedTable = null;
+    state.selectedTableType = null;
+    state.selectedTabName = name;
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
   }
 }
 
@@ -850,8 +1057,8 @@ function changeGuests(delta) {
 }
 
 function selectMainCategory(cat) {
-  if (!state.selectedTable) {
-    showToast('Сначала выберите столик', 'warning');
+  if (!state.selectedTable && !state.selectedTabId) {
+    showToast('Сначала выберите столик или счёт клиента', 'warning');
     return;
   }
   state.mainCategory = cat;
@@ -908,8 +1115,17 @@ function renderMenu() {
   }
 
   // Context
+  // Context: show table number / virtual name / tab name
+  let contextLabel = '';
+  if (state.selectedTabId) {
+    contextLabel = 'Счёт: <b>' + escapeHtml(state.selectedTabName || '') + '</b>';
+  } else if (state.selectedTableType === 'virtual') {
+    contextLabel = 'Стол: <b>' + escapeHtml(state.selectedTable) + '</b>';
+  } else {
+    contextLabel = 'Стол <b>' + state.selectedTable + '</b>';
+  }
   document.getElementById('menu-context').innerHTML =
-    'Стол <b>' + state.selectedTable + '</b> · ' + state.guests + ' чел. · ' +
+    contextLabel + ' · ' + state.guests + ' чел. · ' +
     '<b>' + escapeHtml(mainCat.name) + '</b>';
 
   // Subcategory tabs
@@ -1116,20 +1332,33 @@ async function acceptOrder() {
     showToast('Сначала войдите как официант', 'error');
     return;
   }
+  if (!state.selectedTable && !state.selectedTabId) {
+    showToast('Выберите столик или счёт клиента', 'warning');
+    return;
+  }
   _orderSubmitting = true;
   try {
-    const order = await apiPost('createOrder', {
+    const payload = {
       table_number: state.selectedTable,
+      table_type: state.selectedTabId ? 'tab' : (state.selectedTableType || 'numbered'),
+      tab_id: state.selectedTabId || '',
       guests: state.guests,
       main_category_id: state.mainCategory.id,
       main_category_name: state.mainCategory.name,
       items: state.cart,
       waiter_id: state.currentUser.id,
       waiter_name: state.currentUser.name
-    });
-    showToast('Заказ для столика ' + state.selectedTable + ' принят!', 'success');
+    };
+    const order = await apiPost('createOrder', payload);
+    const displayLabel = state.selectedTabId
+      ? 'счёт «' + state.selectedTabName + '»'
+      : (state.selectedTableType === 'virtual' ? state.selectedTable : 'столик ' + state.selectedTable);
+    showToast('Заказ для ' + displayLabel + ' принят!', 'success');
     state.cart = [];
     state.selectedTable = null;
+    state.selectedTableType = null;
+    state.selectedTabId = null;
+    state.selectedTabName = null;
     state.mainCategory = null;
     state.currentSubcat = null;
     document.body.classList.remove('has-cart-panel');
@@ -1197,7 +1426,10 @@ async function refreshActiveOrders() {
       if (state.initialLoadDone) {
         notifySound();
         newReadyItems.forEach(function(r) {
-          showToast('✓ Готово: ' + r.itemName + ' ×' + r.quantity + ' — столик ' + r.tableNumber, 'success');
+          const msg = '✓ Готово: ' + r.itemName + ' ×' + r.quantity + ' — столик ' + r.tableNumber;
+          showToast(msg, 'success');
+          // Also fire a system notification (works when tab is hidden)
+          showSystemNotification('🍽 Блюдо готово!', msg, 'ready_' + r.itemId);
         });
       }
     }
@@ -1316,7 +1548,11 @@ function renderHomeActiveOrders() {
     card.className = 'home-order-card' + (allReady ? ' all-ready' : (hasReady ? ' has-ready' : ''));
     let html =
       '<div class="hoc-row1">' +
-        '<div class="hoc-table">Столик №' + order.table_number + '</div>' +
+        '<div class="hoc-table">' +
+          (order.table_type === 'tab' ? '💳 Счёт: ' + escapeHtml(state.selectedTabName || order.table_number || '') :
+           order.table_type === 'virtual' ? escapeHtml(order.table_number || '') + ' (вирт.)' :
+           'Столик №' + order.table_number) +
+        '</div>' +
         '<div class="hoc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>';
     html += '<div class="hoc-items">' +

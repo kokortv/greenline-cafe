@@ -10,16 +10,18 @@ const SHEETS = {
   MENU: 'Menu',
   ORDERS: 'Orders',
   ORDER_ITEMS: 'OrderItems',
-  USERS: 'Users'
+  USERS: 'Users',
+  TABS: 'Tabs'
 };
 
 const HEADERS = {
   Settings: ['key', 'value'],
   Categories: ['id', 'parent_id', 'name', 'name_translation', 'sort', 'is_active'],
   Menu: ['id', 'category_id', 'name', 'name_translation', 'price', 'needs_cooking', 'sort', 'is_active'],
-  Orders: ['id', 'table_number', 'guests', 'main_category_id', 'main_category_name', 'status', 'total', 'created_at', 'completed_at', 'waiter_note', 'waiter_id', 'waiter_name', 'cook_id', 'cook_name', 'payment_method'],
+  Orders: ['id', 'table_number', 'table_type', 'tab_id', 'guests', 'main_category_id', 'main_category_name', 'status', 'total', 'created_at', 'completed_at', 'waiter_note', 'waiter_id', 'waiter_name', 'cook_id', 'cook_name', 'payment_method'],
   OrderItems: ['id', 'order_id', 'menu_item_id', 'name', 'name_translation', 'category_name', 'category_name_translation', 'price', 'quantity', 'comment', 'is_ready', 'needs_cooking', 'created_at'],
-  Users: ['id', 'name', 'role', 'pin', 'is_active', 'sort', 'created_at']
+  Users: ['id', 'name', 'role', 'pin', 'is_active', 'sort', 'created_at'],
+  Tabs: ['id', 'name', 'phone', 'notes', 'total', 'status', 'created_at', 'closed_at', 'created_by_waiter_id', 'created_by_waiter_name']
 };
 
 /**
@@ -50,7 +52,11 @@ function setup() {
     ['translation_lang', ''],  // e.g. "English", "ქართული", "Türkçe" — empty = no translation
     // Polling intervals (in seconds). Admin can change these in the UI.
     ['poll_interval_waiter', '20'],  // waiter: refresh active orders + ready alerts
-    ['poll_interval_cook', '10']     // cook: refresh for new orders + readiness
+    ['poll_interval_cook', '10'],     // cook: refresh for new orders + readiness
+    // Virtual tables — comma-separated names. Appear at the bottom of the
+    // waiter's table grid. Orders to these tables are visible to ALL waiters
+    // (not isolated). Examples: "Бар", "С собой", "Терраса".
+    ['virtual_tables', 'Бар,С собой']
   ];
   settingsSheet.getRange(2, 1, settings.length, 2).setValues(settings);
 
@@ -163,7 +169,7 @@ function migrate() {
 
   // For each sheet, ensure all expected columns exist (by name, not just count).
   // Missing columns are appended at the end. Existing columns keep their data.
-  [SHEETS.ORDERS, SHEETS.MENU, SHEETS.ORDER_ITEMS, SHEETS.CATEGORIES, SHEETS.SETTINGS].forEach(function(sheetName) {
+  [SHEETS.ORDERS, SHEETS.MENU, SHEETS.ORDER_ITEMS, SHEETS.CATEGORIES, SHEETS.SETTINGS, SHEETS.TABS].forEach(function(sheetName) {
     const sheet = ss.getSheetByName(sheetName);
     if (!sheet) return;  // skip if sheet doesn't exist yet
     const lastCol = sheet.getLastColumn();
@@ -201,6 +207,14 @@ function migrate() {
     ensureSetting('translation_lang', '');
     ensureSetting('poll_interval_waiter', '20');
     ensureSetting('poll_interval_cook', '10');
+    ensureSetting('virtual_tables', 'Бар,С собой');
+  }
+
+  // Ensure Tabs sheet exists
+  if (!ss.getSheetByName(SHEETS.TABS)) {
+    const tabsSheet = ss.insertSheet(SHEETS.TABS);
+    tabsSheet.getRange(1, 1, 1, HEADERS.Tabs.length).setValues([HEADERS.Tabs]);
+    tabsSheet.setFrozenRows(1);
   }
 
   SpreadsheetApp.flush();
@@ -268,6 +282,10 @@ function handleRequest(params, body) {
       case 'logout':         result = doLogout(body); break;
       case 'setPassword':    result = setPassword(body); break;
       case 'changePassword': result = changePassword(body); break;
+      case 'getTabs':        result = getTabs(body); break;
+      case 'createTab':      result = createTab(body); break;
+      case 'closeTab':       result = closeTab(body); break;
+      case 'getTabOrders':   result = getTabOrders(body.tab_id || params.tab_id); break;
       case 'ping':           result = { ok: true, time: new Date().toISOString() }; break;
       default: throw new Error('Unknown action: ' + action);
     }
@@ -358,12 +376,21 @@ function getOrders(status, since) {
       return new Date(o.created_at).getTime() > sinceTime;
     });
   }
-  // Filter by waiter (waiter sees only own orders)
-  // arguments may come through params (doGet) or body (doPost)
+  // Filter by waiter (waiter sees only own orders).
+  // EXCEPTION: orders for virtual tables ('virtual' type) and tab orders
+  // are visible to ALL waiters — so anyone can serve a bar customer or
+  // add to a long-running client tab.
   const waiterId = (arguments[2] && arguments[2].waiter_id) ||
                    (typeof arguments[2] === 'string' ? arguments[2] : null);
   if (waiterId) {
-    orders = orders.filter(function(o) { return o.waiter_id === waiterId; });
+    orders = orders.filter(function(o) {
+      // Own orders always visible
+      if (o.waiter_id === waiterId) return true;
+      // Virtual tables and tabs — visible to all
+      if (o.table_type === 'virtual' || o.table_type === 'tab') return true;
+      // Otherwise — not visible
+      return false;
+    });
   }
   // Sort newest first
   orders.sort(function(a, b) {
@@ -394,16 +421,34 @@ function createOrder(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    // Verify the table is not already occupied by another waiter's active order
-    const existingOrders = readSheet(SHEETS.ORDERS);
-    const conflicting = existingOrders.find(function(o) {
-      return Number(o.table_number) === Number(body.table_number) &&
-             o.status === 'accepted' &&
-             o.waiter_id && body.waiter_id &&
-             o.waiter_id !== body.waiter_id;
-    });
-    if (conflicting) {
-      throw new Error('Столик №' + body.table_number + ' уже занят другим официантом (' + (conflicting.waiter_name || 'без имени') + ')');
+    // Determine table type. Default to 'numbered' for backward compat.
+    // 'virtual' = Бар/С собой — visible to all waiters, no isolation
+    // 'tab'     = linked to an open client tab (long-running account)
+    // 'numbered'= regular numbered table — isolated per waiter
+    const tableType = body.table_type || 'numbered';
+
+    // For numbered tables only: check it's not occupied by another waiter
+    if (tableType === 'numbered') {
+      const existingOrders = readSheet(SHEETS.ORDERS);
+      const conflicting = existingOrders.find(function(o) {
+        return Number(o.table_number) === Number(body.table_number) &&
+               o.status === 'accepted' &&
+               (!o.table_type || o.table_type === 'numbered') &&
+               o.waiter_id && body.waiter_id &&
+               o.waiter_id !== body.waiter_id;
+      });
+      if (conflicting) {
+        throw new Error('Столик №' + body.table_number + ' уже занят другим официантом (' + (conflicting.waiter_name || 'без имени') + ')');
+      }
+    }
+
+    // For tab orders: verify the tab exists and is open
+    if (tableType === 'tab') {
+      if (!body.tab_id) throw new Error('Не указан tab_id для заказа на счёт');
+      const tabs = readSheet(SHEETS.TABS);
+      const tab = tabs.find(function(t) { return t.id === body.tab_id; });
+      if (!tab) throw new Error('Счёт не найден');
+      if (tab.status !== 'open') throw new Error('Счёт уже закрыт');
     }
 
     const orderId = genId('ord');
@@ -414,24 +459,33 @@ function createOrder(body) {
       total += (Number(it.price) || 0) * (Number(it.quantity) || 1);
     });
 
+    // Build order row by reading actual headers (column-order-agnostic)
     const sheet = getSheet(SHEETS.ORDERS);
-    sheet.appendRow([
-      orderId,
-      body.table_number,
-      body.guests,
-      body.main_category_id,
-      body.main_category_name || '',
-      'accepted',
-      total,
-      now.toISOString(),
-      '',
-      body.waiter_note || '',
-      body.waiter_id || '',
-      body.waiter_name || '',
-      '',   // cook_id (assigned later, optional)
-      '',   // cook_name
-      ''    // payment_method (filled when order is completed)
-    ]);
+    const orderHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const orderRow = new Array(orderHeaders.length).fill('');
+    orderHeaders.forEach(function(h, idx) {
+      switch (h) {
+        case 'id':                 orderRow[idx] = orderId; break;
+        case 'table_number':       orderRow[idx] = body.table_number || ''; break;
+        case 'table_type':         orderRow[idx] = tableType; break;
+        case 'tab_id':             orderRow[idx] = body.tab_id || ''; break;
+        case 'guests':             orderRow[idx] = body.guests || 1; break;
+        case 'main_category_id':   orderRow[idx] = body.main_category_id || ''; break;
+        case 'main_category_name': orderRow[idx] = body.main_category_name || ''; break;
+        case 'status':             orderRow[idx] = 'accepted'; break;
+        case 'total':              orderRow[idx] = total; break;
+        case 'created_at':         orderRow[idx] = now.toISOString(); break;
+        case 'completed_at':       orderRow[idx] = ''; break;
+        case 'waiter_note':        orderRow[idx] = body.waiter_note || ''; break;
+        case 'waiter_id':          orderRow[idx] = body.waiter_id || ''; break;
+        case 'waiter_name':        orderRow[idx] = body.waiter_name || ''; break;
+        case 'cook_id':            orderRow[idx] = ''; break;
+        case 'cook_name':          orderRow[idx] = ''; break;
+        case 'payment_method':     orderRow[idx] = ''; break;
+        default:                   orderRow[idx] = ''; break;
+      }
+    });
+    sheet.appendRow(orderRow);
 
     const itemsSheet = getSheet(SHEETS.ORDER_ITEMS);
     // Read the actual headers from the sheet so we write values to the correct
@@ -1051,8 +1105,14 @@ function getTables(body) {
     return o.status === 'accepted';
   });
   const tables = [];
+  // Numbered tables (1..N) — isolated per waiter
   for (let i = 1; i <= tableCount; i++) {
-    const occ = orders.find(function(o) { return Number(o.table_number) === i; });
+    // Only consider numbered-table orders (exclude virtual/tab) when checking
+    // occupancy of a numbered table.
+    const occ = orders.find(function(o) {
+      return Number(o.table_number) === i &&
+             (!o.table_type || o.table_type === 'numbered');
+    });
     let status = 'free';
     let waiterName = '';
     if (occ) {
@@ -1063,8 +1123,24 @@ function getTables(body) {
         status = 'other';
       }
     }
-    tables.push({ table: i, status: status, waiter_name: waiterName });
+    tables.push({ table: i, type: 'numbered', status: status, waiter_name: waiterName });
   }
+  // Virtual tables (Бар, С собой, etc.) — visible to all waiters, not isolated
+  const virtualTablesSetting = getSetting('virtual_tables') || '';
+  const virtualNames = virtualTablesSetting.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  virtualNames.forEach(function(name) {
+    // Count active orders for this virtual table name
+    const activeCount = orders.filter(function(o) {
+      return o.table_type === 'virtual' && o.table_number === name;
+    }).length;
+    tables.push({
+      table: name,
+      type: 'virtual',
+      status: activeCount > 0 ? 'active' : 'free',
+      active_count: activeCount,
+      waiter_name: ''  // virtual tables are shared, no single owner
+    });
+  });
   return { tables: tables };
 }
 
@@ -1341,4 +1417,136 @@ function changePassword(body) {
     if (oldHash !== user.pin) throw new Error('Неверный старый пароль');
   }
   return setPassword({ user_id: body.user_id, new_password: body.new_password });
+}
+
+/* ============ TABS (open client accounts) ============ */
+
+/**
+ * List all tabs. Optional filter: status ('open' / 'closed' / 'all').
+ */
+function getTabs(body) {
+  let tabs = readSheet(SHEETS.TABS);
+  const status = body && body.status ? body.status : 'open';
+  if (status !== 'all') {
+    tabs = tabs.filter(function(t) { return t.status === status; });
+  }
+  // Recalculate total from linked orders (in case orders changed)
+  const orders = readSheet(SHEETS.ORDERS).filter(function(o) {
+    return o.tab_id && o.status === 'completed';
+  });
+  tabs.forEach(function(t) {
+    const linked = orders.filter(function(o) { return o.tab_id === t.id; });
+    const calcTotal = linked.reduce(function(s, o) { return s + (Number(o.total) || 0); }, 0);
+    // Use calculated total (more accurate than stored)
+    t.total = calcTotal;
+    t.orders_count = linked.length;
+  });
+  // Sort: open first, then by created_at descending
+  tabs.sort(function(a, b) {
+    if (a.status !== b.status) return a.status === 'open' ? -1 : 1;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+  return { tabs: tabs };
+}
+
+/**
+ * Create a new open tab.
+ * Body: { name, phone, notes, waiter_id, waiter_name }
+ */
+function createTab(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const id = genId('tab');
+    const now = new Date().toISOString();
+    const sheet = getSheet(SHEETS.TABS);
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const row = new Array(headers.length).fill('');
+    headers.forEach(function(h, idx) {
+      switch (h) {
+        case 'id':                     row[idx] = id; break;
+        case 'name':                   row[idx] = body.name || 'Без имени'; break;
+        case 'phone':                  row[idx] = body.phone || ''; break;
+        case 'notes':                  row[idx] = body.notes || ''; break;
+        case 'total':                  row[idx] = 0; break;
+        case 'status':                 row[idx] = 'open'; break;
+        case 'created_at':             row[idx] = now; break;
+        case 'closed_at':              row[idx] = ''; break;
+        case 'created_by_waiter_id':   row[idx] = body.waiter_id || ''; break;
+        case 'created_by_waiter_name': row[idx] = body.waiter_name || ''; break;
+        default:                       row[idx] = ''; break;
+      }
+    });
+    sheet.appendRow(row);
+    SpreadsheetApp.flush();
+    return { id: id };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Close a tab (mark as paid). Body: { tab_id, payment_method }
+ * All linked orders are marked as 'completed' (they were already, but
+ * in case some were still 'accepted' we complete them now).
+ */
+function closeTab(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!body || !body.tab_id) throw new Error('Missing tab_id');
+    const sheet = getSheet(SHEETS.TABS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const idCol = headers.indexOf('id');
+    const statusCol = headers.indexOf('status');
+    const closedAtCol = headers.indexOf('closed_at');
+    let found = false;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idCol] === body.tab_id) {
+        data[i][statusCol] = 'closed';
+        data[i][closedAtCol] = new Date().toISOString();
+        found = true;
+        break;
+      }
+    }
+    if (!found) throw new Error('Tab not found');
+    sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+
+    // Complete any still-accepted orders for this tab
+    const ordersSheet = getSheet(SHEETS.ORDERS);
+    const ordersData = ordersSheet.getDataRange().getValues();
+    const ordersHeaders = ordersData[0];
+    const orderIdCol = ordersHeaders.indexOf('id');
+    const orderTabIdCol = ordersHeaders.indexOf('tab_id');
+    const orderStatusCol = ordersHeaders.indexOf('status');
+    const orderPayCol = ordersHeaders.indexOf('payment_method');
+    const orderCompletedCol = ordersHeaders.indexOf('completed_at');
+    for (let i = 1; i < ordersData.length; i++) {
+      if (ordersData[i][orderTabIdCol] === body.tab_id && ordersData[i][orderStatusCol] === 'accepted') {
+        ordersData[i][orderStatusCol] = 'completed';
+        ordersData[i][orderCompletedCol] = new Date().toISOString();
+        if (orderPayCol >= 0) ordersData[i][orderPayCol] = body.payment_method || '';
+      }
+    }
+    ordersSheet.getRange(1, 1, ordersData.length, ordersHeaders.length).setValues(ordersData);
+
+    SpreadsheetApp.flush();
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Get all orders linked to a tab.
+ */
+function getTabOrders(tabId) {
+  const orders = readSheet(SHEETS.ORDERS).filter(function(o) { return o.tab_id === tabId; });
+  const items = readSheet(SHEETS.ORDER_ITEMS);
+  orders.forEach(function(o) {
+    o.items = items.filter(function(it) { return it.order_id === o.id; });
+  });
+  orders.sort(function(a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+  return { orders: orders };
 }
