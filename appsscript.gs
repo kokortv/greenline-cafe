@@ -333,6 +333,25 @@ function genId(prefix) {
   return (prefix || 'id') + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
 }
 
+/**
+ * Safely delete a row from a sheet. Google Sheets throws
+ * "it is not possible to delete all non-frozen rows" when you try to delete
+ * the LAST non-frozen row. This helper detects that case and clears the row's
+ * content instead of deleting it.
+ *
+ * @param {Sheet} sheet — the sheet to delete from
+ * @param {number} rowIdx — 1-indexed row number to delete
+ */
+function safeDeleteRow(sheet, rowIdx) {
+  if (sheet.getLastRow() <= 1) return; // only header, nothing to delete
+  // If this is the only data row (header at row 1, data at row 2), clear content
+  if (sheet.getLastRow() === 2 && rowIdx === 2) {
+    sheet.getRange(2, 1, 1, sheet.getLastColumn()).clearContent();
+  } else {
+    sheet.deleteRow(rowIdx);
+  }
+}
+
 /* ============ GET ENDPOINTS ============ */
 
 function getData() {
@@ -746,7 +765,7 @@ function removeItemFromOrder(body) {
       }
     }
     if (rowIndex > 0) {
-      sheet.deleteRow(rowIndex);
+      safeDeleteRow(sheet, rowIndex);
       recalcOrderTotal(orderId);
       SpreadsheetApp.flush();
       return getOrder(orderId);
@@ -791,29 +810,39 @@ function deleteOrder(body) {
   try {
     const ordersSheet = getSheet(SHEETS.ORDERS);
     const itemsSheet = getSheet(SHEETS.ORDER_ITEMS);
+    const targetId = String(body.order_id);
 
-    // Delete order row
+    // Delete order row (compare as strings to avoid type mismatch)
     const ordersData = ordersSheet.getDataRange().getValues();
     const orderHeaders = ordersData[0];
     const orderIdCol = orderHeaders.indexOf('id');
     let orderRow = -1;
     for (let i = 1; i < ordersData.length; i++) {
-      if (ordersData[i][orderIdCol] === body.order_id) {
+      if (String(ordersData[i][orderIdCol]) === targetId) {
         orderRow = i + 1;
         break;
       }
     }
-    if (orderRow > 0) ordersSheet.deleteRow(orderRow);
+    if (orderRow > 0) safeDeleteRow(ordersSheet, orderRow);
 
-    // Delete all items for this order (may be multiple rows)
+    // Delete all items for this order (may be multiple rows).
+    // Iterate in reverse so row indices stay valid. Use safeDeleteRow to
+    // handle the case where this is the last data row.
     const itemsData = itemsSheet.getDataRange().getValues();
     const itemHeaders = itemsData[0];
     const itemOrderIdCol = itemHeaders.indexOf('order_id');
+    // Collect rows to delete (1-indexed) in reverse order
+    const rowsToDelete = [];
     for (let i = itemsData.length - 1; i >= 1; i--) {
-      if (itemsData[i][itemOrderIdCol] === body.order_id) {
-        itemsSheet.deleteRow(i + 1);
+      if (String(itemsData[i][itemOrderIdCol]) === targetId) {
+        rowsToDelete.push(i + 1);
       }
     }
+    // Delete in reverse order (already reversed since we iterated backwards)
+    rowsToDelete.forEach(function(r) {
+      safeDeleteRow(itemsSheet, r);
+    });
+
     SpreadsheetApp.flush();
     return { ok: true };
   } finally {
@@ -928,7 +957,7 @@ function deleteCategory(body) {
     }
   }
   if (rowIndex > 0) {
-    sheet.deleteRow(rowIndex);
+    safeDeleteRow(sheet, rowIndex);
     SpreadsheetApp.flush();
   }
   return { ok: true };
@@ -999,7 +1028,7 @@ function deleteMenuItem(body) {
     }
   }
   if (rowIndex > 0) {
-    sheet.deleteRow(rowIndex);
+    safeDeleteRow(sheet, rowIndex);
     SpreadsheetApp.flush();
   }
   return { ok: true };
@@ -1159,7 +1188,7 @@ function deleteUser(body) {
     }
   }
   if (rowIndex > 0) {
-    sheet.deleteRow(rowIndex);
+    safeDeleteRow(sheet, rowIndex);
     SpreadsheetApp.flush();
   }
   return { ok: true };
@@ -1276,8 +1305,8 @@ function deleteSound(body) {
       toDelete.push(i + 1);
     }
   }
-  // Delete in reverse order
-  toDelete.reverse().forEach(function(r) { sheet.deleteRow(r); });
+  // Delete in reverse order — use safeDeleteRow to avoid the "last non-frozen row" error
+  toDelete.reverse().forEach(function(r) { safeDeleteRow(sheet, r); });
   SpreadsheetApp.flush();
   return { ok: true };
 }
@@ -1411,7 +1440,7 @@ function deleteSession(token) {
   const keyCol = headers.indexOf('key');
   for (let i = data.length - 1; i >= 1; i--) {
     if (data[i][keyCol] === 'session_' + token) {
-      sheet.deleteRow(i + 1);
+      safeDeleteRow(sheet, i + 1);
     }
   }
   SpreadsheetApp.flush();
@@ -1736,8 +1765,9 @@ function cleanupExpiredSessions() {
       }
     }
     // Delete rows in reverse order (so indices don't shift)
+    // Use safeDeleteRow to avoid the "last non-frozen row" error
     rowsToDelete.reverse().forEach(function(r) {
-      sheet.deleteRow(r);
+      safeDeleteRow(sheet, r);
     });
     if (rowsToDelete.length > 0) {
       SpreadsheetApp.flush();
