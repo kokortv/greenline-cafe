@@ -211,7 +211,11 @@
   <div class="header-actions">
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
-      <span class="uc-logout">⏻</span>
+      <span class="uc-logout">
+        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/>
+        </svg>
+      </span>
     </span>
   </div>
 </header>
@@ -223,7 +227,7 @@
   <form id="login-form" onsubmit="event.preventDefault(); document.getElementById('login-submit-btn').click();" autocomplete="off">
     <div class="form-group" style="max-width:400px;margin:0 auto;">
       <label>Пароль:</label>
-      <input type="password" id="login-password" placeholder="Введите пароль администратора" autocomplete="off" autofocus>
+      <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off" autofocus>
     </div>
     <div style="max-width:400px;margin:16px auto 0;">
       <button type="button" class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;"
@@ -232,10 +236,6 @@
       </button>
     </div>
   </form>
-  <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
-    Пароль задаётся в Google Sheets → лист <b>Users</b> → колонка <b>pin</b> для пользователя с ролью <b>admin</b>.
-    Если пароль не задан — введите любой текст в колонке pin и сохраните.
-  </p>
 </div>
 
 <main class="app-main" id="app-main" style="display:none;">
@@ -498,11 +498,12 @@
     <h2>Установка пароля</h2>
     <p style="margin-bottom:12px;color:var(--text-muted);">Сотрудник: <b id="pwd-user-name">—</b></p>
     <input type="hidden" id="pwd-user-id">
+    <input type="hidden" id="pwd-user-role">
     <form onsubmit="event.preventDefault(); document.getElementById('pwd-save-btn').click();" autocomplete="off">
       <div class="form-group">
-        <label>Новый пароль</label>
-        <input type="text" id="pwd-new" placeholder="Любой пароль или PIN" autocomplete="off">
-        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+        <label>Новый пароль <span id="pwd-hint" style="font-weight:normal;color:var(--text-muted);"></span></label>
+        <input type="text" id="pwd-new" placeholder="Введите пароль" autocomplete="off">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;" id="pwd-help-text">
           Пароль будет сохранён в лист Users, колонка pin. Можно также задать пароль напрямую в таблице.
         </p>
       </div>
@@ -1539,18 +1540,46 @@ function openPasswordModal(userId) {
   const user = APP_DATA.users.find(function(u) { return u.id === userId; });
   if (!user) return;
   document.getElementById('pwd-user-id').value = userId;
+  document.getElementById('pwd-user-role').value = user.role;
   document.getElementById('pwd-user-name').textContent = user.name + ' (' + (user.role === 'cook' ? 'повар' : user.role === 'admin' ? 'админ' : 'официант') + ')';
   document.getElementById('pwd-new').value = '';
   document.getElementById('pwd-confirm').value = '';
+  // Show different hint based on role
+  const hintEl = document.getElementById('pwd-hint');
+  const helpEl = document.getElementById('pwd-help-text');
+  const inputEl = document.getElementById('pwd-new');
+  if (user.role === 'admin') {
+    hintEl.textContent = '(любые символы)';
+    helpEl.textContent = 'Админ может использовать любой пароль. Сохранится в лист Users, колонка pin.';
+    inputEl.setAttribute('inputmode', 'text');
+    inputEl.setAttribute('pattern', '');
+    inputEl.setAttribute('maxlength', '100');
+    inputEl.placeholder = 'Введите пароль';
+  } else {
+    hintEl.textContent = '(только цифры, как PIN)';
+    helpEl.textContent = 'Официанты и повара вводят только цифры — на телефоне открывается цифровая клавиатура. Сохранится в лист Users, колонка pin.';
+    inputEl.setAttribute('inputmode', 'numeric');
+    inputEl.setAttribute('pattern', '[0-9]*');
+    inputEl.setAttribute('maxlength', '10');
+    inputEl.placeholder = 'Например: 1234';
+  }
   openModal('modal-password');
 }
 
 async function savePassword() {
   const userId = document.getElementById('pwd-user-id').value;
+  const userRole = document.getElementById('pwd-user-role').value;
   const pwd = document.getElementById('pwd-new').value;
   const confirm = document.getElementById('pwd-confirm').value;
   if (!pwd) { showToast('Введите пароль', 'warning'); return; }
   if (pwd !== confirm) { showToast('Пароли не совпадают', 'warning'); return; }
+  // For waiters and cooks: enforce numeric-only password
+  if (userRole !== 'admin') {
+    if (!/^\d+$/.test(pwd)) {
+      showToast('Для официантов и поваров пароль должен состоять только из цифр', 'warning');
+      return;
+    }
+  }
   try {
     await apiPost('setPassword', {
       user_id: userId,

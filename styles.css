@@ -595,3 +595,17 @@ tbody tr:hover { background: #fafafa; }
   font-size: 1.4rem;
   font-weight: 800;
 }
+
+/* SVG icons inside chips/buttons — render reliably across all devices
+   (Unicode symbols like ⏻ or ⎋ often don't render on mobile) */
+.icon-svg {
+  display: inline-block;
+  vertical-align: middle;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+.user-chip .icon-svg {
+  width: 16px;
+  height: 16px;
+}

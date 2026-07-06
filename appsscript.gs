@@ -1170,6 +1170,13 @@ function doLogin(body) {
   if (!user.pin) {
     return jsonOut({ success: false, error: 'Пароль не установлен. Задайте пароль в колонке pin листа Users.' });
   }
+  // For waiters and cooks: enforce numeric-only passwords (PINs)
+  // Admin can use any password (letters, symbols, etc.)
+  if (user.role !== 'admin') {
+    if (!/^\d+$/.test(body.password)) {
+      return jsonOut({ success: false, error: 'Пароль должен состоять только из цифр' });
+    }
+  }
   // Password verification:
   // - If pin is 64 hex chars → it's a SHA-256 hash, compare with hash of entered password
   // - Otherwise → treat pin as plaintext password, compare directly
