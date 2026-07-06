@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Официант — Ресторан</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* Waiter-specific styles */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  .table-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 12px;
+  }
+  .table-btn {
+    aspect-ratio: 1.2;
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow);
+    transition: all 0.15s;
+  }
+  .table-btn:hover { border-color: var(--primary); transform: translateY(-2px); }
+  .table-btn.has-order {
+    background: var(--warning);
+    color: var(--text);
+    border-color: var(--accent-dark);
+  }
+  .table-btn .table-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+  .table-btn.has-order .table-label { color: var(--text); }
+
+  .main-cat-btn {
+    aspect-ratio: 2;
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    box-shadow: var(--shadow);
+    transition: all 0.15s;
+  }
+  .main-cat-btn:hover { border-color: var(--primary); transform: translateY(-2px); }
+
+  .subcat-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+  .subcat-tab {
+    padding: 12px 22px;
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 22px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--text);
+  }
+  .subcat-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+  }
+
+  .menu-item-card {
+    background: white;
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 130px;
+  }
+  .menu-item-card .item-name {
+    font-weight: 600;
+    font-size: 1.05rem;
+    flex: 1;
+  }
+  .menu-item-card .item-price {
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+  .menu-item-card .item-no-cook {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  .menu-item-card .item-add-btn {
+    background: var(--success);
+    color: white;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 1rem;
+  }
+  .menu-item-card .item-add-btn:active { background: #1b5e20; }
+
+  /* Cart panel — sticky bottom on mobile, side on desktop */
+  .cart-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 2px solid var(--primary);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+    z-index: 50;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .cart-panel .cart-count {
+    flex: 1;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  .cart-panel .cart-count .cart-total {
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 1.3rem;
+    margin-left: 8px;
+  }
+
+  /* Cart screen */
+  .cart-item {
+    background: white;
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: var(--shadow);
+    margin-bottom: 10px;
+  }
+  .cart-item .ci-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .cart-item .ci-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    flex: 1;
+  }
+  .cart-item .ci-price {
+    color: var(--primary);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .cart-item .ci-comment {
+    margin-top: 10px;
+  }
+  .cart-item .ci-comment input {
+    background: #fffde7;
+    border-color: var(--warning);
+  }
+  .cart-item .ci-comment input::placeholder { color: var(--text-muted); font-style: italic; }
+  .cart-item.ready {
+    background: var(--success-light);
+    border-left: 4px solid var(--success);
+  }
+  .cart-item .ci-ready-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    background: var(--success);
+    color: white;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-left: 8px;
+  }
+
+  .cart-total-display {
+    background: var(--primary);
+    color: white;
+    padding: 20px;
+    border-radius: var(--radius);
+    text-align: center;
+    margin: 16px 0;
+    box-shadow: var(--shadow-lg);
+  }
+  .cart-total-display .label {
+    font-size: 1.1rem;
+    opacity: 0.9;
+    margin-bottom: 4px;
+  }
+  .cart-total-display .amount {
+    font-size: 2.5rem;
+    font-weight: 800;
+  }
+
+  .order-card {
+    background: white;
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    border-left: 5px solid var(--warning);
+  }
+  .order-card.completed { border-left-color: var(--success); opacity: 0.8; }
+  .order-card .oc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .order-card .oc-table {
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+  .order-card .oc-time {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+  .order-card .oc-items {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 10px;
+  }
+  .order-card .oc-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .order-card .oc-actions .btn {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .guests-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin: 20px 0;
+  }
+  .guests-stepper button {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    font-size: 2rem;
+    font-weight: 700;
+  }
+  .guests-stepper .guests-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    min-width: 60px;
+    text-align: center;
+  }
+
+  .section-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 16px 0 10px;
+    color: var(--text);
+  }
+
+  body.has-cart-panel { padding-bottom: 90px; }
+
+  /* Ready-to-serve alert banner (dishes that just became ready) */
+  #ready-alert-panel {
+    margin-bottom: 16px;
+  }
+  .ready-alert {
+    background: linear-gradient(135deg, var(--success), #43a047);
+    color: white;
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 16px rgba(46,125,50,0.3);
+    animation: pulse-green 2s infinite;
+    cursor: pointer;
+  }
+  @keyframes pulse-green {
+    0%, 100% { box-shadow: 0 4px 16px rgba(46,125,50,0.3); }
+    50% { box-shadow: 0 4px 24px rgba(46,125,50,0.6); }
+  }
+  .ready-alert .ra-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ready-alert .ra-item {
+    font-size: 1rem;
+    margin-top: 4px;
+    opacity: 0.95;
+  }
+
+  /* Active order card on home screen */
+  .home-order-card {
+    background: white;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+    border-left: 5px solid var(--warning);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .home-order-card.has-ready {
+    border-left-color: var(--success);
+    background: #f1f8e9;
+  }
+  .home-order-card.all-ready {
+    background: var(--success-light);
+    animation: pulse-soft 2.5s infinite;
+  }
+  @keyframes pulse-soft {
+    0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    50% { box-shadow: 0 4px 16px rgba(46,125,50,0.4); }
+  }
+  .home-order-card .hoc-row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .home-order-card .hoc-table {
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+  .home-order-card .hoc-time {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+  .home-order-card .hoc-items {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+  .home-order-card .hoc-ready-list {
+    background: var(--success-light);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 0.95rem;
+  }
+  .home-order-card .hoc-ready-list b {
+    color: var(--success);
+  }
+  .home-order-card .hoc-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .home-order-card .hoc-actions .btn {
+    flex: 1;
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header" id="app-header" style="display:none;">
+  <h1 id="restaurant-name">Ресторан</h1>
+  <div class="header-actions">
+    <a href="admin.html" class="nav-link">Админ</a>
+    <a href="cook.html" class="nav-link">Повар</a>
+    <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
+    <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
+      <span id="user-chip-name">—</span>
+      <span class="uc-logout">⏻</span>
+    </span>
+  </div>
+</header>
+
+<!-- Login screen (shown if no current user) -->
+<div class="login-screen" id="login-screen" style="display:none;">
+  <h1>Официант</h1>
+  <p class="login-subtitle">Выберите своё имя, чтобы начать смену</p>
+  <div class="login-user-grid" id="login-users"></div>
+  <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
+    Если вас нет в списке — попросите администратора добавить вас.
+  </p>
+</div>
+
+<main class="app-main" id="app-main" style="display:none;">
+  <!-- HOME SCREEN -->
+  <div class="screen active" id="screen-home">
+    <!-- Ready-to-serve alert panel: shows dishes that became ready recently -->
+    <div id="ready-alert-panel" style="display:none;"></div>
+
+    <!-- Active orders overview on home screen -->
+    <div id="home-active-orders" style="display:none;">
+      <h2 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+        Активные заказы
+        <span class="pill pill-warning" id="home-active-count">0</span>
+      </h2>
+      <div id="home-active-orders-list"></div>
+    </div>
+
+    <h2 class="section-title">Новый заказ</h2>
+    <h3 style="font-size:1rem;color:var(--text-muted);margin-bottom:8px;">Выберите столик</h3>
+    <div class="table-grid" id="table-grid"></div>
+
+    <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Количество гостей</h3>
+    <div class="guests-stepper">
+      <button onclick="changeGuests(-1)">−</button>
+      <div class="guests-value" id="guests-value">1</div>
+      <button onclick="changeGuests(1)">+</button>
+    </div>
+
+    <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Тип заказа</h3>
+    <div class="grid grid-4" id="main-cats"></div>
+  </div>
+
+  <!-- MENU SCREEN -->
+  <div class="screen" id="screen-menu">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <button class="btn btn-outline" onclick="showScreen('home')">← Назад</button>
+      <div id="menu-context" style="font-weight:600;"></div>
+    </div>
+    <div class="subcat-tabs" id="subcat-tabs"></div>
+    <div class="grid grid-auto" id="menu-items"></div>
+    <div class="cart-panel" id="cart-panel" style="display:none;">
+      <div class="cart-count">
+        В корзине: <span id="cart-count-num">0</span> шт.
+        <span class="cart-total" id="cart-total-amount">0 ₽</span>
+      </div>
+      <button class="btn btn-primary btn-lg" onclick="showCart()">Корзина →</button>
+    </div>
+  </div>
+
+  <!-- CART SCREEN (new order) -->
+  <div class="screen" id="screen-cart">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <button class="btn btn-outline" onclick="showScreen('menu')">← К меню</button>
+      <button class="btn btn-danger" onclick="clearCart()">Очистить</button>
+    </div>
+    <div id="cart-items"></div>
+    <div class="cart-total-display">
+      <div class="label">Итого к оплате</div>
+      <div class="amount" id="cart-grand-total">0 ₽</div>
+    </div>
+    <button class="btn btn-success btn-xl" style="width:100%;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
+      ✓ ПРИНЯТЬ ЗАКАЗ
+    </button>
+  </div>
+
+  <!-- ACTIVE ORDERS SCREEN -->
+  <div class="screen" id="screen-orders">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <button class="btn btn-outline" onclick="showScreen('home')">← Домой</button>
+      <h2 class="section-title" style="margin:0;">Принятые заказы</h2>
+    </div>
+    <div id="active-orders-list"></div>
+  </div>
+
+  <!-- ORDER DETAIL SCREEN (modify existing) -->
+  <div class="screen" id="screen-order-detail">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <button class="btn btn-outline" onclick="showActiveOrders()">← К заказам</button>
+      <button class="btn btn-info" onclick="addMoreToOrder()">+ Добавить блюда</button>
+    </div>
+    <div id="order-detail-info"></div>
+    <div id="order-detail-items"></div>
+    <div class="cart-total-display">
+      <div class="label">Итого</div>
+      <div class="amount" id="order-detail-total">0 ₽</div>
+    </div>
+    <div class="grid grid-2" style="margin-top:12px;">
+      <button class="btn btn-success btn-lg" onclick="completeOrder()">✓ Завершить заказ</button>
+      <button class="btn btn-danger btn-lg" onclick="withLoading(this, 'Отмена...', function() { return cancelOrder(); })">Отменить заказ</button>
+    </div>
+  </div>
+</main>
+
+<div class="modal-backdrop" id="modal-comment">
+  <div class="modal">
+    <h2>Комментарий повару</h2>
+    <p style="margin-bottom:12px;color:var(--text-muted);" id="modal-comment-item"></p>
+    <div class="form-group">
+      <textarea id="comment-text" rows="3" placeholder="Например: без соли, прожарка medium..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeCommentModal(true)">Готово</button>
+    </div>
+  </div>
+</div>
+
+<!-- Payment method modal -->
+<div class="modal-backdrop" id="modal-payment">
+  <div class="modal">
+    <h2>Завершение заказа</h2>
+    <p style="margin-bottom:8px;color:var(--text-muted);">Гости расплатились?</p>
+    <div id="payment-order-info" style="background:#f5f5f5;padding:12px;border-radius:8px;margin-bottom:16px;"></div>
+    <p style="margin-bottom:8px;font-weight:600;">Выберите тип оплаты:</p>
+    <div class="payment-options">
+      <div class="payment-option" data-method="cash" onclick="selectPaymentMethod('cash')">
+        <div class="po-icon">💵</div>
+        <div>Наличные</div>
+        <div class="po-amount" id="pay-amount-cash">—</div>
+      </div>
+      <div class="payment-option" data-method="card" onclick="selectPaymentMethod('card')">
+        <div class="po-icon">💳</div>
+        <div>Карта</div>
+        <div class="po-amount" id="pay-amount-card">—</div>
+      </div>
+    </div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px;">
+      <button class="btn btn-success btn-lg" id="confirm-payment-btn" disabled
+              onclick="withLoading(this, 'Завершаем...', function() { return confirmCompleteOrder(); })"
+              style="width:100%;">
+        ✓ Завершить заказ
+      </button>
+      <button class="btn btn-outline" onclick="closePaymentModal()" style="width:100%;">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+let state = {
+  currentUser: null,           // {id, name, role}
+  selectedTable: null,
+  guests: 1,
+  mainCategory: null,
+  currentSubcat: null,
+  cart: [],            // {menu_item_id, name, price, quantity, comment, needs_cooking}
+  currentOrderId: null,
+  activeOrders: [],
+  knownReadyItemIds: new Set(),  // item IDs we already notified the waiter about (so we don't beep twice)
+  readyAlerts: [],               // active ready-to-serve alerts: {orderId, tableNumber, itemName, quantity, itemId}
+  dismissedReadyAlerts: new Set(), // alert keys the waiter dismissed
+  pollingTimer: null,
+  badgePollingTimer: null,
+  tableStatuses: []              // from getTables(): [{table, status, waiter_name}]
+};
+
+/* ---------- Boot ---------- */
+async function init() {
+  if (!checkConfig()) return;
+  try {
+    await loadAppData();
+    document.getElementById('restaurant-name').textContent =
+      (APP_DATA.settings.restaurant_name || 'Ресторан');
+
+    // Check if user is logged in
+    const user = getCurrentUser();
+    if (!user || user.role !== 'waiter') {
+      showLoginScreen();
+      return;
+    }
+    // Verify user still exists in current users list
+    const stillExists = APP_DATA.users.find(function(u) { return u.id === user.id && u.role === 'waiter'; });
+    if (!stillExists) {
+      setCurrentUser(null);
+      showLoginScreen();
+      return;
+    }
+    state.currentUser = stillExists;
+    startApp();
+  } catch (err) {
+    showToast('Ошибка загрузки: ' + err.message, 'error');
+  }
+}
+
+function showLoginScreen() {
+  document.getElementById('app-header').style.display = 'none';
+  document.getElementById('app-main').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'block';
+  const grid = document.getElementById('login-users');
+  grid.innerHTML = '';
+  const waiters = APP_DATA.users.filter(function(u) { return u.role === 'waiter'; })
+    .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
+  if (waiters.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><h3>Нет ни одного официанта</h3><p>Добавьте сотрудников в админ-панели</p></div>';
+    return;
+  }
+  waiters.forEach(function(w) {
+    const btn = document.createElement('button');
+    btn.className = 'login-user-btn';
+    btn.innerHTML = escapeHtml(w.name) + '<span class="role-badge">официант</span>';
+    btn.onclick = function() { loginAs(w); };
+    grid.appendChild(btn);
+  });
+}
+
+function loginAs(user) {
+  setCurrentUser({ id: user.id, name: user.name, role: user.role });
+  state.currentUser = user;
+  document.getElementById('login-screen').style.display = 'none';
+  startApp();
+}
+
+async function startApp() {
+  document.getElementById('app-header').style.display = 'flex';
+  document.getElementById('app-main').style.display = 'block';
+  document.getElementById('user-chip-name').textContent = state.currentUser.name;
+  renderHome();
+  // Preload custom sound for waiter (ready notification)
+  preloadSounds(['waiter_ready']);
+  // Immediately fetch active orders so the home screen shows them on first load
+  await refreshActiveOrders();
+  renderReadyAlerts();
+  renderHomeActiveOrders();
+  startBadgePolling();
+  // Periodically refresh APP_DATA in background to catch admin changes
+  setInterval(function() {
+    loadAppData(true).then(function() {
+      document.getElementById('restaurant-name').textContent =
+        (APP_DATA.settings.restaurant_name || 'Ресторан');
+      if (document.getElementById('screen-home').classList.contains('active')) {
+        renderHome();
+      }
+    }).catch(function(err) { console.warn('Background refresh failed:', err); });
+  }, 30000);
+}
+
+/* Refresh APP_DATA and re-render home (used when entering home screen) */
+async function refreshAppDataAndRender() {
+  try {
+    await loadAppData(true);
+    document.getElementById('restaurant-name').textContent =
+      (APP_DATA.settings.restaurant_name || 'Ресторан');
+    renderHome();
+    renderReadyAlerts();
+    renderHomeActiveOrders();
+  } catch (err) {
+    console.error('Refresh APP_DATA failed:', err);
+    renderHome(); // fallback to existing cached data
+    renderReadyAlerts();
+    renderHomeActiveOrders();
+  }
+}
+
+/* ---------- Screen navigation ---------- */
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+  document.getElementById('screen-' + name).classList.add('active');
+  // Stop item-readiness polling when leaving order detail
+  if (name !== 'order-detail') {
+    stopOrderPolling();
+  }
+  if (name === 'home') {
+    // Refresh APP_DATA so admin changes (currency, menu, categories) are picked up
+    refreshAppDataAndRender();
+    startBadgePolling();
+  }
+  if (name === 'orders') {
+    stopBadgePolling();
+    loadActiveOrders();
+  }
+  if (name === 'order-detail') {
+    stopBadgePolling();
+    startOrderPolling();
+  }
+}
+
+/* ---------- HOME ---------- */
+function renderHome() {
+  // Tables — show 3 statuses: free / mine (has my active order) / locked-by-other
+  const tableCount = Number(APP_DATA.settings.table_count) || 20;
+  const tableGrid = document.getElementById('table-grid');
+  tableGrid.innerHTML = '';
+  for (let i = 1; i <= tableCount; i++) {
+    const hasOrder = state.activeOrders.some(function(o) { return Number(o.table_number) === i; });
+    // Find table status (free / mine / other)
+    const ts = state.tableStatuses.find(function(t) { return t.table === i; });
+    const lockedByOther = ts && ts.status === 'other';
+    const btn = document.createElement('button');
+    let cls = 'table-btn';
+    let label = 'свободен';
+    if (hasOrder) { cls += ' has-order'; label = 'мой заказ'; }
+    if (lockedByOther) { cls += ' locked-by-other'; label = ts.waiter_name ? '⨉ ' + ts.waiter_name : '⨉ занят'; }
+    btn.className = cls;
+    btn.innerHTML = i + '<span class="table-label">' + label + '</span>';
+    if (lockedByOther) {
+      btn.disabled = true;
+      btn.onclick = function() {
+        showToast('Столик №' + i + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
+      };
+    } else {
+      btn.onclick = function(e) { selectTable(i, e); };
+    }
+    tableGrid.appendChild(btn);
+  }
+
+  // Guests
+  document.getElementById('guests-value').textContent = state.guests;
+
+  // Main categories
+  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
+  const catsDiv = document.getElementById('main-cats');
+  catsDiv.innerHTML = '';
+  mainCats.forEach(function(cat) {
+    const btn = document.createElement('button');
+    btn.className = 'main-cat-btn';
+    btn.textContent = cat.name;
+    btn.onclick = function() { selectMainCategory(cat); };
+    catsDiv.appendChild(btn);
+  });
+}
+
+function selectTable(num, evt) {
+  state.selectedTable = num;
+  showToast('Столик ' + num + ' выбран', 'info');
+  // Highlight
+  document.querySelectorAll('.table-btn').forEach(function(b) {
+    b.style.outline = '';
+  });
+  if (evt && evt.currentTarget) {
+    evt.currentTarget.style.outline = '4px solid var(--primary)';
+  }
+}
+
+function changeGuests(delta) {
+  state.guests = Math.max(1, state.guests + delta);
+  document.getElementById('guests-value').textContent = state.guests;
+}
+
+function selectMainCategory(cat) {
+  if (!state.selectedTable) {
+    showToast('Сначала выберите столик', 'warning');
+    return;
+  }
+  state.mainCategory = cat;
+  state.cart = [];
+  state.currentSubcat = null; // reset so renderMenu picks a sensible default
+  renderMenu();
+  showScreen('menu');
+}
+
+/* ---------- MENU ---------- */
+
+function renderMenu() {
+  const mainCat = state.mainCategory;
+  const subcats = APP_DATA.categories.filter(function(c) {
+    return c.parent_id === mainCat.id;
+  }).sort(function(a, b) {
+    return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+           String(a.name).localeCompare(String(b.name));
+  });
+
+  // Items that belong directly to the main category (no subcategory).
+  // These are shown alongside subcategory items — they appear as if they
+  // were loose items inside the main category. If subcategories exist,
+  // they are shown under a tab named after the main category itself.
+  const directItems = APP_DATA.menu.filter(function(m) {
+    return !m.category_id || m.category_id === mainCat.id;
+  }).sort(function(a, b) {
+    return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+           String(a.name).localeCompare(String(b.name));
+  });
+
+  // Decide which tab to show by default:
+  //  - if there are direct items AND no subcategories -> show them directly (no tabs)
+  //  - if there are subcategories -> show first subcategory by default,
+  //    but also expose a tab for direct items (named after main category)
+  const hasSubcats = subcats.length > 0;
+  const hasDirect = directItems.length > 0;
+
+  // Default selection
+  if (!state.currentSubcat) {
+    if (hasSubcats) {
+      state.currentSubcat = subcats[0].id;
+    } else if (hasDirect) {
+      state.currentSubcat = '__direct__';
+    } else {
+      state.currentSubcat = null;
+    }
+  }
+  // Reset if current selection no longer exists
+  if (state.currentSubcat !== '__direct__' &&
+      state.currentSubcat !== null &&
+      !subcats.some(function(s) { return s.id === state.currentSubcat; })) {
+    state.currentSubcat = hasSubcats ? subcats[0].id : (hasDirect ? '__direct__' : null);
+  }
+
+  // Context
+  document.getElementById('menu-context').innerHTML =
+    'Стол <b>' + state.selectedTable + '</b> · ' + state.guests + ' чел. · ' +
+    '<b>' + escapeHtml(mainCat.name) + '</b>';
+
+  // Subcategory tabs
+  // Show tabs only if there are subcategories. If the only items are direct
+  // (no subcats), we just show a flat list without tabs.
+  const tabsDiv = document.getElementById('subcat-tabs');
+  tabsDiv.innerHTML = '';
+
+  if (hasSubcats) {
+    // If there are direct items in addition to subcategories, show a leading
+    // tab named after the main category to host them.
+    if (hasDirect) {
+      const directTab = document.createElement('button');
+      directTab.className = 'subcat-tab' + (state.currentSubcat === '__direct__' ? ' active' : '');
+      directTab.textContent = mainCat.name;
+      directTab.style.fontWeight = '700';
+      directTab.onclick = function() {
+        state.currentSubcat = '__direct__';
+        renderMenu();
+      };
+      tabsDiv.appendChild(directTab);
+    }
+    subcats.forEach(function(sc) {
+      const tab = document.createElement('button');
+      tab.className = 'subcat-tab' + (state.currentSubcat === sc.id ? ' active' : '');
+      tab.textContent = sc.name;
+      tab.onclick = function() {
+        state.currentSubcat = sc.id;
+        renderMenu();
+      };
+      tabsDiv.appendChild(tab);
+    });
+  }
+
+  // Items for the currently selected tab
+  const itemsDiv = document.getElementById('menu-items');
+  itemsDiv.innerHTML = '';
+  let items;
+  if (state.currentSubcat === '__direct__') {
+    items = directItems;
+  } else if (state.currentSubcat === null) {
+    items = [];
+  } else {
+    items = APP_DATA.menu.filter(function(m) { return m.category_id === state.currentSubcat; })
+      .sort(function(a, b) {
+        return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+               String(a.name).localeCompare(String(b.name));
+      });
+  }
+
+  if (items.length === 0) {
+    itemsDiv.innerHTML = '<div class="empty-state"><h3>В этой категории пока нет блюд</h3><p>Добавьте их через админ-панель</p></div>';
+    renderCartPanel();
+    return;
+  }
+  items.forEach(function(item) {
+    const card = document.createElement('div');
+    card.className = 'menu-item-card';
+    card.innerHTML =
+      '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
+      '<div class="item-price">' + formatMoney(item.price) + '</div>' +
+      (item.needs_cooking === false || item.needs_cooking === 'false' ?
+        '<div class="item-no-cook">не требует готовки</div>' : '') +
+      '<button class="item-add-btn">+ Добавить</button>';
+    card.querySelector('.item-add-btn').onclick = function() { addToCart(item); };
+    itemsDiv.appendChild(card);
+  });
+
+  renderCartPanel();
+}
+
+function addToCart(item) {
+  const existing = state.cart.find(function(c) { return c.menu_item_id === item.id; });
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    // Find the subcategory for this item. We only care about REAL subcategories
+    // (those with a parent_id). If the item is attached directly to a main
+    // category (e.g. "Breakfast" with no subcategory) or has no category at all,
+    // we leave category_name empty — the cook will just see the dish name.
+    let categoryName = '';
+    let categoryNameTranslation = '';
+    if (item.category_id) {
+      const cat = APP_DATA.categories.find(function(c) { return c.id === item.category_id; });
+      if (cat && cat.parent_id) {
+        // It's a real subcategory — include its name + translation
+        categoryName = cat.name || '';
+        categoryNameTranslation = cat.name_translation || '';
+      }
+    }
+    state.cart.push({
+      menu_item_id: item.id,
+      name: item.name,
+      name_translation: item.name_translation || '',
+      category_name: categoryName,
+      category_name_translation: categoryNameTranslation,
+      price: Number(item.price),
+      quantity: 1,
+      comment: '',
+      needs_cooking: item.needs_cooking === true || item.needs_cooking === 'true' ||
+                     item.needs_cooking === 'TRUE' || item.needs_cooking === 1 || item.needs_cooking === '1'
+    });
+  }
+  renderCartPanel();
+  beep(880, 80, 0.15);
+}
+
+function changeCartQty(idx, delta) {
+  const item = state.cart[idx];
+  if (!item) return;
+  item.quantity += delta;
+  if (item.quantity <= 0) {
+    state.cart.splice(idx, 1);
+  }
+  renderCartPanel();
+  renderCartItems();
+}
+
+function setCartQty(idx, qty) {
+  const item = state.cart[idx];
+  if (!item) return;
+  item.quantity = Math.max(1, qty);
+  renderCartPanel();
+  renderCartItems();
+}
+
+function renderCartPanel() {
+  const panel = document.getElementById('cart-panel');
+  const count = state.cart.reduce(function(s, c) { return s + c.quantity; }, 0);
+  const total = state.cart.reduce(function(s, c) { return s + c.price * c.quantity; }, 0);
+  if (count === 0) {
+    panel.style.display = 'none';
+    document.body.classList.remove('has-cart-panel');
+  } else {
+    panel.style.display = 'flex';
+    document.body.classList.add('has-cart-panel');
+    document.getElementById('cart-count-num').textContent = count;
+    document.getElementById('cart-total-amount').textContent = formatMoney(total);
+  }
+}
+
+function showCart() {
+  renderCartItems();
+  showScreen('cart');
+}
+
+function renderCartItems() {
+  const div = document.getElementById('cart-items');
+  if (state.cart.length === 0) {
+    div.innerHTML = '<div class="empty-state"><h3>Корзина пуста</h3><p>Добавьте блюда из меню</p></div>';
+    document.getElementById('cart-grand-total').textContent = formatMoney(0);
+    return;
+  }
+  div.innerHTML = '';
+  let total = 0;
+  state.cart.forEach(function(item, idx) {
+    total += item.price * item.quantity;
+    const card = document.createElement('div');
+    card.className = 'cart-item';
+    card.innerHTML =
+      '<div class="ci-top">' +
+        '<div class="ci-name">' + escapeHtml(item.name) + '</div>' +
+        '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
+      '</div>' +
+      '<div class="stepper">' +
+        '<button onclick="changeCartQty(' + idx + ', -1)">−</button>' +
+        '<input type="number" value="' + item.quantity + '" onchange="setCartQty(' + idx + ', Number(this.value))">' +
+        '<button onclick="changeCartQty(' + idx + ', 1)">+</button>' +
+      '</div>' +
+      '<div class="ci-comment">' +
+        '<input type="text" placeholder="Комментарий повару..." value="' + escapeHtml(item.comment) + '" ' +
+        'onchange="setCartComment(' + idx + ', this.value)">' +
+      '</div>';
+    div.appendChild(card);
+  });
+  document.getElementById('cart-grand-total').textContent = formatMoney(total);
+}
+
+function setCartComment(idx, val) {
+  if (state.cart[idx]) state.cart[idx].comment = val;
+}
+
+function clearCart() {
+  if (!confirm('Очистить корзину?')) return;
+  state.cart = [];
+  renderCartPanel();
+  renderCartItems();
+}
+
+/* ---------- ACCEPT ORDER ---------- */
+let _orderSubmitting = false;  // module-level guard against double submission
+
+async function acceptOrder() {
+  // Double-submission guard: if already in progress, ignore
+  if (_orderSubmitting) {
+    console.warn('acceptOrder: already in progress, ignoring duplicate call');
+    return;
+  }
+  if (state.cart.length === 0) {
+    showToast('Корзина пуста', 'warning');
+    return;
+  }
+  if (!state.currentUser) {
+    showToast('Сначала войдите как официант', 'error');
+    return;
+  }
+  _orderSubmitting = true;
+  try {
+    const order = await apiPost('createOrder', {
+      table_number: state.selectedTable,
+      guests: state.guests,
+      main_category_id: state.mainCategory.id,
+      main_category_name: state.mainCategory.name,
+      items: state.cart,
+      waiter_id: state.currentUser.id,
+      waiter_name: state.currentUser.name
+    });
+    showToast('Заказ для столика ' + state.selectedTable + ' принят!', 'success');
+    state.cart = [];
+    state.selectedTable = null;
+    state.mainCategory = null;
+    state.currentSubcat = null;
+    document.body.classList.remove('has-cart-panel');
+    await refreshActiveOrders();
+    showScreen('home');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  } finally {
+    _orderSubmitting = false;
+  }
+}
+
+/* ---------- ACTIVE ORDERS ---------- */
+async function refreshActiveOrders() {
+  try {
+    if (!state.currentUser) return;
+    // Fetch only this waiter's orders
+    const data = await apiGet('getOrders', { status: 'accepted', waiter_id: state.currentUser.id });
+    const newOrders = data.orders || [];
+
+    // Also refresh table statuses so home screen shows which tables are taken
+    try {
+      const tablesData = await apiGet('getTables', { waiter_id: state.currentUser.id });
+      state.tableStatuses = tablesData.tables || [];
+    } catch (e) { /* ignore */ }
+
+    // Detect newly ready items across all active orders
+    // (item.is_ready === true AND we haven't notified about it yet)
+    const newReadyItems = [];
+    newOrders.forEach(function(order) {
+      (order.items || []).forEach(function(item) {
+        const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
+        if (isReady && !state.knownReadyItemIds.has(item.id)) {
+          state.knownReadyItemIds.add(item.id);
+          newReadyItems.push({
+            orderId: order.id,
+            tableNumber: order.table_number,
+            itemName: item.name,
+            quantity: item.quantity,
+            itemId: item.id
+          });
+        }
+      });
+    });
+
+    // Add new ready items to the alert queue (unless dismissed)
+    newReadyItems.forEach(function(r) {
+      const key = r.orderId + '_' + r.itemId;
+      if (!state.dismissedReadyAlerts.has(key)) {
+        state.readyAlerts.push(r);
+      }
+    });
+
+    // For orders that are no longer active (completed/deleted), drop their ready alerts
+    const activeOrderIds = new Set(newOrders.map(function(o) { return o.id; }));
+    state.readyAlerts = state.readyAlerts.filter(function(a) {
+      return activeOrderIds.has(a.orderId);
+    });
+    state.readyAlerts = state.readyAlerts.filter(function(a) {
+      return !state.dismissedReadyAlerts.has(a.orderId + '_' + a.itemId);
+    });
+
+    // Sound + toast for new ready items (only if there are any that were added just now)
+    if (newReadyItems.length > 0) {
+      if (state.initialLoadDone) {
+        notifySound();
+        newReadyItems.forEach(function(r) {
+          showToast('✓ Готово: ' + r.itemName + ' ×' + r.quantity + ' — столик ' + r.tableNumber, 'success');
+        });
+      }
+    }
+
+    state.activeOrders = newOrders;
+    state.initialLoadDone = true;
+
+    updateBadge();
+    // Update home view (table indicators + active orders + ready alerts)
+    if (document.getElementById('screen-home').classList.contains('active')) {
+      renderHome();
+      renderReadyAlerts();
+      renderHomeActiveOrders();
+    } else {
+      renderReadyAlerts();
+    }
+    // If order detail is open, refresh it
+    if (document.getElementById('screen-order-detail').classList.contains('active') && state.currentOrderId) {
+      renderOrderDetail();
+    }
+    // Update active orders list if visible
+    if (document.getElementById('screen-orders').classList.contains('active')) {
+      renderActiveOrdersList();
+    }
+  } catch (err) {
+    console.error('refresh active orders error', err);
+  }
+}
+
+function updateBadge() {
+  const badge = document.getElementById('active-orders-badge');
+  const count = state.activeOrders.length;
+  if (count > 0) {
+    badge.style.display = 'inline-flex';
+    badge.textContent = count;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/* ---------- Ready-to-serve alerts (top of home screen) ---------- */
+function renderReadyAlerts() {
+  const panel = document.getElementById('ready-alert-panel');
+  if (!panel) return;
+  if (state.readyAlerts.length === 0) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  panel.style.display = 'block';
+  // Group alerts by table for compactness
+  const byTable = {};
+  state.readyAlerts.forEach(function(a) {
+    if (!byTable[a.tableNumber]) byTable[a.tableNumber] = [];
+    byTable[a.tableNumber].push(a);
+  });
+  let html = '';
+  Object.keys(byTable).sort(function(a, b) { return Number(a) - Number(b); }).forEach(function(table) {
+    const alerts = byTable[table];
+    html += '<div class="ready-alert" onclick="dismissTableAlerts(' + table + ')">';
+    html += '<div class="ra-title">🔔 Столик №' + table + ' — можно подавать!</div>';
+    alerts.forEach(function(a) {
+      html += '<div class="ra-item">✓ ' + escapeHtml(a.itemName) + ' ×' + a.quantity + '</div>';
+    });
+    html += '<div style="font-size:0.85rem;margin-top:6px;opacity:0.9;">Нажмите, чтобы скрыть</div>';
+    html += '</div>';
+  });
+  panel.innerHTML = html;
+}
+
+function dismissTableAlerts(tableNumber) {
+  state.readyAlerts = state.readyAlerts.filter(function(a) {
+    if (Number(a.tableNumber) === Number(tableNumber)) {
+      state.dismissedReadyAlerts.add(a.orderId + '_' + a.itemId);
+      return false;
+    }
+    return true;
+  });
+  renderReadyAlerts();
+  renderHomeActiveOrders();
+}
+
+/* ---------- Active orders overview on home screen ---------- */
+function renderHomeActiveOrders() {
+  const container = document.getElementById('home-active-orders');
+  const listDiv = document.getElementById('home-active-orders-list');
+  const countSpan = document.getElementById('home-active-count');
+  if (!container) return;
+
+  if (state.activeOrders.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  countSpan.textContent = state.activeOrders.length;
+
+  // Sort by created_at ascending (oldest first — cook handles oldest first too)
+  const sorted = state.activeOrders.slice().sort(function(a, b) {
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
+
+  listDiv.innerHTML = '';
+  sorted.forEach(function(order) {
+    const items = order.items || [];
+    const cookingItems = items.filter(function(i) {
+      return i.needs_cooking === true || i.needs_cooking === 'true' ||
+             i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
+    });
+    const readyItems = cookingItems.filter(function(i) {
+      return i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE';
+    });
+    const allReady = cookingItems.length > 0 && readyItems.length === cookingItems.length;
+    const hasReady = readyItems.length > 0;
+
+    const card = document.createElement('div');
+    card.className = 'home-order-card' + (allReady ? ' all-ready' : (hasReady ? ' has-ready' : ''));
+    let html =
+      '<div class="hoc-row1">' +
+        '<div class="hoc-table">Столик №' + order.table_number + '</div>' +
+        '<div class="hoc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
+      '</div>';
+    html += '<div class="hoc-items">' +
+      (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' +
+      items.length + ' поз. · ' + formatMoney(order.total) +
+    '</div>';
+    // Progress line
+    if (cookingItems.length > 0) {
+      html += '<div class="hoc-items">Готовность: <b>' + readyItems.length + '/' + cookingItems.length + '</b>' +
+        (allReady ? ' ✅ всё готово — можно подавать!' : '') + '</div>';
+    } else {
+      html += '<div class="hoc-items">Только товары без готовки (напитки, хлеб и т.п.)</div>';
+    }
+    // List ready dishes if any (but not all — if all, just say "всё готово")
+    if (hasReady && !allReady) {
+      const readyNames = readyItems.map(function(i) {
+        return escapeHtml(i.name) + ' ×' + i.quantity;
+      }).join(', ');
+      html += '<div class="hoc-ready-list"><b>Готово к подаче:</b> ' + readyNames + '</div>';
+    }
+    // Actions
+    html += '<div class="hoc-actions">' +
+      '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>' +
+      '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>' +
+    '</div>';
+    card.innerHTML = html;
+    listDiv.appendChild(card);
+  });
+}
+
+function showActiveOrders() {
+  showScreen('orders');
+}
+
+async function loadActiveOrders() {
+  await refreshActiveOrders();
+  renderActiveOrdersList();
+}
+
+function renderActiveOrdersList() {
+  const div = document.getElementById('active-orders-list');
+  if (state.activeOrders.length === 0) {
+    div.innerHTML = '<div class="empty-state"><h3>Нет активных заказов</h3><p>Все заказы завершены</p></div>';
+    return;
+  }
+  div.innerHTML = '';
+  state.activeOrders.forEach(function(order) {
+    const itemsCount = order.items ? order.items.length : 0;
+    const readyCount = order.items ? order.items.filter(function(i) { return i.is_ready; }).length : 0;
+    const total = Number(order.total) || 0;
+    const card = document.createElement('div');
+    card.className = 'order-card';
+    card.innerHTML =
+      '<div class="oc-header">' +
+        '<div class="oc-table">Столик №' + order.table_number + '</div>' +
+        '<div class="oc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
+      '</div>' +
+      '<div class="oc-items">' +
+        (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' +
+        itemsCount + ' поз. · готово ' + readyCount + '/' + itemsCount +
+      '</div>' +
+      '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;">' +
+        formatMoney(total) +
+      '</div>' +
+      '<div class="oc-actions">' +
+        '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть / изменить</button>' +
+        '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>' +
+      '</div>';
+    div.appendChild(card);
+  });
+}
+
+/* ---------- ORDER DETAIL ---------- */
+function openOrderDetail(orderId) {
+  state.currentOrderId = orderId;
+  showScreen('order-detail');
+}
+
+async function renderOrderDetail() {
+  if (!state.currentOrderId) return;
+  try {
+    const order = await apiGet('getOrder', { id: state.currentOrderId });
+    state.currentOrder = order;
+
+    const infoDiv = document.getElementById('order-detail-info');
+    infoDiv.innerHTML =
+      '<div class="card">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<div>' +
+            '<div style="font-size:1.5rem;font-weight:700;">Столик №' + order.table_number + '</div>' +
+            '<div style="color:var(--text-muted);">' +
+              (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' + formatTime(order.created_at) +
+            '</div>' +
+          '</div>' +
+          '<div style="text-align:right;">' +
+            '<span class="pill pill-warning">' +
+              '<span class="status-dot accepted"></span>' + (order.status === 'accepted' ? 'Принят' : order.status) +
+            '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const itemsDiv = document.getElementById('order-detail-items');
+    itemsDiv.innerHTML = '';
+    if (!order.items || order.items.length === 0) {
+      itemsDiv.innerHTML = '<div class="empty-state"><h3>В заказе нет позиций</h3></div>';
+    } else {
+      // Note: ready-item notifications + sound are handled centrally in
+      // refreshActiveOrders() so we don't double-fire them here.
+
+      order.items.forEach(function(item, idx) {
+        const card = document.createElement('div');
+        card.className = 'cart-item' + (item.is_ready ? ' ready' : '');
+        card.innerHTML =
+          '<div class="ci-top">' +
+            '<div class="ci-name">' + escapeHtml(item.name) +
+              (item.is_ready ? '<span class="ci-ready-badge">✓ ГОТОВО</span>' : '') +
+            '</div>' +
+            '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<div class="stepper">' +
+              '<button onclick="changeOrderItemQty(\'' + item.id + '\', -1)">−</button>' +
+              '<input type="number" value="' + item.quantity + '" readonly>' +
+              '<button onclick="changeOrderItemQty(\'' + item.id + '\', 1)">+</button>' +
+            '</div>' +
+            '<button class="btn btn-danger btn-sm" onclick="removeOrderItem(\'' + item.id + '\')">Удалить</button>' +
+          '</div>' +
+          '<div class="ci-comment">' +
+            '<input type="text" placeholder="Комментарий повару..." value="' + escapeHtml(item.comment || '') + '" ' +
+            'onchange="updateOrderItemComment(\'' + item.id + '\', this.value)">' +
+          '</div>';
+        itemsDiv.appendChild(card);
+      });
+    }
+
+    document.getElementById('order-detail-total').textContent = formatMoney(order.total);
+
+  } catch (err) {
+    showToast('Ошибка загрузки заказа: ' + err.message, 'error');
+  }
+}
+
+async function changeOrderItemQty(itemId, delta) {
+  try {
+    const order = state.currentOrder;
+    const item = order.items.find(function(i) { return i.id === itemId; });
+    if (!item) return;
+    const newQty = Number(item.quantity) + delta;
+    if (newQty <= 0) {
+      await removeOrderItem(itemId);
+      return;
+    }
+    await apiPost('updateItemQuantity', { item_id: itemId, quantity: newQty });
+    await renderOrderDetail();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function removeOrderItem(itemId) {
+  if (!confirm('Удалить позицию из заказа?')) return;
+  try {
+    await apiPost('removeItemFromOrder', { item_id: itemId });
+    await renderOrderDetail();
+    showToast('Позиция удалена', 'info');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function updateOrderItemComment(itemId, comment) {
+  try {
+    await apiPost('updateItemComment', { item_id: itemId, comment: comment });
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function addMoreToOrder() {
+  // Switch to menu mode for adding to existing order
+  state.addingToOrder = true;
+  // Find main category from order
+  const mainCat = APP_DATA.categories.find(function(c) { return c.id === state.currentOrder.main_category_id; });
+  if (!mainCat) {
+    showToast('Категория не найдена', 'error');
+    return;
+  }
+  state.mainCategory = mainCat;
+  state.currentSubcat = null;
+  state.cart = []; // temporary cart for additions
+  showScreen('menu');
+  // Override the accept handler
+  // (the menu screen works the same way; we'll redirect the cart-accept to add-to-existing-order)
+  renderMenu();
+}
+
+// Override: if user is in "add to order" mode, acceptOrder becomes addToExistingOrder
+async function acceptOrderOrAddToExisting() {
+  if (state.addingToOrder) {
+    await addToExistingOrder();
+  } else {
+    await acceptOrder();
+  }
+}
+
+async function addToExistingOrder() {
+  if (state.cart.length === 0) {
+    showToast('Корзина пуста', 'warning');
+    return;
+  }
+  try {
+    let updatedOrder;
+    for (const item of state.cart) {
+      updatedOrder = await apiPost('addItemToOrder', {
+        order_id: state.currentOrderId,
+        menu_item_id: item.menu_item_id,
+        name: item.name,
+        name_translation: item.name_translation || '',
+        category_name: item.category_name || '',
+        category_name_translation: item.category_name_translation || '',
+        price: item.price,
+        quantity: item.quantity,
+        comment: item.comment,
+        needs_cooking: item.needs_cooking
+      });
+    }
+    state.cart = [];
+    state.addingToOrder = false;
+    state.mainCategory = null;
+    state.currentSubcat = null;
+    document.body.classList.remove('has-cart-panel');
+    showToast('Блюда добавлены к заказу', 'success');
+    showScreen('order-detail');
+    await renderOrderDetail();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function completeOrder() {
+  // Opens the payment method modal instead of immediately completing
+  await completeOrderById(state.currentOrderId);
+}
+
+let _pendingCompleteOrderId = null;
+let _selectedPaymentMethod = null;
+
+async function completeOrderById(orderId) {
+  if (!orderId) return;
+  // Find the order in state to display info
+  const order = state.activeOrders.find(function(o) { return o.id === orderId; });
+  if (!order) {
+    showToast('Заказ не найден, обновите страницу', 'warning');
+    await refreshActiveOrders();
+    return;
+  }
+  _pendingCompleteOrderId = orderId;
+  _selectedPaymentMethod = null;
+
+  // Reset modal state
+  document.querySelectorAll('.payment-option').forEach(function(el) { el.classList.remove('selected'); });
+  document.getElementById('confirm-payment-btn').disabled = true;
+
+  // Fill order info
+  const info = document.getElementById('payment-order-info');
+  info.innerHTML =
+    '<div><b>Столик №' + order.table_number + '</b> · ' + (order.main_category_name || '') + ' · ' + order.guests + ' чел.</div>' +
+    '<div style="font-size:1.5rem;font-weight:800;color:var(--primary);margin-top:6px;">' + formatMoney(order.total) + '</div>';
+
+  // Pre-fill payment amounts (same total for both, just for visual clarity)
+  document.getElementById('pay-amount-cash').textContent = formatMoney(order.total);
+  document.getElementById('pay-amount-card').textContent = formatMoney(order.total);
+
+  // Open modal
+  document.getElementById('modal-payment').classList.add('open');
+}
+
+function selectPaymentMethod(method) {
+  _selectedPaymentMethod = method;
+  document.querySelectorAll('.payment-option').forEach(function(el) {
+    el.classList.toggle('selected', el.dataset.method === method);
+  });
+  document.getElementById('confirm-payment-btn').disabled = false;
+}
+
+function closePaymentModal() {
+  document.getElementById('modal-payment').classList.remove('open');
+  _pendingCompleteOrderId = null;
+  _selectedPaymentMethod = null;
+}
+
+async function confirmCompleteOrder() {
+  if (!_pendingCompleteOrderId) return;
+  if (!_selectedPaymentMethod) {
+    showToast('Выберите тип оплаты', 'warning');
+    return;
+  }
+  const orderId = _pendingCompleteOrderId;
+  const method = _selectedPaymentMethod;
+  try {
+    await apiPost('updateOrderStatus', {
+      order_id: orderId,
+      status: 'completed',
+      payment_method: method
+    });
+    showToast('Заказ завершён (' + (method === 'cash' ? 'наличные' : 'карта') + ')', 'success');
+    closePaymentModal();
+    await refreshActiveOrders();
+    if (state.currentOrderId === orderId) {
+      state.currentOrderId = null;
+      showScreen('home');
+    }
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function cancelOrder() {
+  if (!confirm('Отменить заказ полностью? Он будет удалён.')) return;
+  try {
+    await apiPost('deleteOrder', { order_id: state.currentOrderId });
+    showToast('Заказ отменён', 'info');
+    state.currentOrderId = null;
+    await refreshActiveOrders();
+    showScreen('home');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* Override the cart accept button to handle both flows */
+const _origAcceptOrder = acceptOrder;
+acceptOrder = async function() {
+  if (state.addingToOrder) {
+    await addToExistingOrder();
+  } else {
+    await _origAcceptOrder();
+  }
+};
+
+/* ---------- Polling ---------- */
+function startBadgePolling() {
+  stopBadgePolling();
+  state.badgePollingTimer = setInterval(refreshActiveOrders, CONFIG.POLL_BADGE);
+}
+function stopBadgePolling() {
+  if (state.badgePollingTimer) {
+    clearInterval(state.badgePollingTimer);
+    state.badgePollingTimer = null;
+  }
+}
+function startOrderPolling() {
+  stopOrderPolling();
+  renderOrderDetail(); // initial render
+  state.pollingTimer = setInterval(renderOrderDetail, CONFIG.POLL_ORDERS);
+}
+function stopOrderPolling() {
+  if (state.pollingTimer) {
+    clearInterval(state.pollingTimer);
+    state.pollingTimer = null;
+  }
+}
+
+/* ---------- Init ---------- */
+init();
+</script>
+</body>
+</html>

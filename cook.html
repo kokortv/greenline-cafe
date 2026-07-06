@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Повар — Ресторан</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { background: #1a1a1a; color: #f5f5f5; }
+  .app-header { background: #d32f2f; }
+
+  .cook-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1600px;
+    margin: 0 auto;
+    min-height: calc(100vh - var(--header-h));
+  }
+
+  /* Sidebar — list of active orders */
+  .orders-sidebar {
+    background: #2a2a2a;
+    border-radius: var(--radius);
+    padding: 12px;
+    overflow-y: auto;
+    max-height: calc(100vh - var(--header-h) - 32px);
+  }
+  .sidebar-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .order-list-item {
+    background: #3a3a3a;
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    border-left: 4px solid #555;
+    transition: all 0.15s;
+  }
+  .order-list-item:hover { background: #454545; }
+  .order-list-item.active {
+    background: var(--primary);
+    border-left-color: #fff;
+  }
+  .order-list-item.all-ready { border-left-color: var(--success); }
+  .order-list-item.has-new { animation: pulse-new 1.5s 3; }
+  @keyframes pulse-new {
+    0%, 100% { background: #3a3a3a; }
+    50% { background: #4a3535; }
+  }
+  .oli-table { font-size: 1.1rem; font-weight: 700; }
+  .oli-meta { font-size: 0.85rem; opacity: 0.7; margin-top: 4px; }
+  .oli-progress {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 6px;
+    background: #555;
+  }
+  .oli-progress.all { background: var(--success); color: white; }
+  .oli-progress.partial { background: var(--warning); color: #1a1a1a; }
+
+  /* Main panel — selected order */
+  .order-display {
+    background: #2a2a2a;
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  .order-display-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #444;
+    margin-bottom: 16px;
+  }
+  .order-display-header .odh-table {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: #fff;
+  }
+  .order-display-header .odh-meta {
+    text-align: right;
+    color: #bbb;
+    font-size: 1rem;
+  }
+  .order-display-header .odh-time {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--warning);
+    margin-top: 4px;
+  }
+
+  .cook-items {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
+  .cook-item {
+    background: #3a3a3a;
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: stretch;
+    gap: 16px;
+    border-left: 6px solid var(--warning);
+    transition: all 0.15s;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .cook-item:hover {
+    background: #444;
+    transform: translateX(2px);
+  }
+  .cook-item:active {
+    transform: scale(0.99);
+  }
+  .cook-item.ready {
+    background: #2e4a2e;
+    border-left-color: var(--success);
+    opacity: 0.85;
+  }
+  .cook-item .ci-qty {
+    background: var(--primary);
+    color: white;
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-size: 2rem;
+    font-weight: 800;
+    min-width: 80px;
+    text-align: center;
+    align-self: flex-start;
+  }
+  .cook-item.ready .ci-qty { background: var(--success); }
+  .cook-item .ci-body { flex: 1; }
+  .cook-item .ci-cat {
+    font-size: 0.95rem;
+    color: #ffb74d;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    padding: 2px 8px;
+    background: rgba(255,183,77,0.15);
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .cook-item.ready .ci-cat { opacity: 0.6; }
+  .cook-item .ci-name {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .cook-item .ci-translation {
+    font-size: 1.1rem;
+    color: #90caf9;
+    font-style: italic;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .cook-item.ready .ci-translation { opacity: 0.6; }
+  .cook-item .ci-cat-translation {
+    font-size: 0.85rem;
+    opacity: 0.85;
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .cook-item-spinner .btn-spinner {
+    border-color: rgba(255,255,255,0.3);
+    border-top-color: #ffb74d;
+    width: 22px;
+    height: 22px;
+  }
+  .cook-item.ready .ci-name { text-decoration: line-through; opacity: 0.7; }
+  .cook-item .ci-comment {
+    background: #fffde7;
+    color: #1a1a1a;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-top: 8px;
+    border-left: 4px solid var(--warning);
+  }
+  .cook-item .ci-comment::before {
+    content: '⚠ Комментарий: ';
+    font-weight: 800;
+    color: var(--accent-dark);
+  }
+  .cook-item .ci-check {
+    align-self: center;
+    min-width: 90px;
+  }
+  .cook-item .check-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--success);
+    color: white;
+    font-size: 2rem;
+    font-weight: 700;
+    border: 4px solid #1b5e20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .cook-item .check-btn:active { transform: scale(0.92); }
+  .cook-item .check-btn.uncheck {
+    background: #555;
+    border-color: #333;
+  }
+
+  .order-empty {
+    text-align: center;
+    padding: 80px 20px;
+    color: #888;
+  }
+  .order-empty h2 {
+    font-size: 2rem;
+    margin-bottom: 12px;
+    color: #aaa;
+  }
+
+  .all-ready-banner {
+    background: var(--success);
+    color: white;
+    padding: 16px;
+    border-radius: var(--radius);
+    text-align: center;
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    animation: pulse 2s infinite;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: #2a2a2a; }
+  ::-webkit-scrollbar-thumb { background: #555; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #666; }
+
+  @media (max-width: 900px) {
+    .cook-layout { grid-template-columns: 1fr; }
+    .orders-sidebar { max-height: 250px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header" id="app-header" style="display:none;">
+  <h1>Повар</h1>
+  <div class="header-actions">
+    <a href="index.html" class="nav-link">Официант</a>
+    <a href="admin.html" class="nav-link">Админ</a>
+    <span class="badge has-items" id="orders-count">0</span>
+    <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
+      <span id="user-chip-name">—</span>
+      <span class="uc-logout">⏻</span>
+    </span>
+  </div>
+</header>
+
+<div class="login-screen" id="login-screen" style="display:none;">
+  <h1>Повар</h1>
+  <p class="login-subtitle">Выберите своё имя, чтобы начать смену</p>
+  <div class="login-user-grid" id="login-users"></div>
+  <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
+    Если вас нет в списке — попросите администратора добавить вас.
+  </p>
+</div>
+
+<div class="cook-layout" id="cook-layout" style="display:none;">
+  <aside class="orders-sidebar">
+    <div class="sidebar-title">
+      Заказы в работе
+      <span id="active-count" style="background:var(--primary);padding:2px 10px;border-radius:12px;font-size:0.9rem;">0</span>
+    </div>
+    <div id="orders-list"></div>
+  </aside>
+
+  <main class="order-display">
+    <div id="order-view">
+      <div class="order-empty">
+        <h2>Нет активных заказов</h2>
+        <p>Когда официант примет заказ, он появится здесь</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+let cookState = {
+  currentUser: null,
+  orders: [],
+  currentOrderId: null,
+  knownOrderIds: new Set(),
+  pollingTimer: null,
+  lastDisplayedOrderItems: new Set()
+};
+
+async function init() {
+  if (!checkConfig()) return;
+  try {
+    await loadAppData();
+    // Check login
+    const user = getCurrentUser();
+    if (!user || user.role !== 'cook') {
+      showLoginScreen();
+      return;
+    }
+    const stillExists = APP_DATA.users.find(function(u) { return u.id === user.id && u.role === 'cook'; });
+    if (!stillExists) {
+      setCurrentUser(null);
+      showLoginScreen();
+      return;
+    }
+    cookState.currentUser = stillExists;
+    startApp();
+  } catch (err) {
+    showToast('Ошибка загрузки: ' + err.message, 'error');
+  }
+}
+
+function showLoginScreen() {
+  document.getElementById('app-header').style.display = 'none';
+  document.getElementById('cook-layout').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'block';
+  const grid = document.getElementById('login-users');
+  grid.innerHTML = '';
+  const cooks = APP_DATA.users.filter(function(u) { return u.role === 'cook'; })
+    .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
+  if (cooks.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><h3>Нет ни одного повара</h3><p>Добавьте сотрудников в админ-панели</p></div>';
+    return;
+  }
+  cooks.forEach(function(c) {
+    const btn = document.createElement('button');
+    btn.className = 'login-user-btn';
+    btn.innerHTML = escapeHtml(c.name) + '<span class="role-badge cook">повар</span>';
+    btn.onclick = function() { loginAs(c); };
+    grid.appendChild(btn);
+  });
+}
+
+function loginAs(user) {
+  setCurrentUser({ id: user.id, name: user.name, role: user.role });
+  cookState.currentUser = user;
+  document.getElementById('login-screen').style.display = 'none';
+  startApp();
+}
+
+function startApp() {
+  document.getElementById('app-header').style.display = 'flex';
+  document.getElementById('cook-layout').style.display = 'grid';
+  document.getElementById('user-chip-name').textContent = cookState.currentUser.name;
+  // Preload cook's notification sound
+  preloadSounds(['cook_new_order']);
+  startPolling();
+}
+
+async function fetchOrders() {
+  try {
+    const data = await apiGet('getOrders', { status: 'accepted' });
+    const newOrders = data.orders || [];
+
+    // Detect new orders (notification + sound)
+    newOrders.forEach(function(o) {
+      if (!cookState.knownOrderIds.has(o.id)) {
+        cookState.knownOrderIds.add(o.id);
+        // Only beep if we already had orders before (not on initial load)
+        if (cookState.orders.length > 0 || cookState.knownOrderIds.size > 1) {
+          showToast('🔔 Новый заказ! Столик ' + o.table_number + (o.waiter_name ? ' (официант: ' + o.waiter_name + ')' : ''), 'info');
+          cookNotifySound();
+        }
+      }
+    });
+
+    cookState.orders = newOrders;
+
+    // If current order no longer in active list, deselect
+    if (state_currentOrderIdExists()) {
+      // ok
+    } else {
+      cookState.currentOrderId = null;
+    }
+
+    // Auto-select first order if none selected
+    if (!cookState.currentOrderId && cookState.orders.length > 0) {
+      cookState.currentOrderId = cookState.orders[0].id;
+    }
+
+    renderSidebar();
+    renderOrder();
+    updateCount();
+  } catch (err) {
+    console.error('fetch error', err);
+  }
+}
+
+function state_currentOrderIdExists() {
+  return cookState.orders.some(function(o) { return o.id === cookState.currentOrderId; });
+}
+
+function updateCount() {
+  const n = cookState.orders.length;
+  const badge = document.getElementById('orders-count');
+  const sideCount = document.getElementById('active-count');
+  badge.textContent = n;
+  sideCount.textContent = n;
+  badge.style.display = n > 0 ? 'inline-flex' : 'none';
+}
+
+function renderSidebar() {
+  const div = document.getElementById('orders-list');
+  if (cookState.orders.length === 0) {
+    div.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">Список пуст</div>';
+    return;
+  }
+  // Sort by created_at ascending (oldest first — cook should cook oldest first)
+  const sorted = cookState.orders.slice().sort(function(a, b) {
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
+
+  div.innerHTML = '';
+  sorted.forEach(function(order) {
+    const items = order.items || [];
+    const needsCookingItems = items.filter(function(i) {
+      return i.needs_cooking === true || i.needs_cooking === 'true' ||
+             i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
+    });
+    const readyCount = needsCookingItems.filter(function(i) {
+      return i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE';
+    }).length;
+    const total = needsCookingItems.length;
+    const allReady = total > 0 && readyCount === total;
+
+    const item = document.createElement('div');
+    item.className = 'order-list-item' +
+      (order.id === cookState.currentOrderId ? ' active' : '') +
+      (allReady ? ' all-ready' : '');
+    item.innerHTML =
+      '<div class="oli-table">Столик №' + order.table_number +
+        (order.waiter_name ? ' <span class="waiter-tag">' + escapeHtml(order.waiter_name) + '</span>' : '') +
+      '</div>' +
+      '<div class="oli-meta">' + formatTime(order.created_at) + ' · ' + order.guests + ' чел.</div>' +
+      '<span class="oli-progress ' + (allReady ? 'all' : (readyCount > 0 ? 'partial' : '')) + '">' +
+        readyCount + '/' + total + ' готово' +
+      '</span>';
+    item.onclick = function() {
+      cookState.currentOrderId = order.id;
+      cookState.lastDisplayedOrderItems = new Set();
+      renderSidebar();
+      renderOrder();
+    };
+    div.appendChild(item);
+  });
+}
+
+function renderOrder() {
+  const div = document.getElementById('order-view');
+  if (!cookState.currentOrderId) {
+    div.innerHTML =
+      '<div class="order-empty">' +
+        '<h2>Нет активных заказов</h2>' +
+        '<p>Когда официант примет заказ, он появится здесь</p>' +
+      '</div>';
+    return;
+  }
+
+  const order = cookState.orders.find(function(o) { return o.id === cookState.currentOrderId; });
+  if (!order) {
+    div.innerHTML = '<div class="order-empty"><h2>Заказ не найден</h2></div>';
+    return;
+  }
+
+  // Filter only items that need cooking.
+  // Be tolerant of boolean true / 'true' / 'TRUE' / 1 / '1' since Sheets
+  // may return any of these depending on how the cell was written.
+  function needsCooking(v) {
+    return v === true || v === 1 || v === 'true' || v === 'TRUE' || v === '1' || v === 1;
+  }
+  const items = (order.items || []).filter(function(i) {
+    return needsCooking(i.needs_cooking);
+  });
+
+  const allReady = items.length > 0 && items.every(function(i) {
+    return i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE';
+  });
+
+  // Track item readiness for highlight
+  const currentReadyIds = new Set(items.filter(function(i) {
+    return i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE';
+  }).map(function(i) { return i.id; }));
+
+  let html =
+    '<div class="order-display-header">' +
+      '<div>' +
+        '<div class="odh-table">Столик №' + order.table_number + '</div>' +
+        '<div style="color:#bbb;margin-top:4px;">' +
+          (order.main_category_name || '') + ' · ' + order.guests + ' гостей' +
+          (order.waiter_name ? ' · <span style="color:#90caf9;">официант: ' + escapeHtml(order.waiter_name) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="odh-meta">' +
+        '<div>Принят в ' + formatTime(order.created_at) + '</div>' +
+        '<div class="odh-time">' + timeAgo(order.created_at) + '</div>' +
+      '</div>' +
+    '</div>';
+
+  if (allReady) {
+    html += '<div class="all-ready-banner">✓ Все блюда готовы! Можно подавать</div>';
+  }
+
+  if (items.length === 0) {
+    html += '<div class="order-empty"><h2>В этом заказе нет блюд для готовки</h2><p>Только товары «без готовки» (напитки, хлеб и т.п.)</p></div>';
+  } else {
+    html += '<div class="cook-items">';
+    items.forEach(function(item) {
+      const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
+      const isJustReady = isReady && !cookState.lastDisplayedOrderItems.has(item.id);
+
+      // Resolve the dish's subcategory name. We only want REAL subcategories
+      // (those that have a parent_id in the categories list). If the dish is
+      // attached directly to a main category or has no category, we leave
+      // categoryName empty — the cook will just see the dish name.
+      let categoryName = item.category_name || '';
+      let categoryNameTranslation = item.category_name_translation || '';
+      if (item.menu_item_id && APP_DATA && APP_DATA.menu) {
+        const dish = APP_DATA.menu.find(function(m) { return m.id === item.menu_item_id; });
+        if (dish && dish.category_id && APP_DATA.categories) {
+          const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
+          // Only use it if it's a real subcategory (has parent_id)
+          if (cat && cat.parent_id) {
+            if (!categoryName) categoryName = cat.name || '';
+            if (!categoryNameTranslation) categoryNameTranslation = cat.name_translation || '';
+          } else {
+            // Dish is in a main category (no subcategory) — clear any stale data
+            categoryName = '';
+            categoryNameTranslation = '';
+          }
+        }
+      }
+
+      // The whole cook-item block is clickable to toggle ready/unready
+      html +=
+        '<div class="cook-item ' + (isReady ? 'ready' : '') + (isJustReady ? ' highlight-once' : '') + '" ' +
+          'onclick="toggleReady(this, \'' + item.id + '\', ' + (!isReady) + ')" ' +
+          'title="Нажмите, чтобы отметить ' + (isReady ? 'не готовым' : 'готовым') + '">' +
+          '<div class="ci-qty">' + item.quantity + '</div>' +
+          '<div class="ci-body">' +
+            (categoryName ?
+              '<div class="ci-cat">' + escapeHtml(categoryName) +
+                (categoryNameTranslation ? ' <span class="ci-cat-translation">/ ' + escapeHtml(categoryNameTranslation) + '</span>' : '') +
+              '</div>' : ''
+            ) +
+            '<div class="ci-name">' + escapeHtml(item.name) + '</div>' +
+            (item.name_translation ?
+              '<div class="ci-translation">' + escapeHtml(item.name_translation) + '</div>' : ''
+            ) +
+            (item.comment ?
+              '<div class="ci-comment">' + escapeHtml(item.comment) + '</div>' : ''
+            ) +
+          '</div>' +
+          '<div class="ci-check">' +
+            '<div class="check-btn ' + (isReady ? '' : 'uncheck') + '">' +
+              (isReady ? '✓' : '☐') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+  }
+
+  div.innerHTML = html;
+
+  // Update lastDisplayedOrderItems for next diff
+  cookState.lastDisplayedOrderItems = currentReadyIds;
+}
+
+let _togglingItems = new Set();  // item IDs currently being toggled
+
+async function toggleReady(btnEl, itemId, newValue) {
+  // Prevent rapid double-clicks on the same item
+  if (_togglingItems.has(itemId)) return;
+  _togglingItems.add(itemId);
+
+  // Visual loading state on the cook-item block
+  const cookItem = btnEl.closest('.cook-item') || btnEl;
+  const originalOpacity = cookItem.style.opacity || '1';
+  cookItem.style.opacity = '0.5';
+  cookItem.style.pointerEvents = 'none';
+  // Show a small spinner overlay
+  const spinner = document.createElement('div');
+  spinner.className = 'cook-item-spinner';
+  spinner.innerHTML = '<span class="btn-spinner"></span>';
+  spinner.style.cssText = 'position:absolute;top:50%;right:90px;transform:translateY(-50%);';
+  cookItem.style.position = 'relative';
+  cookItem.appendChild(spinner);
+
+  try {
+    await apiPost('toggleItemReady', { item_id: itemId, is_ready: newValue });
+    if (newValue) {
+      beep(1100, 100, 0.2);
+      setTimeout(function() { beep(1400, 150, 0.2); }, 120);
+    }
+    await fetchOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  } finally {
+    _togglingItems.delete(itemId);
+    if (spinner.parentNode) spinner.remove();
+    cookItem.style.opacity = originalOpacity;
+    cookItem.style.pointerEvents = '';
+  }
+}
+
+function startPolling() {
+  fetchOrders();
+  cookState.pollingTimer = setInterval(fetchOrders, CONFIG.POLL_COOK);
+}
+
+init();
+</script>
+</body>
+</html>

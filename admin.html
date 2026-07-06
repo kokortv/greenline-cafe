@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Администратор — Ресторан</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .admin-tabs { margin-bottom: 20px; }
+  .settings-card {
+    background: white;
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+    max-width: 600px;
+  }
+  .settings-card .form-group { margin-bottom: 18px; }
+
+  /* Drag handle (visual indicator on draggable rows) */
+  .drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    user-select: none;
+    padding: 0 6px;
+    line-height: 1;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  .cat-row.dragging,
+  .menu-row.dragging {
+    opacity: 0.4;
+    background: #fff8e1 !important;
+  }
+  .cat-row.drag-over,
+  .menu-row.drag-over {
+    border-top: 3px solid var(--primary);
+    margin-top: 5px;
+  }
+  .cat-row[draggable="true"],
+  .menu-row[draggable="true"] {
+    transition: opacity 0.15s, background 0.15s;
+  }
+  .reorder-hint {
+    background: #e3f2fd;
+    color: var(--info);
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .user-row {
+    background: white;
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: var(--shadow);
+  }
+  .user-row .user-name {
+    flex: 1;
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+  .user-row .user-role-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: var(--primary-light);
+    color: var(--primary-dark);
+  }
+  .user-row .user-role-badge.cook {
+    background: #ffe0b2;
+    color: var(--accent-dark);
+  }
+  .settings-card label { font-weight: 600; }
+
+  .cat-row, .menu-row {
+    background: white;
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: var(--shadow);
+    flex-wrap: wrap;
+  }
+  .cat-row.main-cat {
+    border-left: 4px solid var(--primary);
+    font-weight: 700;
+  }
+  .cat-row.sub-cat {
+    border-left: 4px solid var(--accent);
+    margin-left: 20px;
+  }
+  .cat-row .cat-name { flex: 1; min-width: 200px; }
+  .cat-row .cat-actions { display: flex; gap: 6px; }
+
+  .menu-row .menu-name { flex: 1; min-width: 180px; font-weight: 600; }
+  .menu-row .menu-cat { min-width: 150px; color: var(--text-muted); font-size: 0.9rem; }
+  .menu-row .menu-price { min-width: 100px; font-weight: 700; color: var(--primary); }
+  .menu-row .menu-cook-flag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .menu-row .menu-cook-flag.yes { background: #ffe0b2; color: var(--accent-dark); }
+  .menu-row .menu-cook-flag.no { background: #e0e0e0; color: var(--text-muted); }
+  .menu-row .menu-actions { display: flex; gap: 6px; }
+
+  .filter-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filter-bar select, .filter-bar input {
+    width: auto;
+    min-width: 150px;
+  }
+
+  .order-history-row {
+    background: white;
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .order-history-row.accepted { border-left: 4px solid var(--warning); }
+  .order-history-row.completed { border-left: 4px solid var(--success); }
+  .order-history-row .ohr-table { font-weight: 700; min-width: 80px; font-size: 1.1rem; }
+  .order-history-row .ohr-cat { color: var(--text-muted); min-width: 100px; }
+  .order-history-row .ohr-time { color: var(--text-muted); min-width: 140px; font-size: 0.9rem; }
+  .order-history-row .ohr-total { font-weight: 700; color: var(--primary); min-width: 100px; }
+  .order-history-row .ohr-status { min-width: 100px; }
+  .order-history-row .ohr-actions { margin-left: auto; display: flex; gap: 6px; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: white;
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+  .stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+  .stat-card .stat-label {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 4px;
+  }
+
+  .checkbox-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .checkbox-field input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1 id="restaurant-name">Администратор</h1>
+  <div class="header-actions">
+    <a href="index.html" class="nav-link">Официант</a>
+    <a href="cook.html" class="nav-link">Повар</a>
+  </div>
+</header>
+
+<main class="app-main">
+  <div class="tabs admin-tabs">
+    <button class="tab active" data-tab="orders" onclick="switchTab('orders')">Заказы</button>
+    <button class="tab" data-tab="menu" onclick="switchTab('menu')">Меню</button>
+    <button class="tab" data-tab="categories" onclick="switchTab('categories')">Категории</button>
+    <button class="tab" data-tab="staff" onclick="switchTab('staff')">Сотрудники</button>
+    <button class="tab" data-tab="sounds" onclick="switchTab('sounds')">Звуки</button>
+    <button class="tab" data-tab="settings" onclick="switchTab('settings')">Настройки</button>
+  </div>
+
+  <!-- ORDERS TAB -->
+  <div class="tab-content" id="tab-orders">
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <div class="filter-bar">
+      <label>Статус:</label>
+      <select id="filter-status" onchange="loadOrders()">
+        <option value="all" selected>Все</option>
+        <option value="accepted">Принятые</option>
+        <option value="completed">Завершённые</option>
+      </select>
+      <label>Дата:</label>
+      <input type="date" id="filter-date" onchange="loadOrders()">
+      <button class="btn btn-outline" onclick="clearFilters()">Сбросить</button>
+      <button class="btn btn-primary" onclick="loadOrders()">↻ Обновить</button>
+    </div>
+
+    <div id="orders-list"></div>
+  </div>
+
+  <!-- MENU TAB -->
+  <div class="tab-content" id="tab-menu" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 class="section-title" style="margin:0;">Меню блюд</h2>
+      <button class="btn btn-primary" onclick="openMenuModal()">+ Добавить блюдо</button>
+    </div>
+
+    <div class="filter-bar">
+      <label>Категория:</label>
+      <select id="filter-menu-cat" onchange="renderMenuList()">
+        <option value="">Все</option>
+      </select>
+    </div>
+
+    <div id="menu-list"></div>
+  </div>
+
+  <!-- CATEGORIES TAB -->
+  <div class="tab-content" id="tab-categories" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 class="section-title" style="margin:0;">Категории меню</h2>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="openCategoryModal(false)">+ Основная категория</button>
+        <button class="btn btn-info" onclick="openCategoryModal(true)">+ Подкатегория</button>
+      </div>
+    </div>
+    <div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">
+      <b>Структура:</b> Основные категории (Завтрак, Обед, Ужин, Бар) → Подкатегории (Первые блюда, Горячее и т.п.) → Блюда.
+      Подкатегория привязана к основной категории. Блюдо привязано к подкатегории.
+    </div>
+    <div id="cat-list"></div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div class="tab-content" id="tab-settings" style="display:none;">
+    <h2 class="section-title">Общие настройки</h2>
+    <div class="settings-card">
+      <div class="form-group">
+        <label>Название ресторана</label>
+        <input type="text" id="set-restaurant-name" placeholder="Например: У Палыча">
+      </div>
+      <div class="form-group">
+        <label>Валюта</label>
+        <input type="text" id="set-currency" placeholder="₽, $, €, грн, сум..." value="₽">
+      </div>
+      <div class="form-group">
+        <label>Количество столиков</label>
+        <input type="number" id="set-table-count" min="1" max="200" value="20">
+      </div>
+      <div class="form-group">
+        <label>Язык перевода для повара</label>
+        <input type="text" id="set-translation-lang" placeholder="Например: English, ქართული, Türkçe, Қазақша">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+          Если указано — у каждого блюда появится поле для перевода названия, и повар будет видеть оба названия. Оставьте пустым, чтобы отключить переводы.
+        </p>
+      </div>
+      <div class="form-group">
+        <label>Налог (%) — добавляется к итогу</label>
+        <input type="number" id="set-tax" min="0" max="100" step="0.1" value="0">
+      </div>
+      <div class="form-group checkbox-field">
+        <input type="checkbox" id="set-sound">
+        <label for="set-sound" style="margin:0;">Звуковые оповещения для официанта (когда блюдо готово)</label>
+      </div>
+      <button class="btn btn-primary btn-lg" onclick="withLoading(this, 'Сохраняем...', function() { return saveSettings(); })" style="width:100%;">Сохранить настройки</button>
+    </div>
+
+    <h2 class="section-title" style="margin-top:30px;">Опасная зона</h2>
+    <div class="settings-card" style="border:2px solid var(--danger);">
+      <p style="margin-bottom:12px;"><b>Сброс данных</b> — удалит все заказы, но сохранит настройки, категории и меню.</p>
+      <button class="btn btn-danger" onclick="resetOrders()">Удалить все заказы</button>
+    </div>
+  </div>
+
+  <!-- STAFF TAB -->
+  <div class="tab-content" id="tab-staff" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 class="section-title" style="margin:0;">Сотрудники</h2>
+      <button class="btn btn-primary" onclick="openUserModal()">+ Добавить сотрудника</button>
+    </div>
+    <div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">
+      <b>Официанты</b> — видят только свои заказы и столики, которые они заняли. <br>
+      <b>Повара</b> — видят все активные заказы и отмечают блюда готовыми.<br>
+      При входе на страницу официанта/повара сотрудник выбирает своё имя.
+    </div>
+    <h3 style="margin-bottom:10px;">Официанты</h3>
+    <div id="waiters-list"></div>
+    <h3 style="margin:20px 0 10px;">Повара</h3>
+    <div id="cooks-list"></div>
+  </div>
+
+  <!-- SOUNDS TAB -->
+  <div class="tab-content" id="tab-sounds" style="display:none;">
+    <h2 class="section-title">Звуки уведомлений</h2>
+    <div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">
+      Загрузите свои звуки — они будут воспроизводиться у сотрудников вместо стандартного сигнала.
+      Формат: <b>MP3 или WAV</b>, размер до <b>~600 КБ</b> (после base64-кодирования).
+      Если звук не загружен — используется стандартный «бип».
+    </div>
+    <div class="settings-card">
+      <div class="form-group">
+        <label>🔔 Звук для повара — «Новый заказ»</label>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">
+          Проигрывается у повара, когда официант принимает новый заказ.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="sound-file-cook_new_order" accept="audio/mp3,audio/wav,audio/mpeg,audio/ogg" style="flex:1;min-width:200px;">
+          <button class="btn btn-primary" onclick="withLoading(this, 'Загружаем...', function() { return uploadSoundFile('cook_new_order'); })">Загрузить</button>
+          <button class="btn btn-outline" onclick="playSoundPreview('cook_new_order')">▶ Прослушать</button>
+          <button class="btn btn-danger" onclick="deleteSoundConfirm('cook_new_order')">Удалить</button>
+        </div>
+        <p style="font-size:0.85rem;margin-top:6px;color:var(--text-muted);" id="sound-status-cook_new_order"></p>
+      </div>
+      <hr style="margin:20px 0;border:none;border-top:1px solid var(--border);">
+      <div class="form-group">
+        <label>✓ Звук для официанта — «Блюдо готово»</label>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">
+          Проигрывается у официанта, когда повар отметил блюдо готовым.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="sound-file-waiter_ready" accept="audio/mp3,audio/wav,audio/mpeg,audio/ogg" style="flex:1;min-width:200px;">
+          <button class="btn btn-primary" onclick="withLoading(this, 'Загружаем...', function() { return uploadSoundFile('waiter_ready'); })">Загрузить</button>
+          <button class="btn btn-outline" onclick="playSoundPreview('waiter_ready')">▶ Прослушать</button>
+          <button class="btn btn-danger" onclick="deleteSoundConfirm('waiter_ready')">Удалить</button>
+        </div>
+        <p style="font-size:0.85rem;margin-top:6px;color:var(--text-muted);" id="sound-status-waiter_ready"></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Menu item modal -->
+<div class="modal-backdrop" id="modal-menu">
+  <div class="modal">
+    <h2 id="modal-menu-title">Новое блюдо</h2>
+    <input type="hidden" id="menu-id">
+    <div class="form-group">
+      <label>Название блюда</label>
+      <input type="text" id="menu-name" placeholder="Например: Борщ">
+    </div>
+    <div class="form-group">
+      <label>Перевод названия <span id="translation-lang-label" style="color:var(--text-muted);font-weight:normal;">(укажите язык в Настройках)</span></label>
+      <input type="text" id="menu-name-translation" placeholder="Например: Borscht">
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+        Будет показано повару под основным названием. Оставьте пустым, если перевода нет.
+      </p>
+    </div>
+    <div class="form-group">
+      <label>Подкатегория</label>
+      <select id="menu-category"></select>
+    </div>
+    <div class="form-group">
+      <label>Цена</label>
+      <input type="number" id="menu-price" min="0" step="0.01" placeholder="0">
+    </div>
+    <div class="form-group checkbox-field">
+      <input type="checkbox" id="menu-cook" checked>
+      <label for="menu-cook" style="margin:0;">Требует готовки (виден повару)</label>
+    </div>
+    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
+      Снимите галочку для готовых товаров (вода, хлеб, соки, алкоголь) — они не появятся у повара.
+      Порядок товаров меняется перетаскиванием в списке.
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-menu')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveMenuItem(); })">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Category modal -->
+<div class="modal-backdrop" id="modal-cat">
+  <div class="modal">
+    <h2 id="modal-cat-title">Новая категория</h2>
+    <input type="hidden" id="cat-id">
+    <input type="hidden" id="cat-is-sub">
+    <div class="form-group">
+      <label>Название</label>
+      <input type="text" id="cat-name" placeholder="Например: Первые блюда">
+    </div>
+    <div class="form-group" id="cat-translation-group" style="display:none;">
+      <label>Перевод названия <span id="cat-translation-lang-label" style="color:var(--text-muted);font-weight:normal;"></span></label>
+      <input type="text" id="cat-name-translation" placeholder="Например: Soups">
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+        Будет показано повару под основным названием категории. Только для подкатегорий.
+      </p>
+    </div>
+    <div class="form-group" id="cat-parent-group" style="display:none;">
+      <label>Основная категория</label>
+      <select id="cat-parent"></select>
+    </div>
+    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
+      Порядок категорий меняется перетаскиванием в списке.
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-cat')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveCategory(); })">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- User modal -->
+<div class="modal-backdrop" id="modal-user">
+  <div class="modal">
+    <h2 id="modal-user-title">Новый сотрудник</h2>
+    <input type="hidden" id="user-id">
+    <div class="form-group">
+      <label>Имя</label>
+      <input type="text" id="user-name" placeholder="Например: Анна">
+    </div>
+    <div class="form-group">
+      <label>Роль</label>
+      <select id="user-role">
+        <option value="waiter">Официант</option>
+        <option value="cook">Повар</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-user')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveUserBtn(); })">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Order detail modal (admin) -->
+<div class="modal-backdrop" id="modal-order">
+  <div class="modal" style="max-width:700px;">
+    <h2>Заказ <span id="ord-detail-id"></span></h2>
+    <div id="ord-detail-content"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-order')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+let adminState = {
+  orders: [],
+  filterStatus: 'all',
+  filterDate: ''
+};
+
+async function init() {
+  if (!checkConfig()) return;
+  try {
+    await loadAppData();
+    document.getElementById('restaurant-name').textContent =
+      (APP_DATA.settings.restaurant_name || 'Ресторан') + ' — Админ';
+    populateSettingsForm();
+    populateCategoryFilter();
+    renderMenuList();
+    renderCategoryList();
+    renderStaffList();
+    updateSoundStatuses();
+    loadOrders();
+  } catch (err) {
+    showToast('Ошибка загрузки: ' + err.message, 'error');
+  }
+}
+
+/* ---------- Tab switching ---------- */
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelector('[data-tab="' + name + '"]').classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
+  document.getElementById('tab-' + name).style.display = 'block';
+  if (name === 'orders') loadOrders();
+  if (name === 'menu') renderMenuList();
+  if (name === 'categories') renderCategoryList();
+  if (name === 'staff') renderStaffList();
+  if (name === 'sounds') updateSoundStatuses();
+}
+
+/* ---------- SETTINGS ---------- */
+function populateSettingsForm() {
+  document.getElementById('set-restaurant-name').value = APP_DATA.settings.restaurant_name || '';
+  document.getElementById('set-currency').value = APP_DATA.settings.currency || '₽';
+  document.getElementById('set-table-count').value = APP_DATA.settings.table_count || 20;
+  document.getElementById('set-translation-lang').value = APP_DATA.settings.translation_lang || '';
+  document.getElementById('set-tax').value = APP_DATA.settings.tax_percent || 0;
+  document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
+    APP_DATA.settings.sound_notifications === true;
+  updateTranslationLangLabel();
+}
+
+function updateTranslationLangLabel() {
+  const lang = APP_DATA.settings.translation_lang || '';
+  const labels = document.querySelectorAll('#translation-lang-label');
+  labels.forEach(function(el) {
+    el.textContent = lang ? '(' + lang + ')' : '(укажите язык в Настройках)';
+  });
+}
+
+async function saveSettings() {
+  const settings = {
+    restaurant_name: document.getElementById('set-restaurant-name').value,
+    currency: document.getElementById('set-currency').value,
+    table_count: document.getElementById('set-table-count').value,
+    translation_lang: document.getElementById('set-translation-lang').value,
+    tax_percent: document.getElementById('set-tax').value,
+    sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false'
+  };
+  try {
+    const result = await apiPost('saveSettings', { settings: settings });
+    APP_DATA.settings = result;
+    // Update header title in case restaurant_name changed
+    document.getElementById('restaurant-name').textContent =
+      (APP_DATA.settings.restaurant_name || 'Ресторан') + ' — Админ';
+    // Re-render menu list so prices show the new currency
+    renderMenuList();
+    // Also re-render orders list (totals use currency too)
+    if (document.getElementById('tab-orders').style.display !== 'none') {
+      renderOrders();
+    }
+    showToast('Настройки сохранены', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function resetOrders() {
+  if (!confirm('Удалить ВСЕ заказы? Это действие необратимо.')) return;
+  if (!confirm('Точно? Все заказы (активные и завершённые) будут удалены безвозвратно.')) return;
+  try {
+    // Fetch all orders and delete them one by one
+    const data = await apiGet('getOrders', { status: 'all' });
+    for (const order of data.orders) {
+      await apiPost('deleteOrder', { order_id: order.id });
+    }
+    showToast('Все заказы удалены', 'success');
+    loadOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- ORDERS ---------- */
+async function loadOrders() {
+  adminState.filterStatus = document.getElementById('filter-status').value;
+  adminState.filterDate = document.getElementById('filter-date').value;
+  try {
+    const data = await apiGet('getOrders', { status: adminState.filterStatus });
+    let orders = data.orders || [];
+    if (adminState.filterDate) {
+      const d = adminState.filterDate; // YYYY-MM-DD
+      orders = orders.filter(function(o) {
+        return o.created_at && o.created_at.substring(0, 10) === d;
+      });
+    }
+    adminState.orders = orders;
+    renderOrders();
+    await refreshActiveOrdersCount();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function refreshActiveOrdersCount() {
+  try {
+    const data = await apiGet('getOrders', { status: 'accepted' });
+    const activeCount = data.orders.length;
+    const total = adminState.orders.length;
+    let totalRevenue = 0;
+    let activeRevenue = 0;
+    adminState.orders.forEach(function(o) {
+      const t = Number(o.total) || 0;
+      if (o.status === 'completed') totalRevenue += t;
+      if (o.status === 'accepted') activeRevenue += t;
+    });
+
+    const grid = document.getElementById('stats-grid');
+    grid.innerHTML =
+      statCard('Принятых сейчас', activeCount, 'var(--warning)') +
+      statCard('Показано заказов', total, 'var(--info)') +
+      statCard('Сумма активных', formatMoney(activeRevenue), 'var(--accent-dark)') +
+      statCard('Выручка (завершённые)', formatMoney(totalRevenue), 'var(--success)');
+  } catch (err) { /* ignore */ }
+}
+
+function statCard(label, value, color) {
+  return '<div class="stat-card"><div class="stat-value" style="color:' + (color || 'var(--primary)') + ';">' +
+    value + '</div><div class="stat-label">' + label + '</div></div>';
+}
+
+function renderOrders() {
+  const div = document.getElementById('orders-list');
+  if (adminState.orders.length === 0) {
+    div.innerHTML = '<div class="empty-state"><h3>Заказов нет</h3><p>Измените фильтр или дождитесь новых заказов</p></div>';
+    return;
+  }
+  // Sort: newest first
+  const sorted = adminState.orders.slice().sort(function(a, b) {
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  div.innerHTML = '';
+  sorted.forEach(function(order) {
+    const itemsCount = order.items ? order.items.length : 0;
+    const row = document.createElement('div');
+    row.className = 'order-history-row ' + order.status;
+    row.innerHTML =
+      '<div class="ohr-table">Столик №' + order.table_number + '</div>' +
+      '<div class="ohr-cat">' + escapeHtml(order.main_category_name || '') + ' · ' + order.guests + ' чел.</div>' +
+      '<div class="ohr-cat">' + escapeHtml(order.waiter_name || '—') + '</div>' +
+      '<div class="ohr-cat">' +
+        (order.payment_method === 'cash' ? '💵 Наличные' :
+         order.payment_method === 'card' ? '💳 Карта' :
+         '—') +
+      '</div>' +
+      '<div class="ohr-time">' + formatDateTime(order.created_at) + '</div>' +
+      '<div class="ohr-total">' + formatMoney(order.total) + '</div>' +
+      '<div class="ohr-status">' +
+        (order.status === 'accepted' ?
+          '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
+          '<span class="pill pill-success"><span class="status-dot completed"></span>Завершён</span>') +
+      '</div>' +
+      '<div class="ohr-actions">' +
+        '<button class="btn btn-outline" onclick="viewOrder(\'' + order.id + '\')">Просмотр</button>' +
+        (order.status === 'accepted' ?
+          '<button class="btn btn-success" onclick="withLoading(this, \'Завершаем...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">Завершить</button>' : '') +
+        '<button class="btn btn-danger" onclick="deleteOrderAdmin(\'' + order.id + '\')">Удалить</button>' +
+      '</div>';
+    div.appendChild(row);
+  });
+}
+
+function clearFilters() {
+  document.getElementById('filter-status').value = 'accepted';
+  document.getElementById('filter-date').value = '';
+  loadOrders();
+}
+
+async function viewOrder(orderId) {
+  try {
+    const order = await apiGet('getOrder', { id: orderId });
+    document.getElementById('ord-detail-id').textContent = '#' + orderId.substring(0, 8);
+    let itemsHtml = '';
+    if (order.items && order.items.length > 0) {
+      itemsHtml = '<table style="margin:12px 0;"><thead><tr><th>Блюдо</th><th>Кол-во</th><th>Цена</th><th>Сумма</th><th>Готово</th><th>Комментарий</th></tr></thead><tbody>';
+      order.items.forEach(function(it) {
+        itemsHtml += '<tr>' +
+          '<td>' + escapeHtml(it.name) + '</td>' +
+          '<td>' + it.quantity + '</td>' +
+          '<td>' + formatMoney(it.price) + '</td>' +
+          '<td>' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>' +
+          '<td>' + (it.is_ready ? '✓' : '—') + '</td>' +
+          '<td>' + escapeHtml(it.comment || '') + '</td>' +
+        '</tr>';
+      });
+      itemsHtml += '</tbody></table>';
+    } else {
+      itemsHtml = '<p style="color:var(--text-muted);">В заказе нет позиций</p>';
+    }
+    document.getElementById('ord-detail-content').innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
+        '<div><b>Столик:</b> №' + order.table_number + '</div>' +
+        '<div><b>Гостей:</b> ' + order.guests + '</div>' +
+        '<div><b>Категория:</b> ' + escapeHtml(order.main_category_name || '') + '</div>' +
+        '<div><b>Официант:</b> ' + escapeHtml(order.waiter_name || '—') + '</div>' +
+        '<div><b>Оплата:</b> ' +
+          (order.payment_method === 'cash' ? '💵 Наличные' :
+           order.payment_method === 'card' ? '💳 Карта' : '—') +
+        '</div>' +
+        '<div><b>Статус:</b> ' + order.status + '</div>' +
+        '<div><b>Создан:</b> ' + formatDateTime(order.created_at) + '</div>' +
+        '<div><b>Завершён:</b> ' + (order.completed_at ? formatDateTime(order.completed_at) : '—') + '</div>' +
+      '</div>' +
+      itemsHtml +
+      '<div style="text-align:right;font-size:1.5rem;font-weight:800;color:var(--primary);">Итого: ' + formatMoney(order.total) + '</div>';
+    openModal('modal-order');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function completeOrderAdmin(orderId) {
+  if (!confirm('Завершить этот заказ?')) return;
+  try {
+    await apiPost('updateOrderStatus', { order_id: orderId, status: 'completed' });
+    showToast('Заказ завершён', 'success');
+    loadOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteOrderAdmin(orderId) {
+  if (!confirm('Удалить этот заказ безвозвратно?')) return;
+  try {
+    await apiPost('deleteOrder', { order_id: orderId });
+    showToast('Заказ удалён', 'info');
+    loadOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- MENU ---------- */
+function populateCategoryFilter() {
+  const sel = document.getElementById('filter-menu-cat');
+  sel.innerHTML = '<option value="">Все</option>';
+  // Option to find items with no category at all
+  const noCat = document.createElement('option');
+  noCat.value = '__none__';
+  noCat.textContent = '— Без категории —';
+  sel.appendChild(noCat);
+  // Group: main cats with their subcats (and the main cat itself for "Прочее")
+  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
+  mainCats.forEach(function(mc) {
+    const og = document.createElement('optgroup');
+    og.label = mc.name;
+    // The main category itself (= "Прочее" inside it)
+    const mainOpt = document.createElement('option');
+    mainOpt.value = mc.id;
+    mainOpt.textContent = '↳ напрямую (без подкатегории)';
+    og.appendChild(mainOpt);
+    const subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
+    subs.forEach(function(sc) {
+      const opt = document.createElement('option');
+      opt.value = sc.id;
+      opt.textContent = sc.name;
+      og.appendChild(opt);
+    });
+    sel.appendChild(og);
+  });
+}
+
+function renderMenuList() {
+  const filter = document.getElementById('filter-menu-cat').value;
+  const div = document.getElementById('menu-list');
+  let items = APP_DATA.menu.slice();
+  if (filter === '__none__') {
+    items = items.filter(function(m) { return !m.category_id; });
+  } else if (filter) {
+    items = items.filter(function(m) { return m.category_id === filter; });
+  }
+
+  // Helper: human-readable category label for an item
+  function catLabel(item) {
+    if (!item.category_id) return '— Без категории —';
+    const cat = APP_DATA.categories.find(function(c) { return c.id === item.category_id; });
+    if (!cat) return '— (категория удалена) —';
+    if (!cat.parent_id) return cat.name + ' (напрямую)';
+    const parent = APP_DATA.categories.find(function(c) { return c.id === cat.parent_id; });
+    return parent ? parent.name + ' → ' + cat.name : cat.name;
+  }
+  // Sort by category label, then by sort, then by name
+  items.sort(function(a, b) {
+    const ca = catLabel(a);
+    const cb = catLabel(b);
+    if (ca !== cb) return ca.localeCompare(cb);
+    return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+           String(a.name).localeCompare(String(b.name));
+  });
+
+  if (items.length === 0) {
+    div.innerHTML = '<div class="empty-state"><h3>Блюд нет</h3><p>Нажмите «Добавить блюдо»</p></div>';
+    return;
+  }
+
+  // Drag-and-drop only enabled when a specific category filter is selected
+  // (so dragging doesn't cross categories). Otherwise just render normally.
+  const dragEnabled = !!filter && filter !== '__none__';
+
+  // Hint banner
+  let html = '';
+  if (dragEnabled) {
+    html += '<div class="reorder-hint">⇅ Перетащите карточки, чтобы изменить порядок внутри выбранной категории</div>';
+  } else if (filter === '' ) {
+    html += '<div class="reorder-hint">ℹ Чтобы менять порядок товаров перетаскиванием — выберите конкретную категорию в фильтре выше</div>';
+  }
+  div.innerHTML = html;
+
+  items.forEach(function(item) {
+    const needsCook = item.needs_cooking === true || item.needs_cooking === 'true';
+    const row = document.createElement('div');
+    row.className = 'menu-row';
+    if (dragEnabled) {
+      row.setAttribute('draggable', 'true');
+      row.dataset.id = item.id;
+    }
+    row.innerHTML =
+      (dragEnabled ? '<div class="drag-handle" title="Перетащите">⠿</div>' : '') +
+      '<div class="menu-name">' + escapeHtml(item.name) +
+        (item.name_translation ? '<div style="font-size:0.85rem;color:var(--text-muted);font-weight:normal;">' + escapeHtml(item.name_translation) + '</div>' : '') +
+      '</div>' +
+      '<div class="menu-cat">' + escapeHtml(catLabel(item)) + '</div>' +
+      '<div class="menu-price">' + formatMoney(item.price) + '</div>' +
+      '<div class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '">' +
+        (needsCook ? 'готовка' : 'без готовки') +
+      '</div>' +
+      '<div class="menu-actions">' +
+        '<button class="btn btn-outline" onclick="openMenuModal(\'' + item.id + '\')">✎ Изменить</button>' +
+        '<button class="btn btn-danger" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
+      '</div>';
+    div.appendChild(row);
+  });
+
+  if (dragEnabled) {
+    attachMenuDnD(div);
+  }
+}
+
+/* Drag-and-drop for menu items */
+function attachMenuDnD(container) {
+  let dragSrc = null;
+  const rows = container.querySelectorAll('.menu-row[draggable="true"]');
+
+  rows.forEach(function(row) {
+    row.addEventListener('dragstart', function(e) {
+      dragSrc = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', row.dataset.id); } catch (_) {}
+    });
+    row.addEventListener('dragend', function() {
+      row.classList.remove('dragging');
+      container.querySelectorAll('.menu-row').forEach(function(r) {
+        r.classList.remove('drag-over');
+      });
+      dragSrc = null;
+    });
+    row.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (row !== dragSrc) {
+        row.classList.add('drag-over');
+      }
+    });
+    row.addEventListener('dragleave', function() {
+      row.classList.remove('drag-over');
+    });
+    row.addEventListener('drop', function(e) {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      if (!dragSrc || dragSrc === row) return;
+      // Insert before the row we're dropping onto
+      container.insertBefore(dragSrc, row);
+      saveMenuOrder(container);
+    });
+  });
+
+  // Allow dropping at the end (empty space)
+  container.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  });
+  container.addEventListener('drop', function(e) {
+    e.preventDefault();
+    if (!dragSrc) return;
+    // If dropped outside any row, append to the end
+    const lastRow = container.querySelector('.menu-row:last-child');
+    if (e.target === container || (lastRow && e.target === container)) {
+      if (dragSrc !== lastRow) {
+        container.appendChild(dragSrc);
+        saveMenuOrder(container);
+      }
+    }
+  });
+}
+
+async function saveMenuOrder(container) {
+  const rows = container.querySelectorAll('.menu-row[draggable="true"]');
+  const items = [];
+  rows.forEach(function(row, idx) {
+    items.push({ id: row.dataset.id, sort: idx });
+  });
+  // Optimistically update local cache
+  items.forEach(function(it) {
+    const m = APP_DATA.menu.find(function(x) { return x.id === it.id; });
+    if (m) m.sort = it.sort;
+  });
+  try {
+    await apiPost('reorderMenu', { items: items });
+    showToast('Порядок сохранён', 'success');
+  } catch (err) {
+    showToast('Ошибка сохранения порядка: ' + err.message, 'error');
+    await loadAppData(true);
+    renderMenuList();
+  }
+}
+
+function openMenuModal(id) {
+  const modal = document.getElementById('modal-menu');
+  const title = document.getElementById('modal-menu-title');
+  const catSel = document.getElementById('menu-category');
+
+  // Populate category select:
+  //  - "Без категории" option (item is not shown anywhere — orphan)
+  //  - optgroup per main category containing:
+  //      * the main category itself (item is shown directly inside it,
+  //        without going into any subcategory)
+  //      * all its subcategories
+  catSel.innerHTML = '';
+
+  // Option: no category (orphan item, not visible in waiter UI)
+  const noCatOpt = document.createElement('option');
+  noCatOpt.value = '';
+  noCatOpt.textContent = '— Без категории (не виден официанту) —';
+  catSel.appendChild(noCatOpt);
+
+  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
+  mainCats.forEach(function(mc) {
+    const og = document.createElement('optgroup');
+    og.label = mc.name;
+
+    // The main category itself — item will be shown directly in this main category
+    const mainOpt = document.createElement('option');
+    mainOpt.value = mc.id;
+    mainOpt.textContent = '↳ напрямую в «' + mc.name + '» (без подкатегории)';
+    og.appendChild(mainOpt);
+
+    // Subcategories
+    const subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
+    subs.forEach(function(sc) {
+      const opt = document.createElement('option');
+      opt.value = sc.id;
+      opt.textContent = sc.name;
+      og.appendChild(opt);
+    });
+    catSel.appendChild(og);
+  });
+
+  if (id) {
+    const item = APP_DATA.menu.find(function(m) { return m.id === id; });
+    if (!item) return;
+    title.textContent = 'Изменить блюдо';
+    document.getElementById('menu-id').value = item.id;
+    document.getElementById('menu-name').value = item.name;
+    document.getElementById('menu-name-translation').value = item.name_translation || '';
+    document.getElementById('menu-category').value = item.category_id;
+    document.getElementById('menu-price').value = item.price;
+    document.getElementById('menu-cook').checked = item.needs_cooking === true || item.needs_cooking === 'true';
+    // sort field removed — ordering is done via drag & drop in the list
+  } else {
+    title.textContent = 'Новое блюдо';
+    document.getElementById('menu-id').value = '';
+    document.getElementById('menu-name').value = '';
+    document.getElementById('menu-name-translation').value = '';
+    document.getElementById('menu-price').value = '';
+    document.getElementById('menu-cook').checked = true;
+  }
+  openModal('modal-menu');
+}
+
+async function saveMenuItem() {
+  const id = document.getElementById('menu-id').value;
+  const payload = {
+    id: id || undefined,
+    name: document.getElementById('menu-name').value.trim(),
+    name_translation: document.getElementById('menu-name-translation').value.trim(),
+    category_id: document.getElementById('menu-category').value || '', // can be empty
+    price: Number(document.getElementById('menu-price').value) || 0,
+    needs_cooking: document.getElementById('menu-cook').checked,
+    is_active: true
+  };
+  if (!payload.name) { showToast('Введите название', 'warning'); return; }
+  // category_id is optional — items without subcategory appear directly in their main category
+  try {
+    await apiPost('saveMenuItem', payload);
+    showToast('Блюдо сохранено', 'success');
+    closeModal('modal-menu');
+    await loadAppData(true);
+    populateCategoryFilter();
+    renderMenuList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteMenuItem(id) {
+  if (!confirm('Удалить блюдо из меню?')) return;
+  try {
+    await apiPost('deleteMenuItem', { id: id });
+    showToast('Блюдо удалено', 'info');
+    await loadAppData(true);
+    populateCategoryFilter();
+    renderMenuList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- CATEGORIES ---------- */
+function renderCategoryList() {
+  const div = document.getElementById('cat-list');
+  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; })
+    .sort(function(a, b) {
+      return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+             String(a.name).localeCompare(String(b.name));
+    });
+
+  div.innerHTML = '';
+  if (mainCats.length === 0) {
+    div.innerHTML = '<div class="empty-state"><h3>Категорий нет</h3><p>Создайте первую основную категорию (Завтрак, Обед, и т.п.)</p></div>';
+    return;
+  }
+
+  // Hint banner
+  const hint = document.createElement('div');
+  hint.className = 'reorder-hint';
+  hint.innerHTML = '⇅ Перетащите основные категории или подкатегории, чтобы изменить порядок';
+  div.appendChild(hint);
+
+  mainCats.forEach(function(mc) {
+    const mainRow = document.createElement('div');
+    mainRow.className = 'cat-row main-cat';
+    mainRow.setAttribute('draggable', 'true');
+    mainRow.dataset.id = mc.id;
+    mainRow.dataset.level = 'main';
+    mainRow.innerHTML =
+      '<div class="drag-handle" title="Перетащите">⠿</div>' +
+      '<div class="cat-name">' + escapeHtml(mc.name) + '</div>' +
+      '<div class="cat-actions">' +
+        '<button class="btn btn-outline" onclick="openCategoryModal(false, \'' + mc.id + '\')">✎</button>' +
+        '<button class="btn btn-danger" onclick="deleteCategory(\'' + mc.id + '\')">✕</button>' +
+      '</div>';
+    div.appendChild(mainRow);
+
+    const subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; })
+      .sort(function(a, b) {
+        return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+               String(a.name).localeCompare(String(b.name));
+      });
+    subs.forEach(function(sc) {
+      const subRow = document.createElement('div');
+      subRow.className = 'cat-row sub-cat';
+      subRow.setAttribute('draggable', 'true');
+      subRow.dataset.id = sc.id;
+      subRow.dataset.level = 'sub';
+      subRow.dataset.parent = mc.id;
+      subRow.innerHTML =
+        '<div class="drag-handle" title="Перетащите">⠿</div>' +
+        '<div class="cat-name">↳ ' + escapeHtml(sc.name) + '</div>' +
+        '<div class="cat-actions">' +
+          '<button class="btn btn-outline" onclick="openCategoryModal(true, \'' + sc.id + '\')">✎</button>' +
+          '<button class="btn btn-danger" onclick="deleteCategory(\'' + sc.id + '\')">✕</button>' +
+        '</div>';
+      div.appendChild(subRow);
+    });
+  });
+
+  attachCategoryDnD(div);
+}
+
+/* Drag-and-drop for categories (only within same level/parent group) */
+function attachCategoryDnD(container) {
+  let dragSrc = null;
+  const rows = container.querySelectorAll('.cat-row[draggable="true"]');
+
+  rows.forEach(function(row) {
+    row.addEventListener('dragstart', function(e) {
+      dragSrc = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', row.dataset.id); } catch (_) {}
+    });
+    row.addEventListener('dragend', function() {
+      row.classList.remove('dragging');
+      container.querySelectorAll('.cat-row').forEach(function(r) {
+        r.classList.remove('drag-over');
+      });
+      dragSrc = null;
+    });
+    row.addEventListener('dragover', function(e) {
+      // Only allow dropping if same level and (for subs) same parent
+      if (!canDropHere(dragSrc, row)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (row !== dragSrc) {
+        row.classList.add('drag-over');
+      }
+    });
+    row.addEventListener('dragleave', function() {
+      row.classList.remove('drag-over');
+    });
+    row.addEventListener('drop', function(e) {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      if (!dragSrc || dragSrc === row) return;
+      if (!canDropHere(dragSrc, row)) return;
+      container.insertBefore(dragSrc, row);
+      saveCategoryOrder(container);
+    });
+  });
+}
+
+function canDropHere(src, target) {
+  if (!src || !target) return false;
+  if (src.dataset.level !== target.dataset.level) return false;
+  if (src.dataset.level === 'sub' && src.dataset.parent !== target.dataset.parent) return false;
+  return true;
+}
+
+async function saveCategoryOrder(container) {
+  // Collect order separately for main cats and for each parent's subcats
+  const mainItems = [];
+  const subGroups = {}; // parentId -> [{id, sort}]
+  container.querySelectorAll('.cat-row[draggable="true"]').forEach(function(row) {
+    if (row.dataset.level === 'main') {
+      mainItems.push({ id: row.dataset.id, sort: mainItems.length });
+    } else {
+      const p = row.dataset.parent;
+      if (!subGroups[p]) subGroups[p] = [];
+      subGroups[p].push({ id: row.dataset.id, sort: subGroups[p].length });
+    }
+  });
+  const all = mainItems.slice();
+  Object.keys(subGroups).forEach(function(p) {
+    all.push.apply(all, subGroups[p]);
+  });
+
+  // Optimistically update local cache
+  all.forEach(function(it) {
+    const c = APP_DATA.categories.find(function(x) { return x.id === it.id; });
+    if (c) c.sort = it.sort;
+  });
+
+  try {
+    await apiPost('reorderCategories', { items: all });
+    showToast('Порядок категорий сохранён', 'success');
+  } catch (err) {
+    showToast('Ошибка сохранения порядка: ' + err.message, 'error');
+    await loadAppData(true);
+    renderCategoryList();
+  }
+}
+
+function openCategoryModal(isSub, id) {
+  const modal = document.getElementById('modal-cat');
+  const title = document.getElementById('modal-cat-title');
+  const parentGroup = document.getElementById('cat-parent-group');
+  const translationGroup = document.getElementById('cat-translation-group');
+  const parentSel = document.getElementById('cat-parent');
+  const langLabel = document.getElementById('cat-translation-lang-label');
+
+  // Update translation language label
+  const lang = APP_DATA.settings.translation_lang || '';
+  langLabel.textContent = lang ? '(' + lang + ')' : '(укажите язык в Настройках)';
+
+  document.getElementById('cat-is-sub').value = isSub ? '1' : '0';
+
+  // Populate parent select
+  parentSel.innerHTML = '';
+  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
+  mainCats.forEach(function(mc) {
+    const opt = document.createElement('option');
+    opt.value = mc.id;
+    opt.textContent = mc.name;
+    parentSel.appendChild(opt);
+  });
+
+  // Translation field only shown for subcategories (main categories are not shown to cook)
+  if (isSub) {
+    parentGroup.style.display = 'block';
+    translationGroup.style.display = 'block';
+    title.textContent = id ? 'Изменить подкатегорию' : 'Новая подкатегория';
+  } else {
+    parentGroup.style.display = 'none';
+    translationGroup.style.display = 'none';
+    title.textContent = id ? 'Изменить основную категорию' : 'Новая основная категория';
+  }
+
+  if (id) {
+    const cat = APP_DATA.categories.find(function(c) { return c.id === id; });
+    if (!cat) return;
+    document.getElementById('cat-id').value = cat.id;
+    document.getElementById('cat-name').value = cat.name;
+    document.getElementById('cat-name-translation').value = cat.name_translation || '';
+    // sort field removed — ordering is done via drag & drop in the list
+    if (cat.parent_id) {
+      document.getElementById('cat-is-sub').value = '1';
+      parentGroup.style.display = 'block';
+      translationGroup.style.display = 'block';
+      parentSel.value = cat.parent_id;
+      title.textContent = 'Изменить подкатегорию';
+    } else {
+      translationGroup.style.display = 'none';
+    }
+  } else {
+    document.getElementById('cat-id').value = '';
+    document.getElementById('cat-name').value = '';
+    document.getElementById('cat-name-translation').value = '';
+  }
+  openModal('modal-cat');
+}
+
+async function saveCategory() {
+  const id = document.getElementById('cat-id').value;
+  const isSub = document.getElementById('cat-is-sub').value === '1';
+  const payload = {
+    id: id || undefined,
+    name: document.getElementById('cat-name').value.trim(),
+    name_translation: isSub ? document.getElementById('cat-name-translation').value.trim() : '',
+    is_active: true
+  };
+  if (!payload.name) { showToast('Введите название', 'warning'); return; }
+  if (isSub) {
+    payload.parent_id = document.getElementById('cat-parent').value;
+    if (!payload.parent_id) { showToast('Выберите основную категорию', 'warning'); return; }
+  } else {
+    payload.parent_id = '';
+  }
+  try {
+    await apiPost('saveCategory', payload);
+    showToast('Категория сохранена', 'success');
+    closeModal('modal-cat');
+    await loadAppData(true);
+    renderCategoryList();
+    populateCategoryFilter();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteCategory(id) {
+  // Check if has children or menu items
+  const hasChildren = APP_DATA.categories.some(function(c) { return c.parent_id === id; });
+  const hasItems = APP_DATA.menu.some(function(m) { return m.category_id === id; });
+  let msg = 'Удалить категорию?';
+  if (hasChildren) msg = 'У этой категории есть подкатегории. Удалить всё равно? (Подкатегории останутся, но потеряют родителя)';
+  if (hasItems) msg = 'У этой категории есть блюда. Удалить всё равно? (Блюда останутся, но потеряют категорию)';
+  if (!confirm(msg)) return;
+  try {
+    await apiPost('deleteCategory', { id: id });
+    showToast('Категория удалена', 'info');
+    await loadAppData(true);
+    renderCategoryList();
+    populateCategoryFilter();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- Modal helpers ---------- */
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+document.querySelectorAll('.modal-backdrop').forEach(function(m) {
+  m.addEventListener('click', function(e) {
+    if (e.target === m) m.classList.remove('open');
+  });
+});
+
+/* ---------- Init ---------- */
+init();
+/* ---------- STAFF ---------- */
+function renderStaffList() {
+  const waiters = (APP_DATA.users || []).filter(function(u) { return u.role === 'waiter'; })
+    .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
+  const cooks = (APP_DATA.users || []).filter(function(u) { return u.role === 'cook'; })
+    .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
+
+  const waitersDiv = document.getElementById('waiters-list');
+  const cooksDiv = document.getElementById('cooks-list');
+
+  function renderList(div, list, role) {
+    if (list.length === 0) {
+      div.innerHTML = '<div class="empty-state" style="padding:20px;"><p>Нет сотрудников</p></div>';
+      return;
+    }
+    div.innerHTML = '';
+    list.forEach(function(u) {
+      const row = document.createElement('div');
+      row.className = 'user-row';
+      row.innerHTML =
+        '<div class="user-name">' + escapeHtml(u.name) + '</div>' +
+        '<span class="user-role-badge ' + (role === 'cook' ? 'cook' : '') + '">' +
+          (role === 'cook' ? 'повар' : 'официант') +
+        '</span>' +
+        '<button class="btn btn-outline" onclick="openUserModal(\'' + u.id + '\')">✎ Изменить</button>' +
+        '<button class="btn btn-danger" onclick="deleteUserBtn(\'' + u.id + '\')">✕</button>';
+      div.appendChild(row);
+    });
+  }
+  renderList(waitersDiv, waiters, 'waiter');
+  renderList(cooksDiv, cooks, 'cook');
+}
+
+function openUserModal(id) {
+  const title = document.getElementById('modal-user-title');
+  if (id) {
+    const u = APP_DATA.users.find(function(x) { return x.id === id; });
+    if (!u) return;
+    title.textContent = 'Изменить сотрудника';
+    document.getElementById('user-id').value = u.id;
+    document.getElementById('user-name').value = u.name;
+    document.getElementById('user-role').value = u.role;
+  } else {
+    title.textContent = 'Новый сотрудник';
+    document.getElementById('user-id').value = '';
+    document.getElementById('user-name').value = '';
+    document.getElementById('user-role').value = 'waiter';
+  }
+  openModal('modal-user');
+}
+
+async function saveUserBtn() {
+  const id = document.getElementById('user-id').value;
+  const payload = {
+    id: id || undefined,
+    name: document.getElementById('user-name').value.trim(),
+    role: document.getElementById('user-role').value,
+    is_active: true
+  };
+  if (!payload.name) { showToast('Введите имя', 'warning'); return; }
+  try {
+    await apiPost('saveUser', payload);
+    showToast('Сотрудник сохранён', 'success');
+    closeModal('modal-user');
+    await loadAppData(true);
+    renderStaffList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteUserBtn(id) {
+  if (!confirm('Удалить сотрудника?')) return;
+  try {
+    await apiPost('deleteUser', { id: id });
+    showToast('Сотрудник удалён', 'info');
+    await loadAppData(true);
+    renderStaffList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- SOUNDS ---------- */
+async function uploadSoundFile(name) {
+  const input = document.getElementById('sound-file-' + name);
+  if (!input || !input.files || input.files.length === 0) {
+    showToast('Выберите файл', 'warning');
+    return;
+  }
+  const file = input.files[0];
+  // Limit to ~600KB raw (~800KB base64)
+  if (file.size > 600 * 1024) {
+    showToast('Файл слишком большой (макс. 600 КБ). Сожмите или обрежьте звук.', 'error');
+    return;
+  }
+  showToast('Загружаем...', 'info');
+  try {
+    const base64 = await fileToBase64(file);
+    const mime = file.type || 'audio/mp3';
+    await apiPost('uploadSound', { name: name, data: base64, mime: mime });
+    showToast('Звук загружен', 'success');
+    input.value = '';
+    updateSoundStatuses();
+    // Preload into cache so preview plays the new sound
+    delete _soundCache[name];
+    _soundCache[name] = undefined;
+    await loadSound(name);
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise(function(resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function() {
+      // reader.result = "data:audio/mp3;base64,XXXX"
+      const result = reader.result;
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.substring(idx + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function playSoundPreview(name) {
+  // Use the same loader as the waiter/cook pages
+  if (_soundCache[name] === undefined) {
+    await loadSound(name);
+  }
+  if (_soundCache[name]) {
+    _soundCache[name].currentTime = 0;
+    _soundCache[name].play().catch(function() {
+      showToast('Не удалось воспроизвести. Возможно, браузер блокирует звук.', 'warning');
+    });
+  } else {
+    // Fall back to a quick beep
+    if (name === 'cook_new_order') cookNotifySound();
+    else notifySound();
+    showToast('Звук не загружен — проигран стандартный сигнал', 'info');
+  }
+}
+
+async function deleteSoundConfirm(name) {
+  if (!confirm('Удалить загруженный звук? Будет использоваться стандартный сигнал.')) return;
+  try {
+    await apiPost('deleteSound', { name: name });
+    showToast('Звук удалён', 'info');
+    delete _soundCache[name];
+    _soundCache[name] = undefined;
+    updateSoundStatuses();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function updateSoundStatuses() {
+  ['cook_new_order', 'waiter_ready'].forEach(async function(name) {
+    const el = document.getElementById('sound-status-' + name);
+    if (!el) return;
+    // Check Settings via existing APP_DATA — sounds are stored under sound_<name> keys
+    const key = 'sound_' + name;
+    if (APP_DATA.settings && APP_DATA.settings[key]) {
+      el.innerHTML = '✓ Загружен пользовательский звук';
+      el.style.color = 'var(--success)';
+      // Preload into cache for preview
+      if (_soundCache[name] === undefined) {
+        await loadSound(name);
+      }
+    } else {
+      el.innerHTML = 'Используется стандартный сигнал';
+      el.style.color = 'var(--text-muted)';
+    }
+  });
+}
+</script>
+</body>
+</html>
