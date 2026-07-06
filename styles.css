@@ -649,3 +649,12 @@ tbody tr:hover { background: #fafafa; }
   width: 16px;
   height: 16px;
 }
+
+/* Disabled button (e.g. "Завершить" when not all dishes are ready) */
+.btn.disabled-btn,
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.3);
+}

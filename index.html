@@ -245,6 +245,17 @@
     background: var(--success-light);
     border-left: 4px solid var(--success);
   }
+  .cart-item .ci-cat-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #e3f2fd;
+    color: var(--info);
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
   .cart-item .ci-ready-badge {
     display: inline-block;
     padding: 3px 10px;
@@ -1741,9 +1752,13 @@ function renderHomeActiveOrders() {
       html += '<div class="hoc-ready-list"><b>Готово к подаче:</b> ' + readyNames + '</div>';
     }
     // Actions — only 'accepted' orders reach here (paused are filtered out above)
+    // Disable "Завершить" if not all cooking items are ready
+    const canComplete = allReady || cookingItems.length === 0;
     let actions =
       '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>' +
-      '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>';
+      '<button class="btn btn-success' + (canComplete ? '' : ' disabled-btn') + '" ' +
+        (canComplete ? 'onclick="completeOrderById(\'' + order.id + '\')"' : 'disabled title="Нельзя завершить: ещё не все блюда готовы"') +
+        '>Завершить</button>';
     if (order.table_type === 'virtual' || order.table_type === 'tab') {
       actions += '<button class="btn btn-warning" onclick="pauseOrderById(\'' + order.id + '\')">⏸ На паузу</button>';
     }
@@ -1828,6 +1843,16 @@ function renderActiveOrdersList() {
     const readyCount = order.items ? order.items.filter(function(i) { return i.is_ready; }).length : 0;
     const total = Number(order.total) || 0;
     const isPaused = order.status === 'paused';
+    // Check if all cooking items are ready
+    const items = order.items || [];
+    const cookingItems = items.filter(function(i) {
+      return i.needs_cooking === true || i.needs_cooking === 'true' ||
+             i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
+    });
+    const notReadyCooking = cookingItems.filter(function(i) {
+      return !(i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE');
+    });
+    const canComplete = notReadyCooking.length === 0;
     const card = document.createElement('div');
     card.className = 'order-card' + (isPaused ? ' paused' : '');
     card.style.cssText = isPaused ? 'border-left:5px solid var(--warning);background:#fffde7;' : '';
@@ -1836,7 +1861,9 @@ function renderActiveOrdersList() {
     if (isPaused) {
       actions += '<button class="btn btn-info" onclick="resumeOrderById(\'' + order.id + '\')">▶ Возобновить</button>';
     } else {
-      actions += '<button class="btn btn-success" onclick="completeOrderById(\'' + order.id + '\')">Завершить</button>';
+      actions += '<button class="btn btn-success' + (canComplete ? '' : ' disabled-btn') + '" ' +
+        (canComplete ? 'onclick="completeOrderById(\'' + order.id + '\')"' : 'disabled title="Нельзя завершить: ещё не все блюда готовы"') +
+        '>Завершить</button>';
     }
     if (order.table_type === 'virtual' || order.table_type === 'tab') {
       if (!isPaused) {
@@ -1901,13 +1928,28 @@ async function renderOrderDetail() {
       // refreshActiveOrders() so we don't double-fire them here.
 
       order.items.forEach(function(item, idx) {
+        // Resolve category name for this item — same logic as the cook screen.
+        // For old orders (created before category_name was added to OrderItems)
+        // we fall back to the current menu + categories list.
+        let categoryName = item.category_name || '';
+        if (!categoryName && item.menu_item_id && APP_DATA && APP_DATA.menu) {
+          const dish = APP_DATA.menu.find(function(m) { return m.id === item.menu_item_id; });
+          if (dish && dish.category_id && APP_DATA.categories) {
+            const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
+            if (cat && cat.parent_id) categoryName = cat.name || '';
+          }
+        }
+        const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
         const card = document.createElement('div');
-        card.className = 'cart-item' + (item.is_ready ? ' ready' : '');
+        card.className = 'cart-item' + (isReady ? ' ready' : '');
+        // Build the dish name line: optional category badge + dish name
+        const nameLine = (categoryName
+            ? '<span class="ci-cat-badge">' + escapeHtml(categoryName) + '</span> ' : '')
+          + escapeHtml(item.name)
+          + (isReady ? ' <span class="ci-ready-badge">✓ ГОТОВО</span>' : '');
         card.innerHTML =
           '<div class="ci-top">' +
-            '<div class="ci-name">' + escapeHtml(item.name) +
-              (item.is_ready ? '<span class="ci-ready-badge">✓ ГОТОВО</span>' : '') +
-            '</div>' +
+            '<div class="ci-name">' + nameLine + '</div>' +
             '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
           '</div>' +
           '<div style="display:flex;justify-content:space-between;align-items:center;">' +
@@ -1927,6 +1969,30 @@ async function renderOrderDetail() {
     }
 
     document.getElementById('order-detail-total').textContent = formatMoney(order.total);
+
+    // Enable/disable "Завершить заказ" button based on cooking readiness
+    const detItems = order.items || [];
+    const detCooking = detItems.filter(function(i) {
+      return i.needs_cooking === true || i.needs_cooking === 'true' ||
+             i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
+    });
+    const detNotReady = detCooking.filter(function(i) {
+      return !(i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE');
+    });
+    const completeBtns = document.querySelectorAll('#screen-order-detail .btn-success');
+    completeBtns.forEach(function(btn) {
+      if (btn.textContent.indexOf('Завершить') >= 0) {
+        if (detNotReady.length > 0) {
+          btn.disabled = true;
+          btn.classList.add('disabled-btn');
+          btn.title = 'Нельзя завершить: ещё не готовы ' + detNotReady.length + ' поз.';
+        } else {
+          btn.disabled = false;
+          btn.classList.remove('disabled-btn');
+          btn.title = '';
+        }
+      }
+    });
 
   } catch (err) {
     showToast('Ошибка загрузки заказа: ' + err.message, 'error');
@@ -2045,6 +2111,24 @@ async function completeOrderById(orderId) {
   if (!order) {
     showToast('Заказ не найден, обновите страницу', 'warning');
     await refreshActiveOrders();
+    return;
+  }
+  // Check: do not allow completing the order until all cooking items are ready.
+  // (Items with needs_cooking=false — like water, bread — don't need to be ready,
+  // they're served immediately. Only cooking items must be all ready.)
+  const items = order.items || [];
+  const cookingItems = items.filter(function(i) {
+    return i.needs_cooking === true || i.needs_cooking === 'true' ||
+           i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
+  });
+  const notReadyCooking = cookingItems.filter(function(i) {
+    return !(i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE');
+  });
+  if (notReadyCooking.length > 0) {
+    const names = notReadyCooking.map(function(i) {
+      return escapeHtml(i.name) + ' ×' + i.quantity;
+    }).join(', ');
+    showToast('Нельзя завершить заказ: ещё не готово ' + notReadyCooking.length + ' поз. — ' + names, 'error');
     return;
   }
   _pendingCompleteOrderId = orderId;
