@@ -1021,7 +1021,7 @@ function openVirtualOrderModal(virtualName) {
   document.getElementById('virtual-order-name').value = '';
   document.getElementById('virtual-order-room').value = '';
   document.getElementById('virtual-order-notes').value = '';
-  document.getElementById('virtual-order-context').textContent = virtualName;
+  // (virtual-order-context element was removed from HTML — title already shows the name)
   // Store the virtual name for use when the user confirms
   state._pendingVirtualName = virtualName;
   openModal('modal-virtual-order');
@@ -1554,6 +1554,12 @@ async function refreshActiveOrders() {
     }
   } catch (err) {
     console.error('refresh active orders error', err);
+    // Show a visible toast the first time (so user knows something's wrong),
+    // but don't spam every 20 seconds — only show once per session.
+    if (!state._apiErrorShown) {
+      showToast('Ошибка связи с сервером: ' + err.message, 'error');
+      state._apiErrorShown = true;
+    }
   }
 }
 

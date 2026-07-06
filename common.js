@@ -14,6 +14,13 @@ async function apiGet(action, params) {
     });
   }
   const res = await fetch(url.toString(), { method: 'GET' });
+  // Check that the server returned JSON, not an HTML error page.
+  // If Apps Script returns HTML, it usually means the Web App wasn't
+  // redeployed after updating the code, so the new action doesn't exist yet.
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    throw new Error('Сервер вернул HTML вместо JSON. Возможно, Apps Script не переразвёрнут (Deploy → New version) — действие "' + action + '" не существует на сервере.');
+  }
   const json = await res.json();
   if (!json.success) throw new Error(json.error || 'API error');
   return json.data;
@@ -25,6 +32,10 @@ async function apiPost(action, payload) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(Object.assign({ action: action }, payload))
   });
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    throw new Error('Сервер вернул HTML вместо JSON. Возможно, Apps Script не переразвёрнут (Deploy → New version) — действие "' + action + '" не существует на сервере.');
+  }
   const json = await res.json();
   if (!json.success) throw new Error(json.error || 'API error');
   return json.data;
@@ -147,6 +158,14 @@ async function loadSound(name) {
   try {
     const url = CONFIG.API_URL + '?action=getSound&name=' + encodeURIComponent(name);
     const res = await fetch(url);
+    // If the server returns HTML (e.g. 404 page because Apps Script wasn't
+    // redeployed), res.json() would throw. Detect this and bail out gracefully.
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      console.log('Sound ' + name + ' not available (server returned ' + contentType + ')');
+      _soundCache[name] = null;
+      return null;
+    }
     const json = await res.json();
     if (json && json.data) {
       // Decode base64 into a Blob and create an object URL
@@ -286,7 +305,15 @@ if (typeof document !== 'undefined') {
 let _swReady = false;
 
 async function initServiceWorker() {
+  // Service Workers only work on http:// or https:// origins — NOT on file://.
+  // If the user opens index.html directly from disk, SW registration will fail.
+  // That's fine: we just skip SW and fall back to plain Notification (which
+  // only fires when the tab is focused).
   if (!('serviceWorker' in navigator)) return false;
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') {
+    console.log('Service Worker skipped: requires http(s), current protocol is ' + location.protocol);
+    return false;
+  }
   try {
     const reg = await navigator.serviceWorker.register('sw.js');
     await navigator.serviceWorker.ready;
@@ -294,7 +321,7 @@ async function initServiceWorker() {
     console.log('Service Worker registered for notifications');
     return true;
   } catch (err) {
-    console.warn('SW registration failed:', err);
+    console.warn('SW registration failed:', err.message);
     return false;
   }
 }
