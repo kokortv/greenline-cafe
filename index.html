@@ -370,8 +370,6 @@
 <header class="app-header" id="app-header" style="display:none;">
   <h1 id="restaurant-name">Ресторан</h1>
   <div class="header-actions">
-    <a href="admin.html" class="nav-link">Админ</a>
-    <a href="cook.html" class="nav-link">Повар</a>
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
@@ -383,10 +381,24 @@
 <!-- Login screen (shown if no current user) -->
 <div class="login-screen" id="login-screen" style="display:none;">
   <h1>Официант</h1>
-  <p class="login-subtitle">Выберите своё имя, чтобы начать смену</p>
+  <p class="login-subtitle">Выберите своё имя и введите пароль</p>
   <div class="login-user-grid" id="login-users"></div>
+  <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
+    <label>Пароль для <span id="login-selected-name"></span>:</label>
+    <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
+  </div>
+  <div style="max-width:400px;margin:16px auto 0;">
+    <button class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
+            onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
+      Войти
+    </button>
+    <button class="btn btn-outline" id="login-back-btn" style="width:100%;margin-top:8px;display:none;"
+            onclick="resetLoginSelection();">
+      ← Назад к выбору
+    </button>
+  </div>
   <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
-    Если вас нет в списке — попросите администратора добавить вас.
+    Если вас нет в списке или нет пароля — обратитесь к администратору.
   </p>
 </div>
 
@@ -552,30 +564,33 @@ async function init() {
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан');
 
-    // Check if user is logged in
-    const user = getCurrentUser();
-    if (!user || user.role !== 'waiter') {
+    // Check if user has a valid session
+    const session = getCurrentSession();
+    if (!session || !session.user || session.user.role !== 'waiter') {
       showLoginScreen();
       return;
     }
     // Verify user still exists in current users list
-    const stillExists = APP_DATA.users.find(function(u) { return u.id === user.id && u.role === 'waiter'; });
+    const stillExists = APP_DATA.users.find(function(u) { return u.id === session.user.id && u.role === 'waiter'; });
     if (!stillExists) {
-      setCurrentUser(null);
+      setCurrentSession(null);
       showLoginScreen();
       return;
     }
-    state.currentUser = stillExists;
+    state.currentUser = session.user;
     startApp();
   } catch (err) {
     showToast('Ошибка загрузки: ' + err.message, 'error');
   }
 }
 
+let _selectedLoginUser = null;
+
 function showLoginScreen() {
   document.getElementById('app-header').style.display = 'none';
   document.getElementById('app-main').style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
+  resetLoginSelection();
   const grid = document.getElementById('login-users');
   grid.innerHTML = '';
   const waiters = APP_DATA.users.filter(function(u) { return u.role === 'waiter'; })
@@ -587,18 +602,75 @@ function showLoginScreen() {
   waiters.forEach(function(w) {
     const btn = document.createElement('button');
     btn.className = 'login-user-btn';
-    btn.innerHTML = escapeHtml(w.name) + '<span class="role-badge">официант</span>';
-    btn.onclick = function() { loginAs(w); };
+    btn.innerHTML = escapeHtml(w.name) +
+      '<span class="role-badge">официант</span>' +
+      (w.has_password ? '' : '<span class="role-badge" style="background:#ffe0b2;color:#e65100;">нет пароля</span>');
+    btn.onclick = function() { selectLoginUser(w); };
     grid.appendChild(btn);
   });
 }
 
-function loginAs(user) {
-  setCurrentUser({ id: user.id, name: user.name, role: user.role });
-  state.currentUser = user;
-  document.getElementById('login-screen').style.display = 'none';
-  startApp();
+function selectLoginUser(user) {
+  _selectedLoginUser = user;
+  document.getElementById('login-selected-name').textContent = user.name;
+  document.getElementById('login-password-group').style.display = 'block';
+  document.getElementById('login-submit-btn').style.display = 'block';
+  document.getElementById('login-back-btn').style.display = 'block';
+  // Highlight selected user
+  document.querySelectorAll('.login-user-btn').forEach(function(b) { b.style.opacity = '0.5'; });
+  event.currentTarget.style.opacity = '1';
+  event.currentTarget.style.borderColor = 'var(--primary)';
+  // Focus password field
+  setTimeout(function() { document.getElementById('login-password').focus(); }, 50);
 }
+
+function resetLoginSelection() {
+  _selectedLoginUser = null;
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-password-group').style.display = 'none';
+  document.getElementById('login-submit-btn').style.display = 'none';
+  document.getElementById('login-back-btn').style.display = 'none';
+  document.querySelectorAll('.login-user-btn').forEach(function(b) {
+    b.style.opacity = '';
+    b.style.borderColor = '';
+  });
+}
+
+async function submitLogin() {
+  if (!_selectedLoginUser) {
+    showToast('Выберите своё имя', 'warning');
+    return;
+  }
+  const password = document.getElementById('login-password').value;
+  if (!password) {
+    showToast('Введите пароль', 'warning');
+    return;
+  }
+  try {
+    const session = await loginWithPassword(_selectedLoginUser.id, password);
+    setCurrentSession(session);
+    state.currentUser = session.user;
+    document.getElementById('login-screen').style.display = 'none';
+    showToast('Добро пожаловать, ' + session.user.name + '!', 'success');
+    startApp();
+  } catch (err) {
+    showToast('Ошибка входа: ' + err.message, 'error');
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-password').focus();
+  }
+}
+
+// Allow Enter key in password field to submit
+document.addEventListener('DOMContentLoaded', function() {
+  const pwdInput = document.getElementById('login-password');
+  if (pwdInput) {
+    pwdInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        document.getElementById('login-submit-btn').click();
+      }
+    });
+  }
+});
 
 async function startApp() {
   document.getElementById('app-header').style.display = 'flex';

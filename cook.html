@@ -268,8 +268,6 @@
 <header class="app-header" id="app-header" style="display:none;">
   <h1>Повар</h1>
   <div class="header-actions">
-    <a href="index.html" class="nav-link">Официант</a>
-    <a href="admin.html" class="nav-link">Админ</a>
     <span class="badge has-items" id="orders-count">0</span>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
@@ -280,10 +278,24 @@
 
 <div class="login-screen" id="login-screen" style="display:none;">
   <h1>Повар</h1>
-  <p class="login-subtitle">Выберите своё имя, чтобы начать смену</p>
+  <p class="login-subtitle">Выберите своё имя и введите пароль</p>
   <div class="login-user-grid" id="login-users"></div>
+  <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
+    <label>Пароль для <span id="login-selected-name"></span>:</label>
+    <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
+  </div>
+  <div style="max-width:400px;margin:16px auto 0;">
+    <button class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
+            onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
+      Войти
+    </button>
+    <button class="btn btn-outline" id="login-back-btn" style="width:100%;margin-top:8px;display:none;"
+            onclick="resetLoginSelection();">
+      ← Назад к выбору
+    </button>
+  </div>
   <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
-    Если вас нет в списке — попросите администратора добавить вас.
+    Если вас нет в списке или нет пароля — обратитесь к администратору.
   </p>
 </div>
 
@@ -322,29 +334,32 @@ async function init() {
   if (!checkConfig()) return;
   try {
     await loadAppData();
-    // Check login
-    const user = getCurrentUser();
-    if (!user || user.role !== 'cook') {
+    // Check session
+    const session = getCurrentSession();
+    if (!session || !session.user || session.user.role !== 'cook') {
       showLoginScreen();
       return;
     }
-    const stillExists = APP_DATA.users.find(function(u) { return u.id === user.id && u.role === 'cook'; });
+    const stillExists = APP_DATA.users.find(function(u) { return u.id === session.user.id && u.role === 'cook'; });
     if (!stillExists) {
-      setCurrentUser(null);
+      setCurrentSession(null);
       showLoginScreen();
       return;
     }
-    cookState.currentUser = stillExists;
+    cookState.currentUser = session.user;
     startApp();
   } catch (err) {
     showToast('Ошибка загрузки: ' + err.message, 'error');
   }
 }
 
+let _selectedLoginUser = null;
+
 function showLoginScreen() {
   document.getElementById('app-header').style.display = 'none';
   document.getElementById('cook-layout').style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
+  resetLoginSelection();
   const grid = document.getElementById('login-users');
   grid.innerHTML = '';
   const cooks = APP_DATA.users.filter(function(u) { return u.role === 'cook'; })
@@ -356,24 +371,67 @@ function showLoginScreen() {
   cooks.forEach(function(c) {
     const btn = document.createElement('button');
     btn.className = 'login-user-btn';
-    btn.innerHTML = escapeHtml(c.name) + '<span class="role-badge cook">повар</span>';
-    btn.onclick = function() { loginAs(c); };
+    btn.innerHTML = escapeHtml(c.name) +
+      '<span class="role-badge cook">повар</span>' +
+      (c.has_password ? '' : '<span class="role-badge" style="background:#ffe0b2;color:#e65100;">нет пароля</span>');
+    btn.onclick = function() { selectLoginUser(c); };
     grid.appendChild(btn);
   });
 }
 
-function loginAs(user) {
-  setCurrentUser({ id: user.id, name: user.name, role: user.role });
-  cookState.currentUser = user;
-  document.getElementById('login-screen').style.display = 'none';
-  startApp();
+function selectLoginUser(user) {
+  _selectedLoginUser = user;
+  document.getElementById('login-selected-name').textContent = user.name;
+  document.getElementById('login-password-group').style.display = 'block';
+  document.getElementById('login-submit-btn').style.display = 'block';
+  document.getElementById('login-back-btn').style.display = 'block';
+  document.querySelectorAll('.login-user-btn').forEach(function(b) { b.style.opacity = '0.5'; });
+  event.currentTarget.style.opacity = '1';
+  event.currentTarget.style.borderColor = 'var(--primary)';
+  setTimeout(function() { document.getElementById('login-password').focus(); }, 50);
+}
+
+function resetLoginSelection() {
+  _selectedLoginUser = null;
+  const pwd = document.getElementById('login-password');
+  if (pwd) pwd.value = '';
+  document.getElementById('login-password-group').style.display = 'none';
+  document.getElementById('login-submit-btn').style.display = 'none';
+  document.getElementById('login-back-btn').style.display = 'none';
+  document.querySelectorAll('.login-user-btn').forEach(function(b) {
+    b.style.opacity = '';
+    b.style.borderColor = '';
+  });
+}
+
+async function submitLogin() {
+  if (!_selectedLoginUser) {
+    showToast('Выберите своё имя', 'warning');
+    return;
+  }
+  const password = document.getElementById('login-password').value;
+  if (!password) {
+    showToast('Введите пароль', 'warning');
+    return;
+  }
+  try {
+    const session = await loginWithPassword(_selectedLoginUser.id, password);
+    setCurrentSession(session);
+    cookState.currentUser = session.user;
+    document.getElementById('login-screen').style.display = 'none';
+    showToast('Добро пожаловать, ' + session.user.name + '!', 'success');
+    startApp();
+  } catch (err) {
+    showToast('Ошибка входа: ' + err.message, 'error');
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-password').focus();
+  }
 }
 
 function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('cook-layout').style.display = 'grid';
   document.getElementById('user-chip-name').textContent = cookState.currentUser.name;
-  // Preload cook's notification sound
   preloadSounds(['cook_new_order']);
   startPolling();
 }

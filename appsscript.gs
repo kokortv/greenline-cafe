@@ -109,7 +109,9 @@ function setup() {
   ];
   menuSheet.getRange(2, 1, menu.length, 8).setValues(menu);
 
-  // Seed default users (waiters + cooks)
+  // Seed default users (waiters + cooks + admin). Passwords are empty by default
+  // (admin must set them via the admin UI). The admin user is special: it's
+  // the only one who can set passwords for other users.
   const usersSheet = ss.getSheetByName(SHEETS.USERS);
   const now = new Date().toISOString();
   const users = [
@@ -117,7 +119,8 @@ function setup() {
     ['u_w2', 'Борис',    'waiter', '', true, 2, now],
     ['u_w3', 'Виктор',   'waiter', '', true, 3, now],
     ['u_c1', 'Повар 1',  'cook',   '', true, 1, now],
-    ['u_c2', 'Повар 2',  'cook',   '', true, 2, now]
+    ['u_c2', 'Повар 2',  'cook',   '', true, 2, now],
+    ['u_admin', 'Администратор', 'admin', '', true, 0, now]
   ];
   usersSheet.getRange(2, 1, users.length, 7).setValues(users);
 
@@ -141,9 +144,18 @@ function migrate() {
     const now = new Date().toISOString();
     const users = [
       ['u_w1', 'Анна', 'waiter', '', true, 1, now],
-      ['u_c1', 'Повар 1', 'cook', '', true, 1, now]
+      ['u_c1', 'Повар 1', 'cook', '', true, 1, now],
+      ['u_admin', 'Администратор', 'admin', '', true, 0, now]
     ];
     usersSheet.getRange(2, 1, users.length, 7).setValues(users);
+  } else {
+    // Ensure admin user exists even if Users sheet was created by older setup()
+    const usersData = usersSheet.getDataRange().getValues();
+    const hasAdmin = usersData.some(function(row) { return row[2] === 'admin'; });
+    if (!hasAdmin) {
+      const now = new Date().toISOString();
+      usersSheet.appendRow(['u_admin', 'Администратор', 'admin', '', true, 0, now]);
+    }
   }
 
   // For each sheet, ensure all expected columns exist (by name, not just count).
@@ -212,6 +224,12 @@ function handleRequest(params, body) {
     return getSound(params.name);
   }
 
+  // Special-case: login is unauthenticated (it GRANTS a token, so it can't
+  // require one). Returns a short-lived token + the user record (without pin).
+  if (action === 'login') {
+    return doLogin(body);
+  }
+
   try {
     let result;
     switch (action) {
@@ -239,6 +257,9 @@ function handleRequest(params, body) {
       case 'getTables':      result = getTables(body); break;
       case 'uploadSound':    result = uploadSound(body); break;
       case 'deleteSound':    result = deleteSound(body); break;
+      case 'logout':         result = doLogout(body); break;
+      case 'setPassword':    result = setPassword(body); break;
+      case 'changePassword': result = changePassword(body); break;
       case 'ping':           result = { ok: true, time: new Date().toISOString() }; break;
       default: throw new Error('Unknown action: ' + action);
     }
@@ -285,11 +306,28 @@ function genId(prefix) {
 function getData() {
   const settings = readSheet(SHEETS.SETTINGS);
   const settingsObj = {};
-  settings.forEach(function(s) { settingsObj[s.key] = s.value; });
+  // Filter out session keys (don't leak sessions to clients)
+  settings.forEach(function(s) {
+    if (s.key && s.key.indexOf('session_') !== 0) {
+      settingsObj[s.key] = s.value;
+    }
+  });
 
   const categories = readSheet(SHEETS.CATEGORIES).filter(function(c) { return c.is_active !== false; });
   const menu = readSheet(SHEETS.MENU).filter(function(m) { return m.is_active !== false; });
-  const users = readSheet(SHEETS.USERS).filter(function(u) { return u.is_active !== false; });
+  // Return users WITHOUT the pin field (security: never expose password hashes)
+  const users = readSheet(SHEETS.USERS)
+    .filter(function(u) { return u.is_active !== false; })
+    .map(function(u) {
+      return {
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        is_active: u.is_active,
+        sort: u.sort,
+        has_password: !!(u.pin && u.pin.length > 0)  // boolean: whether password is set
+      };
+    });
 
   return {
     settings: settingsObj,
@@ -1087,4 +1125,177 @@ function deleteSound(body) {
   toDelete.reverse().forEach(function(r) { sheet.deleteRow(r); });
   SpreadsheetApp.flush();
   return { ok: true };
+}
+
+/* ============ AUTHENTICATION ============ */
+
+/**
+ * Hash a password using SHA-256. Returns a hex string.
+ * Salt is the user's id (so identical passwords at different users hash differently).
+ */
+function hashPassword(userId, password) {
+  const raw = (userId || '') + ':' + (password || '');
+  const rawBytes = Utilities.newBlob(raw).getBytes();
+  const hashed = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawBytes);
+  return hashed.map(function(b) {
+    const v = (b + 256) % 256;
+    return ('0' + v.toString(16)).slice(-2);
+  }).join('');
+}
+
+/**
+ * Generate a random session token (64 hex chars).
+ */
+function generateToken() {
+  const bytes = [];
+  for (let i = 0; i < 32; i++) bytes.push(Math.floor(Math.random() * 256));
+  return bytes.map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+}
+
+/**
+ * Login: verify user_id + password, return a session token.
+ * Body: { user_id, password }
+ * Response: { token, user: {id, name, role}, expires_at }
+ */
+function doLogin(body) {
+  if (!body || !body.user_id || !body.password) {
+    return jsonOut({ success: false, error: 'Missing user_id or password' });
+  }
+  const users = readSheet(SHEETS.USERS);
+  const user = users.find(function(u) { return u.id === body.user_id && u.is_active !== false; });
+  if (!user) {
+    return jsonOut({ success: false, error: 'Пользователь не найден' });
+  }
+  // If user has no password set yet, reject (admin must set one)
+  if (!user.pin) {
+    return jsonOut({ success: false, error: 'Пароль не установлен. Обратитесь к администратору.' });
+  }
+  const hash = hashPassword(user.id, body.password);
+  if (hash !== user.pin) {
+    return jsonOut({ success: false, error: 'Неверный пароль' });
+  }
+
+  // Generate session token
+  const token = generateToken();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12 hours
+
+  // Store session in Settings sheet under key "session_<token>" -> JSON
+  const sessionData = {
+    token: token,
+    user_id: user.id,
+    user_name: user.name,
+    user_role: user.role,
+    created_at: now.toISOString(),
+    expires_at: expiresAt.toISOString()
+  };
+  const settingsSheet = getSheet(SHEETS.SETTINGS);
+  settingsSheet.appendRow(['session_' + token, JSON.stringify(sessionData)]);
+
+  SpreadsheetApp.flush();
+
+  return jsonOut({
+    success: true,
+    data: {
+      token: token,
+      user: { id: user.id, name: user.name, role: user.role },
+      expires_at: expiresAt.toISOString()
+    }
+  });
+}
+
+/**
+ * Verify a session token. Returns the user record (without pin) or null.
+ */
+function verifyToken(token) {
+  if (!token) return null;
+  const settings = readSheet(SHEETS.SETTINGS);
+  const row = settings.find(function(s) { return s.key === 'session_' + token; });
+  if (!row) return null;
+  let session;
+  try { session = JSON.parse(row.value); } catch (e) { return null; }
+  if (!session || !session.expires_at) return null;
+  if (new Date(session.expires_at).getTime() < Date.now()) {
+    // Expired — clean up
+    deleteSession(token);
+    return null;
+  }
+  return session;
+}
+
+/**
+ * Delete a session token (logout).
+ */
+function deleteSession(token) {
+  if (!token) return;
+  const sheet = getSheet(SHEETS.SETTINGS);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const keyCol = headers.indexOf('key');
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (data[i][keyCol] === 'session_' + token) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+  SpreadsheetApp.flush();
+}
+
+/**
+ * Logout endpoint.
+ */
+function doLogout(body) {
+  if (body && body.token) deleteSession(body.token);
+  return { ok: true };
+}
+
+/**
+ * Set password for a user. Only admin (or the user themselves if they know
+ * their current password) can do this. For simplicity, we allow admin to set
+ * passwords directly (admin authenticates separately, see admin login).
+ * Body: { user_id, new_password, admin_token? }
+ */
+function setPassword(body) {
+  if (!body || !body.user_id) throw new Error('Missing user_id');
+  // Verify admin token if provided
+  if (body.admin_token) {
+    const session = verifyToken(body.admin_token);
+    if (!session || session.user_role !== 'admin') {
+      throw new Error('Недостаточно прав');
+    }
+  }
+  const sheet = getSheet(SHEETS.USERS);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  const pinCol = headers.indexOf('pin');
+  if (pinCol < 0) throw new Error('Column "pin" not found in Users sheet. Run migrate() first.');
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][idCol] === body.user_id) {
+      // Allow setting empty password (which disables password login)
+      const newHash = body.new_password ? hashPassword(body.user_id, body.new_password) : '';
+      data[i][pinCol] = newHash;
+      sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+      SpreadsheetApp.flush();
+      return { ok: true };
+    }
+  }
+  throw new Error('User not found');
+}
+
+/**
+ * Change own password. Body: { user_id, old_password, new_password }
+ */
+function changePassword(body) {
+  if (!body || !body.user_id || !body.new_password) throw new Error('Missing fields');
+  const users = readSheet(SHEETS.USERS);
+  const user = users.find(function(u) { return u.id === body.user_id; });
+  if (!user) throw new Error('User not found');
+
+  // If user already has a password, require old_password to match
+  if (user.pin) {
+    if (!body.old_password) throw new Error('Введите старый пароль');
+    const oldHash = hashPassword(body.user_id, body.old_password);
+    if (oldHash !== user.pin) throw new Error('Неверный старый пароль');
+  }
+  return setPassword({ user_id: body.user_id, new_password: body.new_password });
 }

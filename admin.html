@@ -206,15 +206,42 @@
 </head>
 <body>
 
-<header class="app-header">
+<header class="app-header" id="app-header" style="display:none;">
   <h1 id="restaurant-name">Администратор</h1>
   <div class="header-actions">
-    <a href="index.html" class="nav-link">Официант</a>
-    <a href="cook.html" class="nav-link">Повар</a>
+    <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
+      <span id="user-chip-name">—</span>
+      <span class="uc-logout">⏻</span>
+    </span>
   </div>
 </header>
 
-<main class="app-main">
+<!-- Login screen for admin -->
+<div class="login-screen" id="login-screen" style="display:none;">
+  <h1>Администратор</h1>
+  <p class="login-subtitle">Вход только для администратора</p>
+  <div class="form-group" style="max-width:400px;margin:0 auto;">
+    <label>Имя:</label>
+    <select id="login-user-select" onchange="selectAdminUser();">
+      <option value="">— Выберите —</option>
+    </select>
+  </div>
+  <div class="form-group" id="login-password-group" style="display:none;max-width:400px;margin:16px auto 0;">
+    <label>Пароль:</label>
+    <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off">
+  </div>
+  <div style="max-width:400px;margin:16px auto 0;">
+    <button class="btn btn-primary btn-lg" id="login-submit-btn" style="width:100%;display:none;"
+            onclick="withLoading(this, 'Вход...', function() { return submitLogin(); })">
+      Войти
+    </button>
+  </div>
+  <p style="margin-top:16px;font-size:0.85rem;color:var(--text-muted);text-align:center;">
+    Если у вас нет пароля — обратитесь к другому администратору или запустите migrate() в Apps Script.
+  </p>
+</div>
+
+<main class="app-main" id="app-main" style="display:none;">
   <div class="tabs admin-tabs">
     <button class="tab active" data-tab="orders" onclick="switchTab('orders')">Заказы</button>
     <button class="tab" data-tab="menu" onclick="switchTab('menu')">Меню</button>
@@ -468,6 +495,30 @@
   </div>
 </div>
 
+<!-- Password modal -->
+<div class="modal-backdrop" id="modal-password">
+  <div class="modal">
+    <h2>Установка пароля</h2>
+    <p style="margin-bottom:12px;color:var(--text-muted);">Сотрудник: <b id="pwd-user-name">—</b></p>
+    <input type="hidden" id="pwd-user-id">
+    <div class="form-group">
+      <label>Новый пароль</label>
+      <input type="password" id="pwd-new" placeholder="Минимум 3 символа" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Повторите пароль</label>
+      <input type="password" id="pwd-confirm" placeholder="Ещё раз" autocomplete="off">
+    </div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px;">
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return savePassword(); })" style="width:100%;">
+        Установить пароль
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('modal-password')" style="width:100%;">Отмена</button>
+      <button class="btn btn-danger" onclick="clearPassword()" style="width:100%;">Удалить пароль (отключить вход)</button>
+    </div>
+  </div>
+</div>
+
 <!-- Order detail modal (admin) -->
 <div class="modal-backdrop" id="modal-order">
   <div class="modal" style="max-width:700px;">
@@ -485,7 +536,10 @@
 let adminState = {
   orders: [],
   filterStatus: 'all',
-  filterDate: ''
+  filterDate: '',
+  currentUser: null,
+  sessionToken: null,
+  selectedLoginUser: null
 };
 
 async function init() {
@@ -494,16 +548,97 @@ async function init() {
     await loadAppData();
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан') + ' — Админ';
-    populateSettingsForm();
-    populateCategoryFilter();
-    renderMenuList();
-    renderCategoryList();
-    renderStaffList();
-    updateSoundStatuses();
-    loadOrders();
+
+    // Check session
+    const session = getCurrentSession();
+    if (!session || !session.user || session.user.role !== 'admin') {
+      showLoginScreen();
+      return;
+    }
+    // Verify user still exists in current users list
+    const stillExists = APP_DATA.users.find(function(u) { return u.id === session.user.id && u.role === 'admin'; });
+    if (!stillExists) {
+      setCurrentSession(null);
+      showLoginScreen();
+      return;
+    }
+    adminState.currentUser = session.user;
+    adminState.sessionToken = session.token;
+    startApp();
   } catch (err) {
     showToast('Ошибка загрузки: ' + err.message, 'error');
   }
+}
+
+function showLoginScreen() {
+  document.getElementById('app-header').style.display = 'none';
+  document.getElementById('app-main').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'block';
+  // Populate admin users in select
+  const sel = document.getElementById('login-user-select');
+  sel.innerHTML = '<option value="">— Выберите —</option>';
+  const admins = APP_DATA.users.filter(function(u) { return u.role === 'admin'; })
+    .sort(function(a, b) { return String(a.name).localeCompare(String(b.name)); });
+  admins.forEach(function(a) {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = a.name + (a.has_password ? '' : ' (нет пароля)');
+    sel.appendChild(opt);
+  });
+  document.getElementById('login-password-group').style.display = 'none';
+  document.getElementById('login-submit-btn').style.display = 'none';
+}
+
+function selectAdminUser() {
+  const userId = document.getElementById('login-user-select').value;
+  if (!userId) {
+    document.getElementById('login-password-group').style.display = 'none';
+    document.getElementById('login-submit-btn').style.display = 'none';
+    adminState.selectedLoginUser = null;
+    return;
+  }
+  adminState.selectedLoginUser = APP_DATA.users.find(function(u) { return u.id === userId; });
+  document.getElementById('login-password-group').style.display = 'block';
+  document.getElementById('login-submit-btn').style.display = 'block';
+  setTimeout(function() { document.getElementById('login-password').focus(); }, 50);
+}
+
+async function submitLogin() {
+  if (!adminState.selectedLoginUser) {
+    showToast('Выберите пользователя', 'warning');
+    return;
+  }
+  const password = document.getElementById('login-password').value;
+  if (!password) {
+    showToast('Введите пароль', 'warning');
+    return;
+  }
+  try {
+    const session = await loginWithPassword(adminState.selectedLoginUser.id, password);
+    setCurrentSession(session);
+    adminState.currentUser = session.user;
+    adminState.sessionToken = session.token;
+    document.getElementById('login-screen').style.display = 'none';
+    showToast('Добро пожаловать, ' + session.user.name + '!', 'success');
+    startApp();
+  } catch (err) {
+    showToast('Ошибка входа: ' + err.message, 'error');
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-password').focus();
+  }
+}
+
+function startApp() {
+  document.getElementById('app-header').style.display = 'flex';
+  document.getElementById('app-main').style.display = 'block';
+  document.getElementById('user-chip-name').textContent = adminState.currentUser.name;
+  populateSettingsForm();
+  populateCategoryFilter();
+  renderMenuList();
+  renderCategoryList();
+  renderStaffList();
+  updateSoundStatuses();
+  loadOrders();
 }
 
 /* ---------- Tab switching ---------- */
@@ -1326,7 +1461,11 @@ function renderStaffList() {
         '<span class="user-role-badge ' + (role === 'cook' ? 'cook' : '') + '">' +
           (role === 'cook' ? 'повар' : 'официант') +
         '</span>' +
+        (u.has_password
+          ? '<span class="user-role-badge" style="background:#c8e6c9;color:#1b5e20;">🔑 есть пароль</span>'
+          : '<span class="user-role-badge" style="background:#ffe0b2;color:#e65100;">нет пароля</span>') +
         '<button class="btn btn-outline" onclick="openUserModal(\'' + u.id + '\')">✎ Изменить</button>' +
+        '<button class="btn btn-info" onclick="openPasswordModal(\'' + u.id + '\')">🔑 Пароль</button>' +
         '<button class="btn btn-danger" onclick="deleteUserBtn(\'' + u.id + '\')">✕</button>';
       div.appendChild(row);
     });
@@ -1378,6 +1517,57 @@ async function deleteUserBtn(id) {
   try {
     await apiPost('deleteUser', { id: id });
     showToast('Сотрудник удалён', 'info');
+    await loadAppData(true);
+    renderStaffList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- PASSWORDS ---------- */
+function openPasswordModal(userId) {
+  const user = APP_DATA.users.find(function(u) { return u.id === userId; });
+  if (!user) return;
+  document.getElementById('pwd-user-id').value = userId;
+  document.getElementById('pwd-user-name').textContent = user.name + ' (' + (user.role === 'cook' ? 'повар' : user.role === 'admin' ? 'админ' : 'официант') + ')';
+  document.getElementById('pwd-new').value = '';
+  document.getElementById('pwd-confirm').value = '';
+  openModal('modal-password');
+}
+
+async function savePassword() {
+  const userId = document.getElementById('pwd-user-id').value;
+  const pwd = document.getElementById('pwd-new').value;
+  const confirm = document.getElementById('pwd-confirm').value;
+  if (!pwd) { showToast('Введите пароль', 'warning'); return; }
+  if (pwd.length < 3) { showToast('Минимум 3 символа', 'warning'); return; }
+  if (pwd !== confirm) { showToast('Пароли не совпадают', 'warning'); return; }
+  try {
+    await apiPost('setPassword', {
+      user_id: userId,
+      new_password: pwd,
+      admin_token: adminState.sessionToken
+    });
+    showToast('Пароль установлен', 'success');
+    closeModal('modal-password');
+    await loadAppData(true);
+    renderStaffList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function clearPassword() {
+  const userId = document.getElementById('pwd-user-id').value;
+  if (!confirm('Удалить пароль? Сотрудник не сможет войти, пока не получит новый.')) return;
+  try {
+    await apiPost('setPassword', {
+      user_id: userId,
+      new_password: '',
+      admin_token: adminState.sessionToken
+    });
+    showToast('Пароль удалён', 'info');
+    closeModal('modal-password');
     await loadAppData(true);
     renderStaffList();
   } catch (err) {
