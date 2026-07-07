@@ -1684,18 +1684,17 @@ async function acceptOrder() {
 async function refreshActiveOrders() {
   try {
     if (!state.currentUser) return;
-    // Fetch only this waiter's orders
-    const data = await apiGet('getOrders', { status: 'accepted', waiter_id: state.currentUser.id });
+    // BATCH API: one request instead of three (getOrders + getTables + getActiveShift)
+    const data = await apiGet('getWaiterDashboard', { waiter_id: state.currentUser.id });
     const newOrders = data.orders || [];
-
-    // Also refresh table statuses so home screen shows which tables are taken
-    try {
-      const tablesData = await apiGet('getTables', { waiter_id: state.currentUser.id });
-      state.tableStatuses = tablesData.tables || [];
-    } catch (e) { /* ignore */ }
+    state.tableStatuses = data.tables || [];
+    state.cookEnabled = data.cook_enabled !== false;
+    state.currentCash = data.current_cash || 0;
+    // Update shift status from batch
+    _activeShift = data.shift || null;
+    updateShiftButton();
 
     // Detect newly ready items across all active orders
-    // (item.is_ready === true AND we haven't notified about it yet)
     const newReadyItems = [];
     newOrders.forEach(function(order) {
       (order.items || []).forEach(function(item) {
@@ -1723,7 +1722,7 @@ async function refreshActiveOrders() {
       }
     });
 
-    // For orders that are no longer active (completed/deleted), drop their ready alerts
+    // For orders that are no longer active, drop their ready alerts
     const activeOrderIds = new Set(newOrders.map(function(o) { return o.id; }));
     state.readyAlerts = state.readyAlerts.filter(function(a) {
       return activeOrderIds.has(a.orderId);
@@ -1732,12 +1731,11 @@ async function refreshActiveOrders() {
       return !state.dismissedReadyAlerts.has(a.orderId + '_' + a.itemId);
     });
 
-    // Sound + toast for new ready items (only if there are any that were added just now)
+    // Sound + toast for new ready items
     if (newReadyItems.length > 0) {
       if (state.initialLoadDone) {
         notifySound();
         newReadyItems.forEach(function(r) {
-          // Build the item label with category (e.g. "Салаты: Греческий")
           let catName = r.categoryName || '';
           if (!catName && r.menuItemId && APP_DATA && APP_DATA.menu) {
             const dish = APP_DATA.menu.find(function(m) { return m.id === r.menuItemId; });
@@ -1749,7 +1747,6 @@ async function refreshActiveOrders() {
           const fullItemName = catName ? catName + ': ' + r.itemName : r.itemName;
           const msg = '✓ Готово: ' + fullItemName + ' ×' + r.quantity + ' — ' + formatTableLabel({ table_number: r.tableNumber, table_type: 'numbered' });
           showToast(msg, 'success');
-          // Also fire a system notification (works when tab is hidden)
           showSystemNotification('🍽 Блюдо готово!', msg, 'ready_' + r.itemId);
         });
       }
@@ -1759,7 +1756,7 @@ async function refreshActiveOrders() {
     state.initialLoadDone = true;
 
     updateBadge();
-    // Update home view (table indicators + active orders + ready alerts)
+    // Stale-while-revalidate: update UI immediately with new data
     if (document.getElementById('screen-home').classList.contains('active')) {
       renderHome();
       renderReadyAlerts();
@@ -1767,22 +1764,39 @@ async function refreshActiveOrders() {
     } else {
       renderReadyAlerts();
     }
-    // If order detail is open, refresh it
     if (document.getElementById('screen-order-detail').classList.contains('active') && state.currentOrderId) {
       renderOrderDetail();
     }
-    // Update active orders list if visible
     if (document.getElementById('screen-orders').classList.contains('active')) {
       renderActiveOrdersList();
     }
+    // Adaptive polling: if no active orders, poll less frequently
+    adjustPollingInterval(newOrders.length);
   } catch (err) {
     console.error('refresh active orders error', err);
-    // Show a visible toast the first time (so user knows something's wrong),
-    // but don't spam every 20 seconds — only show once per session.
     if (!state._apiErrorShown) {
       showToast('Ошибка связи с сервером: ' + err.message, 'error');
       state._apiErrorShown = true;
     }
+  }
+}
+
+/* ---------- Adaptive polling ---------- */
+// If there are no active orders — poll every 60 seconds (saves quota).
+// If there are active orders — poll at the configured interval (15-20 sec).
+function adjustPollingInterval(activeOrderCount) {
+  const hasActiveOrders = activeOrderCount > 0;
+  if (hasActiveOrders === state._wasPollingFast) return; // no change
+  state._wasPollingFast = hasActiveOrders;
+  if (hasActiveOrders) {
+    // Resume normal polling
+    startBadgePolling();
+  } else {
+    // Slow down to 60 seconds when idle
+    stopBadgePolling();
+    const interval = 60000;
+    state.badgePollingTimer = setInterval(refreshActiveOrders, interval);
+    console.log('Adaptive polling: no active orders → slowed to 60s');
   }
 }
 

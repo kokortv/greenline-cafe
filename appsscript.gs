@@ -276,6 +276,7 @@ function handleRequest(params, body) {
     switch (action) {
       case 'getData':        result = getData(); break;
       case 'getDataVersion': result = getDataVersion(); break;
+      case 'getWaiterDashboard': result = getWaiterDashboard(body); break;
       case 'getOrders':      result = getOrders(params.status, params.since, { waiter_id: params.waiter_id }); break;
       case 'getOrder':       result = getOrder(params.id); break;
       case 'createOrder':    result = createOrder(body); break;
@@ -471,6 +472,128 @@ function getDataVersion() {
     }
   });
   return { _version: versionParts.join('|') };
+}
+
+/**
+ * BATCH API: returns everything the waiter needs in ONE request.
+ * Combines: getOrders(accepted+paused) + getTables + getActiveShift.
+ * Saves 2 round-trips (~2-4 seconds) on every poll cycle.
+ *
+ * Also returns a "slim" version of orders — strips unnecessary fields
+ * that the waiter UI doesn't need (cook_id, cook_name, waiter_note, etc.)
+ * to reduce JSON payload size.
+ */
+function getWaiterDashboard(body) {
+  const waiterId = body.waiter_id || (body.user && body.user.id);
+  const cookEnabled = getSetting('cook_enabled') !== 'false';
+
+  // 1. Active orders (accepted + paused) for this waiter + virtual/tab orders
+  let orders = readSheet(SHEETS.ORDERS);
+  orders = orders.filter(function(o) {
+    return o.status === 'accepted' || o.status === 'paused';
+  });
+  if (waiterId) {
+    orders = orders.filter(function(o) {
+      if (o.waiter_id === waiterId) return true;
+      if (o.table_type === 'virtual' || o.table_type === 'tab') return true;
+      return false;
+    });
+  }
+  orders.sort(function(a, b) {
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  // Attach items (only for the orders we're returning)
+  const orderIds = {};
+  orders.forEach(function(o) { orderIds[o.id] = true; });
+  const allItems = readSheet(SHEETS.ORDER_ITEMS);
+  const itemsByOrder = {};
+  for (let i = 0; i < allItems.length; i++) {
+    const it = allItems[i];
+    if (orderIds[it.order_id]) {
+      if (!itemsByOrder[it.order_id]) itemsByOrder[it.order_id] = [];
+      itemsByOrder[it.order_id].push(it);
+    }
+  }
+
+  // Slim orders — strip fields the waiter UI doesn't need
+  const slimOrders = orders.map(function(o) {
+    const items = (itemsByOrder[o.id] || []).map(function(it) {
+      return {
+        id: it.id,
+        menu_item_id: it.menu_item_id,
+        name: it.name,
+        category_name: it.category_name || '',
+        price: Number(it.price) || 0,
+        quantity: Number(it.quantity) || 1,
+        comment: it.comment || '',
+        is_ready: it.is_ready === true || it.is_ready === 'true',
+        is_served: it.is_served === true || it.is_served === 'true',
+        needs_cooking: it.needs_cooking === true || it.needs_cooking === 'true'
+      };
+    });
+    return {
+      id: o.id,
+      table_number: o.table_number,
+      table_type: o.table_type || 'numbered',
+      tab_id: o.tab_id || '',
+      guests: o.guests,
+      main_category_name: o.main_category_name || '',
+      status: o.status,
+      total: Number(o.total) || 0,
+      created_at: o.created_at,
+      waiter_id: o.waiter_id,
+      waiter_name: o.waiter_name || '',
+      payment_method: o.payment_method || '',
+      items: items
+    };
+  });
+
+  // 2. Tables status
+  const tableCount = Number(getSetting('table_count')) || 20;
+  const activeOrdersForTables = readSheet(SHEETS.ORDERS).filter(function(o) {
+    return o.status === 'accepted';
+  });
+  const tables = [];
+  for (let i = 1; i <= tableCount; i++) {
+    const occ = activeOrdersForTables.find(function(o) {
+      return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered');
+    });
+    let status = 'free';
+    let waiterName = '';
+    if (occ) {
+      waiterName = occ.waiter_name || '';
+      if (waiterId && occ.waiter_id === waiterId) status = 'mine';
+      else status = 'other';
+    }
+    tables.push({ table: i, type: 'numbered', status: status, waiter_name: waiterName });
+  }
+  // Virtual tables
+  const virtualTablesSetting = getSetting('virtual_tables') || '';
+  const virtualNames = virtualTablesSetting.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  virtualNames.forEach(function(name) {
+    const activeCount = activeOrdersForTables.filter(function(o) {
+      return o.table_type === 'virtual' && String(o.table_number).indexOf(name) === 0;
+    }).length;
+    tables.push({ table: name, type: 'virtual', status: activeCount > 0 ? 'active' : 'free', active_count: activeCount });
+  });
+
+  // 3. Active shift + cash
+  let shift = null;
+  if (waiterId) {
+    const shifts = readSheet(SHEETS.SHIFTS);
+    shift = shifts.find(function(s) { return s.waiter_id === waiterId && s.status === 'open'; }) || null;
+  }
+  const currentCash = Number(getSetting('cash_register')) || 0;
+
+  return {
+    orders: slimOrders,
+    tables: tables,
+    shift: shift,
+    current_cash: currentCash,
+    cook_enabled: cookEnabled,
+    server_time: new Date().toISOString()
+  };
 }
 
 function getOrders(status, since) {

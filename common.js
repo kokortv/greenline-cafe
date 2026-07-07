@@ -102,27 +102,58 @@ function timeAgo(iso) {
 // and as a property of window (some code paths check window.APP_DATA).
 var APP_DATA = null;
 var _cachedDataVersion = null;
+const APP_DATA_CACHE_KEY = 'restaurant_app_data_cache';
+const APP_DATA_CACHE_TTL = 300000; // 5 minutes — menu/categories don't change often
 
 async function loadAppData(force) {
+  // If no force, try cached APP_DATA from memory
   if (APP_DATA && !force) return APP_DATA;
-  // Optimization: before doing a full getData() (which can be slow), check
-  // the version hash. If it hasn't changed since our last fetch, skip the
-  // full fetch and reuse the cached APP_DATA.
+
+  // If force but not _skipVersionCheck — try localStorage cache first
   if (APP_DATA && force && !force._skipVersionCheck) {
+    // Try localStorage cache (5 min TTL)
+    try {
+      const cached = localStorage.getItem(APP_DATA_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const age = Date.now() - (parsed._cachedAt || 0);
+        if (age < APP_DATA_CACHE_TTL) {
+          APP_DATA = parsed.data;
+          _cachedDataVersion = parsed.data._version;
+          // Still check version in background, but return cached immediately
+          apiGet('getDataVersion', {}).then(function(v) {
+            if (v && v._version && v._version !== _cachedDataVersion) {
+              // Version changed — fetch fresh data in background
+              loadAppDataForce().then(function() {
+                console.log('APP_DATA updated in background (version changed)');
+              });
+            }
+          }).catch(function() {});
+          return APP_DATA;
+        }
+      }
+    } catch (e) { /* fall through to server fetch */ }
+
+    // No localStorage cache — check version with server
     try {
       const v = await apiGet('getDataVersion', {});
       if (v && v._version && v._version === _cachedDataVersion) {
-        // Version unchanged — no need to re-fetch full data
-        return APP_DATA;
+        return APP_DATA; // version unchanged
       }
-      // Version changed (or first time) — proceed with full fetch
       if (v && v._version) _cachedDataVersion = v._version;
-    } catch (e) {
-      // If version check fails, just proceed with full fetch
-    }
+    } catch (e) { /* proceed with full fetch */ }
   }
+
+  // Full fetch from server
   APP_DATA = await apiGet('getData');
   if (APP_DATA && APP_DATA._version) _cachedDataVersion = APP_DATA._version;
+  // Save to localStorage
+  try {
+    localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify({
+      data: APP_DATA,
+      _cachedAt: Date.now()
+    }));
+  } catch (e) { /* localStorage might be full or unavailable */ }
   return APP_DATA;
 }
 
