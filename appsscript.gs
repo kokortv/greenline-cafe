@@ -142,6 +142,7 @@ function setup() {
   usersSheet.getRange(2, 1, users.length, 7).setValues(users);
 
   SpreadsheetApp.flush();
+  invalidateAllCaches();
   return 'Setup complete. Sheets created and seeded with default data.';
 }
 
@@ -235,6 +236,7 @@ function migrate() {
   }
 
   SpreadsheetApp.flush();
+  invalidateAllCaches();
   return 'Migration complete.';
 }
 
@@ -336,16 +338,49 @@ function getSheet(name) {
   return sheet;
 }
 
+// Cache layer — avoids re-reading the full sheet on every request.
+// CacheService is per-user, in-memory on Google's servers, ~50ms access.
+// TTL: 5 seconds (long enough to batch rapid polling, short enough to stay fresh).
+const CACHE_TTL = 3; // seconds — short enough for real-time, long enough to batch rapid polls
+
 function readSheet(name) {
+  // Try cache first
+  const cacheKey = 'sheet_' + name;
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) { /* fall through */ }
+  }
+  // Cache miss — read from sheet
   const sheet = getSheet(name);
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+  // Only read the used range (not the entire data range)
+  const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   const headers = data[0];
   const rows = data.slice(1).filter(function(r) { return r[0] !== ''; });
-  return rows.map(function(r) {
+  const result = rows.map(function(r) {
     const obj = {};
     headers.forEach(function(h, i) { obj[h] = r[i]; });
     return obj;
+  });
+  // Store in cache
+  try { cache.put(cacheKey, JSON.stringify(result), CACHE_TTL); } catch (e) {}
+  return result;
+}
+
+// Invalidate cache for a sheet (call after any write operation)
+function invalidateCache(name) {
+  const cache = CacheService.getScriptCache();
+  cache.remove('sheet_' + name);
+}
+
+// Invalidate all caches (call after batch operations)
+function invalidateAllCaches() {
+  const cache = CacheService.getScriptCache();
+  Object.keys(SHEETS).forEach(function(k) {
+    cache.remove('sheet_' + SHEETS[k]);
   });
 }
 
@@ -631,6 +666,7 @@ function createOrder(body) {
     }
 
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return getOrder(orderId);
   } finally {
     lock.releaseLock();
@@ -667,6 +703,7 @@ function updateOrderStatus(body) {
     }
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return getOrder(body.order_id);
   } finally {
     lock.releaseLock();
@@ -705,6 +742,7 @@ function addItemToOrder(body) {
     itemsSheet.appendRow(row);
     recalcOrderTotal(body.order_id);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return getOrder(body.order_id);
   } finally {
     lock.releaseLock();
@@ -732,6 +770,7 @@ function updateItemQuantity(body) {
       sheet.getRange(1, 1, data.length, headers.length).setValues(data);
       recalcOrderTotal(orderId);
       SpreadsheetApp.flush();
+      invalidateAllCaches();
       return getOrder(orderId);
     }
     throw new Error('Item not found');
@@ -760,6 +799,7 @@ function updateItemComment(body) {
     if (orderId) {
       sheet.getRange(1, 1, data.length, headers.length).setValues(data);
       SpreadsheetApp.flush();
+      invalidateAllCaches();
       return getOrder(orderId);
     }
     throw new Error('Item not found');
@@ -790,6 +830,7 @@ function removeItemFromOrder(body) {
       safeDeleteRow(sheet, rowIndex);
       recalcOrderTotal(orderId);
       SpreadsheetApp.flush();
+      invalidateAllCaches();
       return getOrder(orderId);
     }
     throw new Error('Item not found');
@@ -818,6 +859,7 @@ function toggleItemReady(body) {
     if (orderId) {
       sheet.getRange(1, 1, data.length, headers.length).setValues(data);
       SpreadsheetApp.flush();
+      invalidateAllCaches();
       return getOrder(orderId);
     }
     throw new Error('Item not found');
@@ -866,6 +908,7 @@ function toggleItemServed(body) {
     if (orderId) {
       sheet.getRange(1, 1, data.length, headers.length).setValues(data);
       SpreadsheetApp.flush();
+      invalidateAllCaches();
       return getOrder(orderId);
     }
     throw new Error('Item not found');
@@ -914,6 +957,7 @@ function deleteOrder(body) {
     });
 
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return { ok: true };
   } finally {
     lock.releaseLock();
@@ -966,6 +1010,7 @@ function saveSettings(body) {
   });
   sheet.getRange(1, 1, data.length, headers.length).setValues(data);
   SpreadsheetApp.flush();
+  invalidateAllCaches();
   return getData().settings;
 }
 
@@ -1011,6 +1056,7 @@ function saveCategory(body) {
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
   }
   SpreadsheetApp.flush();
+  invalidateAllCaches();
   return { id: id };
 }
 
@@ -1029,6 +1075,7 @@ function deleteCategory(body) {
   if (rowIndex > 0) {
     safeDeleteRow(sheet, rowIndex);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
   }
   return { ok: true };
 }
@@ -1082,6 +1129,7 @@ function saveMenuItem(body) {
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
   }
   SpreadsheetApp.flush();
+  invalidateAllCaches();
   return { id: id };
 }
 
@@ -1100,6 +1148,7 @@ function deleteMenuItem(body) {
   if (rowIndex > 0) {
     safeDeleteRow(sheet, rowIndex);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
   }
   return { ok: true };
 }
@@ -1131,6 +1180,7 @@ function updateOrder(body) {
     }
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return getOrder(body.order_id);
   } finally {
     lock.releaseLock();
@@ -1164,6 +1214,7 @@ function reorderMenu(body) {
     }
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return { ok: true, updated: items.length };
   } finally {
     lock.releaseLock();
@@ -1195,6 +1246,7 @@ function reorderCategories(body) {
     }
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return { ok: true, updated: items.length };
   } finally {
     lock.releaseLock();
@@ -1242,6 +1294,7 @@ function saveUser(body) {
     sheet.getRange(1, 1, data.length, headers.length).setValues(data);
   }
   SpreadsheetApp.flush();
+  invalidateAllCaches();
   return { id: id };
 }
 
@@ -1260,6 +1313,7 @@ function deleteUser(body) {
   if (rowIndex > 0) {
     safeDeleteRow(sheet, rowIndex);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
   }
   return { ok: true };
 }
@@ -1379,6 +1433,7 @@ function deleteSound(body) {
   // Delete in reverse order — use safeDeleteRow to avoid the "last non-frozen row" error
   toDelete.reverse().forEach(function(r) { safeDeleteRow(sheet, r); });
   SpreadsheetApp.flush();
+  invalidateAllCaches();
   return { ok: true };
 }
 
@@ -1474,6 +1529,7 @@ function doLogin(body) {
   settingsSheet.appendRow(['session_' + token, JSON.stringify(sessionData)]);
 
   SpreadsheetApp.flush();
+  invalidateAllCaches();
 
   return jsonOut({
     success: true,
@@ -1519,6 +1575,7 @@ function deleteSession(token) {
     }
   }
   SpreadsheetApp.flush();
+  invalidateAllCaches();
 }
 
 /**
@@ -1572,6 +1629,7 @@ function setPassword(body) {
       data[i][pinCol] = storedValue;
       sheet.getRange(1, 1, data.length, headers.length).setValues(data);
       SpreadsheetApp.flush();
+      invalidateAllCaches();
       return { ok: true };
     }
   }
@@ -1661,6 +1719,7 @@ function createTab(body) {
     });
     sheet.appendRow(row);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return { id: id };
   } finally {
     lock.releaseLock();
@@ -1714,6 +1773,7 @@ function closeTab(body) {
     ordersSheet.getRange(1, 1, ordersData.length, ordersHeaders.length).setValues(ordersData);
 
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return { ok: true };
   } finally {
     lock.releaseLock();
@@ -1759,6 +1819,7 @@ function pauseOrder(body) {
         data[i][statusCol] = 'paused';
         sheet.getRange(1, 1, data.length, headers.length).setValues(data);
         SpreadsheetApp.flush();
+        invalidateAllCaches();
         return getOrder(body.order_id);
       }
     }
@@ -1790,6 +1851,7 @@ function resumeOrder(body) {
         data[i][statusCol] = 'accepted';
         sheet.getRange(1, 1, data.length, headers.length).setValues(data);
         SpreadsheetApp.flush();
+        invalidateAllCaches();
         return getOrder(body.order_id);
       }
     }
@@ -1846,6 +1908,7 @@ function cleanupExpiredSessions() {
     });
     if (rowsToDelete.length > 0) {
       SpreadsheetApp.flush();
+      invalidateAllCaches();
     }
     return rowsToDelete.length;
   } catch (e) {
@@ -1893,6 +1956,7 @@ function openShift(body) {
     });
     sheet.appendRow(row);
     SpreadsheetApp.flush();
+    invalidateAllCaches();
     return {
       id: id,
       waiter_id: body.waiter_id,
@@ -1967,6 +2031,7 @@ function closeShift(body) {
     saveSettings({ settings: { cash_register: String(currentCash + cashTotal) } });
 
     SpreadsheetApp.flush();
+    invalidateAllCaches();
 
     const openingCash = Number(data[shiftRow - 1][openingCashCol]) || 0;
     return {
