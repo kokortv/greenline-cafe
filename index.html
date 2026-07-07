@@ -2152,11 +2152,18 @@ async function renderOrderDetail() {
             '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
           '</div>' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
-            '<div class="stepper" data-item-id="' + item.id + '">' +
-              '<button onclick="changeOrderItemQty(\'' + item.id + '\', -1)">−</button>' +
-              '<input type="number" value="' + item.quantity + '" readonly>' +
-              '<button onclick="changeOrderItemQty(\'' + item.id + '\', 1)">+</button>' +
-            '</div>' +
+            (isServed
+              ? '<div class="stepper" data-item-id="' + item.id + '" style="opacity:0.5;">' +
+                  '<button disabled>−</button>' +
+                  '<input type="number" value="' + item.quantity + '" readonly disabled>' +
+                  '<button disabled>+</button>' +
+                '</div>'
+              : '<div class="stepper" data-item-id="' + item.id + '">' +
+                  '<button onclick="changeOrderItemQty(\'' + item.id + '\', -1)">−</button>' +
+                  '<input type="number" value="' + item.quantity + '" readonly>' +
+                  '<button onclick="changeOrderItemQty(\'' + item.id + '\', 1)">+</button>' +
+                '</div>'
+            ) +
             '<div style="display:flex;gap:6px;">' +
               (isServed
                 ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
@@ -2165,13 +2172,19 @@ async function renderOrderDetail() {
                   : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
                   )
               ) +
-              '<button class="btn btn-danger btn-sm" onclick="withLoading(this, \'...\', function() { return removeOrderItem(\'' + item.id + '\'); })">Удалить</button>' +
+              (isServed
+                ? '' // no "Удалить" button if already served
+                : '<button class="btn btn-danger btn-sm" onclick="withLoading(this, \'...\', function() { return removeOrderItem(\'' + item.id + '\'); })">Удалить</button>'
+              ) +
             '</div>' +
           '</div>' +
-          '<div class="ci-comment">' +
-            '<input type="text" placeholder="' + (needsCooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment || '') + '" ' +
-            'onchange="updateOrderItemComment(\'' + item.id + '\', this.value)">' +
-          '</div>';
+          (isServed
+            ? '' // no comment field if already served
+            : '<div class="ci-comment">' +
+                '<input type="text" placeholder="' + (needsCooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment || '') + '" ' +
+                'onchange="updateOrderItemComment(\'' + item.id + '\', this.value)">' +
+              '</div>'
+          );
         itemsDiv.appendChild(card);
       });
     }
@@ -2225,11 +2238,31 @@ async function flushQtyChanges() {
   _pendingQtyChanges = {};
   _qtySyncTimer = null;
   if (Object.keys(changes).length === 0) return;
+  let lastUpdatedOrder = null;
   for (const itemId in changes) {
     try {
-      await apiPost('updateItemQuantity', { item_id: itemId, quantity: changes[itemId] });
+      lastUpdatedOrder = await apiPost('updateItemQuantity', { item_id: itemId, quantity: changes[itemId] });
     } catch (err) {
       console.error('Failed to sync qty for ' + itemId + ':', err);
+    }
+  }
+  // After syncing, update state.activeOrders with the fresh data from the server
+  if (lastUpdatedOrder && state.activeOrders) {
+    const idx = state.activeOrders.findIndex(function(o) { return o.id === lastUpdatedOrder.id; });
+    if (idx >= 0) {
+      // Update total + items in the local state
+      state.activeOrders[idx].total = lastUpdatedOrder.total;
+      state.activeOrders[idx].items = lastUpdatedOrder.items;
+      // Move to top of the list (most recently modified first)
+      const updated = state.activeOrders.splice(idx, 1)[0];
+      state.activeOrders.unshift(updated);
+    }
+    // Re-render home if visible
+    if (document.getElementById('screen-home').classList.contains('active')) {
+      renderHomeActiveOrders();
+    }
+    if (document.getElementById('screen-orders').classList.contains('active')) {
+      renderActiveOrdersList();
     }
   }
 }
@@ -2294,7 +2327,17 @@ function recalcOrderTotal() {
 async function removeOrderItem(itemId) {
   if (!confirm('Удалить позицию из заказа?')) return;
   try {
-    await apiPost('removeItemFromOrder', { item_id: itemId });
+    const updatedOrder = await apiPost('removeItemFromOrder', { item_id: itemId });
+    if (updatedOrder) {
+      state.currentOrder = updatedOrder;
+      if (state.activeOrders) {
+        const idx = state.activeOrders.findIndex(function(o) { return o.id === updatedOrder.id; });
+        if (idx >= 0) {
+          state.activeOrders[idx].items = updatedOrder.items;
+          state.activeOrders[idx].total = updatedOrder.total;
+        }
+      }
+    }
     await renderOrderDetail();
     showToast('Позиция удалена', 'info');
   } catch (err) {
@@ -2312,7 +2355,19 @@ async function updateOrderItemComment(itemId, comment) {
 
 async function toggleItemServed(itemId, newValue) {
   try {
-    await apiPost('toggleItemServed', { item_id: itemId, is_served: newValue });
+    const updatedOrder = await apiPost('toggleItemServed', { item_id: itemId, is_served: newValue });
+    // Update state.currentOrder with fresh data
+    if (updatedOrder) {
+      state.currentOrder = updatedOrder;
+      // Also update in state.activeOrders
+      if (state.activeOrders) {
+        const idx = state.activeOrders.findIndex(function(o) { return o.id === updatedOrder.id; });
+        if (idx >= 0) {
+          state.activeOrders[idx].items = updatedOrder.items;
+          state.activeOrders[idx].total = updatedOrder.total;
+        }
+      }
+    }
     await renderOrderDetail();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
