@@ -11,7 +11,8 @@ const SHEETS = {
   ORDERS: 'Orders',
   ORDER_ITEMS: 'OrderItems',
   USERS: 'Users',
-  TABS: 'Tabs'
+  TABS: 'Tabs',
+  SHIFTS: 'Shifts'
 };
 
 const HEADERS = {
@@ -21,7 +22,8 @@ const HEADERS = {
   Orders: ['id', 'table_number', 'table_type', 'tab_id', 'guests', 'main_category_id', 'main_category_name', 'status', 'total', 'created_at', 'completed_at', 'waiter_note', 'waiter_id', 'waiter_name', 'cook_id', 'cook_name', 'payment_method'],
   OrderItems: ['id', 'order_id', 'menu_item_id', 'name', 'name_translation', 'category_name', 'category_name_translation', 'price', 'quantity', 'comment', 'is_ready', 'is_served', 'needs_cooking', 'created_at'],
   Users: ['id', 'name', 'role', 'pin', 'is_active', 'sort', 'created_at'],
-  Tabs: ['id', 'name', 'phone', 'notes', 'total', 'status', 'created_at', 'closed_at', 'created_by_waiter_id', 'created_by_waiter_name']
+  Tabs: ['id', 'name', 'phone', 'notes', 'total', 'status', 'created_at', 'closed_at', 'created_by_waiter_id', 'created_by_waiter_name'],
+  Shifts: ['id', 'waiter_id', 'waiter_name', 'opened_at', 'closed_at', 'opening_cash', 'orders_count', 'guests_count', 'cash_total', 'card_total', 'status']
 };
 
 /**
@@ -58,7 +60,11 @@ function setup() {
     // (not isolated). Examples: "Бар", "Терраса", "Гардероб".
     // Each click on a virtual table opens a NEW parallel order — they're
     // never "occupied" in the exclusive sense.
-    ['virtual_tables', 'Бар']
+    ['virtual_tables', 'Бар'],
+    // Cook enabled — if false, waiters can serve dishes without cook marking them ready
+    ['cook_enabled', 'true'],
+    // Cash register — current cash amount (editable only in admin)
+    ['cash_register', '0']
   ];
   settingsSheet.getRange(2, 1, settings.length, 2).setValues(settings);
 
@@ -210,6 +216,8 @@ function migrate() {
     ensureSetting('poll_interval_waiter', '20');
     ensureSetting('poll_interval_cook', '10');
     ensureSetting('virtual_tables', 'Бар');
+    ensureSetting('cook_enabled', 'true');
+    ensureSetting('cash_register', '0');
   }
 
   // Ensure Tabs sheet exists
@@ -217,6 +225,13 @@ function migrate() {
     const tabsSheet = ss.insertSheet(SHEETS.TABS);
     tabsSheet.getRange(1, 1, 1, HEADERS.Tabs.length).setValues([HEADERS.Tabs]);
     tabsSheet.setFrozenRows(1);
+  }
+
+  // Ensure Shifts sheet exists
+  if (!ss.getSheetByName(SHEETS.SHIFTS)) {
+    const shiftsSheet = ss.insertSheet(SHEETS.SHIFTS);
+    shiftsSheet.getRange(1, 1, 1, HEADERS.Shifts.length).setValues([HEADERS.Shifts]);
+    shiftsSheet.setFrozenRows(1);
   }
 
   SpreadsheetApp.flush();
@@ -293,6 +308,10 @@ function handleRequest(params, body) {
       case 'pauseOrder':     result = pauseOrder(body); break;
       case 'resumeOrder':    result = resumeOrder(body); break;
       case 'cleanupSessions': result = { deleted: cleanupExpiredSessions() }; break;
+      case 'openShift':       result = openShift(body); break;
+      case 'closeShift':      result = closeShift(body); break;
+      case 'getActiveShift':  result = getActiveShift(params); break;
+      case 'getShifts':       result = getShifts(body); break;
       case 'ping':           result = { ok: true, time: new Date().toISOString() }; break;
       default: throw new Error('Unknown action: ' + action);
     }
@@ -824,16 +843,19 @@ function toggleItemServed(body) {
     const readyCol = headers.indexOf('is_ready');
     const needsCookingCol = headers.indexOf('needs_cooking');
     if (servedCol < 0) throw new Error('Column "is_served" not found. Run migrate() first.');
+    // Check if cook is enabled — if not, waiters can serve anything directly
+    const cookEnabled = getSetting('cook_enabled') !== 'false';
     let orderId = null;
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][idCol]) === String(body.item_id)) {
         const newServed = body.is_served === true || body.is_served === 'true';
         data[i][servedCol] = newServed;
-        // If marking as served and the item doesn't need cooking (water, bread, etc.),
-        // automatically mark it as ready too — so the "Готово" badge shows.
-        if (newServed && needsCookingCol >= 0) {
-          const needsCooking = data[i][needsCookingCol] === true || data[i][needsCookingCol] === 'true';
-          if (!needsCooking && readyCol >= 0) {
+        // Auto-mark as ready when:
+        // 1. Item doesn't need cooking (water, bread) — always
+        // 2. Cook is disabled — for any item (waiter serves directly)
+        if (newServed && readyCol >= 0) {
+          const needsCooking = needsCookingCol >= 0 && (data[i][needsCookingCol] === true || data[i][needsCookingCol] === 'true');
+          if (!needsCooking || !cookEnabled) {
             data[i][readyCol] = true;
           }
         }
@@ -1830,4 +1852,168 @@ function cleanupExpiredSessions() {
     console.error('cleanupExpiredSessions error:', e);
     return 0;
   }
+}
+
+/* ============ SHIFTS (waiter work sessions + cash register) ============ */
+
+function openShift(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!body || !body.waiter_id) throw new Error('Missing waiter_id');
+    // Check if waiter already has an open shift
+    const shifts = readSheet(SHEETS.SHIFTS);
+    const existing = shifts.find(function(s) {
+      return s.waiter_id === body.waiter_id && s.status === 'open';
+    });
+    if (existing) {
+      throw new Error('У вас уже открыта смена');
+    }
+    const id = genId('shift');
+    const now = new Date().toISOString();
+    const openingCash = Number(getSetting('cash_register')) || 0;
+    const sheet = getSheet(SHEETS.SHIFTS);
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const row = new Array(headers.length).fill('');
+    headers.forEach(function(h, idx) {
+      switch (h) {
+        case 'id':           row[idx] = id; break;
+        case 'waiter_id':    row[idx] = body.waiter_id; break;
+        case 'waiter_name':  row[idx] = body.waiter_name || ''; break;
+        case 'opened_at':    row[idx] = now; break;
+        case 'closed_at':    row[idx] = ''; break;
+        case 'opening_cash': row[idx] = openingCash; break;
+        case 'orders_count': row[idx] = 0; break;
+        case 'guests_count': row[idx] = 0; break;
+        case 'cash_total':   row[idx] = 0; break;
+        case 'card_total':   row[idx] = 0; break;
+        case 'status':       row[idx] = 'open'; break;
+        default:             row[idx] = ''; break;
+      }
+    });
+    sheet.appendRow(row);
+    SpreadsheetApp.flush();
+    return {
+      id: id,
+      waiter_id: body.waiter_id,
+      waiter_name: body.waiter_name || '',
+      opened_at: now,
+      opening_cash: openingCash,
+      status: 'open',
+      current_cash: openingCash
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function closeShift(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!body || !body.waiter_id) throw new Error('Missing waiter_id');
+    const sheet = getSheet(SHEETS.SHIFTS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const waiterIdCol = headers.indexOf('waiter_id');
+    const statusCol = headers.indexOf('status');
+    const openedAtCol = headers.indexOf('opened_at');
+    const closedAtCol = headers.indexOf('closed_at');
+    const cashTotalCol = headers.indexOf('cash_total');
+    const cardTotalCol = headers.indexOf('card_total');
+    const ordersCountCol = headers.indexOf('orders_count');
+    const guestsCountCol = headers.indexOf('guests_count');
+    const openingCashCol = headers.indexOf('opening_cash');
+
+    let shiftRow = -1;
+    let shiftId = null;
+    let openedAt = null;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][waiterIdCol]) === String(body.waiter_id) && data[i][statusCol] === 'open') {
+        shiftRow = i + 1;
+        shiftId = data[i][0];
+        openedAt = data[i][openedAtCol];
+        break;
+      }
+    }
+    if (shiftRow < 0) throw new Error('Нет открытой смены');
+
+    // Calculate stats from completed orders by this waiter between openedAt and now
+    const orders = readSheet(SHEETS.ORDERS).filter(function(o) {
+      return o.waiter_id === body.waiter_id &&
+             o.status === 'completed' &&
+             o.completed_at &&
+             new Date(o.completed_at).getTime() >= new Date(openedAt).getTime();
+    });
+    let cashTotal = 0, cardTotal = 0, guestsCount = 0;
+    orders.forEach(function(o) {
+      const total = Number(o.total) || 0;
+      if (o.payment_method === 'cash') cashTotal += total;
+      else if (o.payment_method === 'card') cardTotal += total;
+      guestsCount += Number(o.guests) || 0;
+    });
+
+    const now = new Date().toISOString();
+    data[shiftRow - 1][closedAtCol] = now;
+    data[shiftRow - 1][statusCol] = 'closed';
+    data[shiftRow - 1][cashTotalCol] = cashTotal;
+    data[shiftRow - 1][cardTotalCol] = cardTotal;
+    data[shiftRow - 1][ordersCountCol] = orders.length;
+    data[shiftRow - 1][guestsCountCol] = guestsCount;
+    sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+
+    // Add cash earnings to the cash register
+    const currentCash = Number(getSetting('cash_register')) || 0;
+    saveSettings({ settings: { cash_register: String(currentCash + cashTotal) } });
+
+    SpreadsheetApp.flush();
+
+    const openingCash = Number(data[shiftRow - 1][openingCashCol]) || 0;
+    return {
+      id: shiftId,
+      opened_at: openedAt,
+      closed_at: now,
+      opening_cash: openingCash,
+      orders_count: orders.length,
+      guests_count: guestsCount,
+      cash_total: cashTotal,
+      card_total: cardTotal,
+      final_cash: openingCash + cashTotal,
+      status: 'closed'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getActiveShift(params) {
+  const waiterId = params.waiter_id;
+  if (!waiterId) return { shift: null };
+  const shifts = readSheet(SHEETS.SHIFTS);
+  const shift = shifts.find(function(s) {
+    return s.waiter_id === waiterId && s.status === 'open';
+  });
+  if (!shift) return { shift: null, current_cash: Number(getSetting('cash_register')) || 0 };
+  return {
+    shift: shift,
+    current_cash: Number(getSetting('cash_register')) || 0,
+    cook_enabled: getSetting('cook_enabled') !== 'false'
+  };
+}
+
+function getShifts(body) {
+  let shifts = readSheet(SHEETS.SHIFTS);
+  // Filter by waiter_id if provided
+  if (body && body.waiter_id) {
+    shifts = shifts.filter(function(s) { return s.waiter_id === body.waiter_id; });
+  }
+  // Filter by status if provided
+  if (body && body.status && body.status !== 'all') {
+    shifts = shifts.filter(function(s) { return s.status === body.status; });
+  }
+  // Sort newest first
+  shifts.sort(function(a, b) {
+    return new Date(b.opened_at) - new Date(a.opened_at);
+  });
+  return { shifts: shifts };
 }

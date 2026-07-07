@@ -499,6 +499,7 @@
   <h1 id="restaurant-name">Ресторан</h1>
   <div class="header-actions">
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
+    <button class="btn btn-sm" id="shift-btn" style="display:none;background:rgba(255,255,255,0.2);color:white;font-size:0.85rem;padding:6px 12px;" onclick="handleShiftClick()"></button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -713,6 +714,21 @@
   </div>
 </div>
 
+<!-- Shift close modal -->
+<div class="modal-backdrop" id="modal-shift-close">
+  <div class="modal">
+    <h2>Закрытие смены</h2>
+    <div id="shift-summary" style="margin:16px 0;"></div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px;">
+      <button class="btn btn-danger btn-lg" id="confirm-close-shift-btn" style="width:100%;"
+              onclick="withLoading(this, 'Закрываем...', function() { return confirmCloseShift(); })">
+        Закрыть смену
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('modal-shift-close')" style="width:100%;">Отмена</button>
+    </div>
+  </div>
+</div>
+
 <!-- Payment method modal -->
 <div class="modal-backdrop" id="modal-payment">
   <div class="modal">
@@ -892,36 +908,24 @@ async function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = state.currentUser.name;
-  // Keep the screen awake while the waiter is on shift (tablets on tables)
   requestWakeLock();
-  // Initialize service worker for system notifications (works when tab is hidden)
   await initServiceWorker();
-  // Ask for notification permission once (on first login). If denied, we
-  // just rely on in-page toasts + sound.
   if (APP_DATA.settings.sound_notifications !== 'false') {
     requestNotificationPermission().then(function(granted) {
-      if (granted) {
-        console.log('Notification permission granted — will fire system notifications');
-      } else {
-        console.log('Notification permission not granted — using in-page toasts only');
-      }
+      if (granted) console.log('Notification permission granted');
+      else console.log('Notification permission not granted');
     });
   }
   renderHome();
-  // Preload custom sound for waiter (ready notification)
   preloadSounds(['waiter_ready']);
-  // Immediately fetch active orders so the home screen shows them on first load
   await refreshActiveOrders();
   renderReadyAlerts();
   renderHomeActiveOrders();
   startBadgePolling();
-  // Periodically refresh APP_DATA in background to catch admin changes
-  // (currency, menu items, category changes, polling intervals).
-  // Also restarts polling if the interval setting changed.
+  // Check shift status on login
+  await checkShiftStatus();
+  // Background refresh
   let _lastWaiterInterval = null;
-  // Background refresh: check if APP_DATA changed (lightweight version check
-  // first, only do full fetch if needed). Run every 60 seconds — not 30 —
-  // to reduce server load.
   setInterval(function() {
     loadAppData(true).then(function() {
       document.getElementById('restaurant-name').textContent =
@@ -929,16 +933,121 @@ async function startApp() {
       if (document.getElementById('screen-home').classList.contains('active')) {
         renderHome();
       }
-      // Restart polling if the interval setting changed
       const newInterval = getPollInterval('poll_interval_waiter', 'POLL_BADGE');
       if (_lastWaiterInterval !== null && _lastWaiterInterval !== newInterval) {
-        console.log('Waiter polling interval changed:', _lastWaiterInterval + 'ms →', newInterval + 'ms', '— restarting');
         startBadgePolling();
         if (state.pollingTimer) startOrderPolling();
       }
       _lastWaiterInterval = newInterval;
+      // Also refresh shift status periodically
+      checkShiftStatus();
     }).catch(function(err) { console.warn('Background refresh failed:', err); });
   }, 60000);
+}
+
+/* ---------- SHIFT MANAGEMENT ---------- */
+let _activeShift = null;
+
+async function checkShiftStatus() {
+  try {
+    const data = await apiGet('getActiveShift', { waiter_id: state.currentUser.id });
+    _activeShift = data.shift || null;
+    state.cookEnabled = data.cook_enabled !== false;
+    state.currentCash = data.current_cash || 0;
+    updateShiftButton();
+  } catch (err) {
+    console.warn('checkShiftStatus failed:', err);
+  }
+}
+
+function updateShiftButton() {
+  const btn = document.getElementById('shift-btn');
+  if (!btn) return;
+  btn.style.display = 'inline-block';
+  if (_activeShift) {
+    btn.textContent = '🟢 Смена открыта · ' + formatMoney(state.currentCash || 0);
+    btn.style.background = 'rgba(76,175,80,0.3)';
+  } else {
+    btn.textContent = '🔴 Открыть смену';
+    btn.style.background = 'rgba(244,67,54,0.3)';
+  }
+}
+
+function handleShiftClick() {
+  if (_activeShift) {
+    // Show close shift modal with preview
+    showCloseShiftModal();
+  } else {
+    // Open shift
+    openShift();
+  }
+}
+
+async function openShift() {
+  if (!confirm('Открыть смену?')) return;
+  try {
+    const result = await apiPost('openShift', {
+      waiter_id: state.currentUser.id,
+      waiter_name: state.currentUser.name
+    });
+    _activeShift = result;
+    state.currentCash = result.opening_cash;
+    showToast('Смена открыта. В кассе: ' + formatMoney(result.opening_cash), 'success');
+    updateShiftButton();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function showCloseShiftModal() {
+  // Preview the shift summary before closing
+  const summaryDiv = document.getElementById('shift-summary');
+  summaryDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Считаем статистику...</p>';
+  openModal('modal-shift-close');
+  try {
+    // Get stats from completed orders since shift opened
+    const data = await apiGet('getOrders', { status: 'completed', waiter_id: state.currentUser.id });
+    const openedAt = _activeShift.opened_at;
+    const orders = (data.orders || []).filter(function(o) {
+      return o.completed_at && new Date(o.completed_at).getTime() >= new Date(openedAt).getTime();
+    });
+    let cashTotal = 0, cardTotal = 0, guestsCount = 0;
+    orders.forEach(function(o) {
+      const total = Number(o.total) || 0;
+      if (o.payment_method === 'cash') cashTotal += total;
+      else if (o.payment_method === 'card') cardTotal += total;
+      guestsCount += Number(o.guests) || 0;
+    });
+    const openingCash = Number(_activeShift.opening_cash) || 0;
+    summaryDiv.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:0.85rem;color:var(--text-muted);">Заказов</div><div style="font-size:1.8rem;font-weight:700;">' + orders.length + '</div></div>' +
+        '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:0.85rem;color:var(--text-muted);">Гостей</div><div style="font-size:1.8rem;font-weight:700;">' + guestsCount + '</div></div>' +
+        '<div class="card" style="text-align:center;padding:12px;background:#e8f5e9;"><div style="font-size:0.85rem;color:var(--text-muted);">💵 Наличные</div><div style="font-size:1.4rem;font-weight:700;color:var(--success);">' + formatMoney(cashTotal) + '</div></div>' +
+        '<div class="card" style="text-align:center;padding:12px;background:#e3f2fd;"><div style="font-size:0.85rem;color:var(--text-muted);">💳 Карта</div><div style="font-size:1.4rem;font-weight:700;color:var(--info);">' + formatMoney(cardTotal) + '</div></div>' +
+      '</div>' +
+      '<div style="margin-top:16px;padding:12px;background:#fff8e1;border-radius:8px;">' +
+        '<div>Касса на начало смены: <b>' + formatMoney(openingCash) + '</b></div>' +
+        '<div>Наличные за смену: <b>' + formatMoney(cashTotal) + '</b></div>' +
+        '<div style="font-size:1.2rem;font-weight:700;color:var(--success);margin-top:4px;">Итого в кассе: ' + formatMoney(openingCash + cashTotal) + '</div>' +
+      '</div>' +
+      '<p style="margin-top:12px;font-size:0.85rem;color:var(--text-muted);text-align:center;">Наличные за смену будут добавлены в кассу.</p>';
+  } catch (err) {
+    summaryDiv.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+async function confirmCloseShift() {
+  try {
+    const result = await apiPost('closeShift', { waiter_id: state.currentUser.id });
+    _activeShift = null;
+    state.currentCash = result.final_cash;
+    showToast('Смена закрыта. Итого в кассе: ' + formatMoney(result.final_cash), 'success');
+    closeModal('modal-shift-close');
+    updateShiftButton();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
 }
 
 /* Refresh APP_DATA and re-render home (used when entering home screen) */
@@ -2025,7 +2134,7 @@ async function renderOrderDetail() {
             '<div style="display:flex;gap:6px;">' +
               (isServed
                 ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
-                : (isReady || !needsCooking
+                : (isReady || !needsCooking || !state.cookEnabled
                   ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
                   : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
                   )

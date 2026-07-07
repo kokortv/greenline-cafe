@@ -380,6 +380,22 @@
         </p>
       </div>
       <div class="form-group checkbox-field">
+        <input type="checkbox" id="set-cook-enabled" checked>
+        <label for="set-cook-enabled" style="margin:0;">Повар включён (блюда готовятся на кухне)</label>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;width:100%;">
+          Если отключить — официанты смогут подавать блюда напрямую, минуя готовность у повара.
+          Полезно для заведений без кухни (только бар/кофейня).
+        </p>
+      </div>
+      <div class="form-group">
+        <label>Касса (наличные)</label>
+        <input type="number" id="set-cash-register" min="0" step="0.01" value="0" placeholder="0">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
+          Текущая сумма наличных в кассе. Официанты видят это при открытии смены.
+          При закрытии смены наличные за смену плюсуются автоматически.
+        </p>
+      </div>
+      <div class="form-group checkbox-field">
         <input type="checkbox" id="set-sound">
         <label for="set-sound" style="margin:0;">Звуковые оповещения для официанта (когда блюдо готово)</label>
       </div>
@@ -759,6 +775,8 @@ function populateSettingsForm() {
   document.getElementById('set-poll-waiter').value = APP_DATA.settings.poll_interval_waiter || 20;
   document.getElementById('set-poll-cook').value = APP_DATA.settings.poll_interval_cook || 10;
   document.getElementById('set-virtual-table').value = APP_DATA.settings.virtual_tables || 'Бар';
+  document.getElementById('set-cook-enabled').checked = APP_DATA.settings.cook_enabled !== 'false';
+  document.getElementById('set-cash-register').value = APP_DATA.settings.cash_register || 0;
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
   updateTranslationLangLabel();
@@ -789,6 +807,8 @@ async function saveSettings() {
     poll_interval_waiter: String(pollWaiter),
     poll_interval_cook: String(pollCook),
     virtual_tables: document.getElementById('set-virtual-table').value,
+    cook_enabled: document.getElementById('set-cook-enabled').checked ? 'true' : 'false',
+    cash_register: document.getElementById('set-cash-register').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false'
   };
   try {
