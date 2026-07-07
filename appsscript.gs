@@ -19,7 +19,7 @@ const HEADERS = {
   Categories: ['id', 'parent_id', 'name', 'name_translation', 'sort', 'is_active'],
   Menu: ['id', 'category_id', 'name', 'name_translation', 'price', 'needs_cooking', 'sort', 'is_active'],
   Orders: ['id', 'table_number', 'table_type', 'tab_id', 'guests', 'main_category_id', 'main_category_name', 'status', 'total', 'created_at', 'completed_at', 'waiter_note', 'waiter_id', 'waiter_name', 'cook_id', 'cook_name', 'payment_method'],
-  OrderItems: ['id', 'order_id', 'menu_item_id', 'name', 'name_translation', 'category_name', 'category_name_translation', 'price', 'quantity', 'comment', 'is_ready', 'needs_cooking', 'created_at'],
+  OrderItems: ['id', 'order_id', 'menu_item_id', 'name', 'name_translation', 'category_name', 'category_name_translation', 'price', 'quantity', 'comment', 'is_ready', 'is_served', 'needs_cooking', 'created_at'],
   Users: ['id', 'name', 'role', 'pin', 'is_active', 'sort', 'created_at'],
   Tabs: ['id', 'name', 'phone', 'notes', 'total', 'status', 'created_at', 'closed_at', 'created_by_waiter_id', 'created_by_waiter_name']
 };
@@ -268,6 +268,7 @@ function handleRequest(params, body) {
       case 'updateItemComment': result = updateItemComment(body); break;
       case 'removeItemFromOrder': result = removeItemFromOrder(body); break;
       case 'toggleItemReady': result = toggleItemReady(body); break;
+      case 'toggleItemServed': result = toggleItemServed(body); break;
       case 'deleteOrder':    result = deleteOrder(body); break;
       case 'saveSettings':   result = saveSettings(body); break;
       case 'saveCategory':   result = saveCategory(body); break;
@@ -598,6 +599,7 @@ function createOrder(body) {
           case 'quantity':       row[idx] = it.quantity; break;
           case 'comment':        row[idx] = it.comment || ''; break;
           case 'is_ready':       row[idx] = false; break;
+          case 'is_served':      row[idx] = false; break;
           case 'needs_cooking':  row[idx] = it.needs_cooking === true || it.needs_cooking === 'true'; break;
           case 'created_at':     row[idx] = now.toISOString(); break;
           default:               row[idx] = ''; break;
@@ -675,6 +677,7 @@ function addItemToOrder(body) {
         case 'quantity':       row[idx] = body.quantity; break;
         case 'comment':        row[idx] = body.comment || ''; break;
         case 'is_ready':       row[idx] = false; break;
+        case 'is_served':      row[idx] = false; break;
         case 'needs_cooking':  row[idx] = body.needs_cooking === true || body.needs_cooking === 'true'; break;
         case 'created_at':     row[idx] = now.toISOString(); break;
         default:               row[idx] = ''; break;
@@ -787,8 +790,42 @@ function toggleItemReady(body) {
     const readyCol = headers.indexOf('is_ready');
     let orderId = null;
     for (let i = 1; i < data.length; i++) {
-      if (data[i][idCol] === body.item_id) {
+      if (String(data[i][idCol]) === String(body.item_id)) {
         data[i][readyCol] = body.is_ready === true || body.is_ready === 'true';
+        orderId = data[i][headers.indexOf('order_id')];
+        break;
+      }
+    }
+    if (orderId) {
+      sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+      SpreadsheetApp.flush();
+      return getOrder(orderId);
+    }
+    throw new Error('Item not found');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* Toggle "served" status — waiter marks an item as delivered to the table.
+ * Works for ALL items (cooking and non-cooking alike). For non-cooking items
+ * (water, bread) the waiter can mark them served right away. For cooking
+ * items, they should be ready first (but we don't enforce this — the waiter
+ * may serve partially). */
+function toggleItemServed(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getSheet(SHEETS.ORDER_ITEMS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const idCol = headers.indexOf('id');
+    const servedCol = headers.indexOf('is_served');
+    if (servedCol < 0) throw new Error('Column "is_served" not found. Run migrate() first.');
+    let orderId = null;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][idCol]) === String(body.item_id)) {
+        data[i][servedCol] = body.is_served === true || body.is_served === 'true';
         orderId = data[i][headers.indexOf('order_id')];
         break;
       }

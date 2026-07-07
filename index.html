@@ -245,6 +245,11 @@
     background: var(--success-light);
     border-left: 4px solid var(--success);
   }
+  .cart-item.served {
+    background: #e3f2fd;
+    border-left: 4px solid var(--info);
+    opacity: 0.7;
+  }
   .cart-item .ci-cat-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -260,6 +265,16 @@
     display: inline-block;
     padding: 3px 10px;
     background: var(--success);
+    color: white;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-left: 8px;
+  }
+  .cart-item .ci-served-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    background: var(--info);
     color: white;
     border-radius: 12px;
     font-size: 0.85rem;
@@ -1345,8 +1360,6 @@ function renderMenu() {
     card.innerHTML =
       '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
       '<div class="item-price">' + formatMoney(item.price) + '</div>' +
-      (item.needs_cooking === false || item.needs_cooking === 'false' ?
-        '<div class="item-no-cook">не требует готовки</div>' : '') +
       '<button class="item-add-btn">+ Добавить</button>';
     card.querySelector('.item-add-btn').onclick = function() { addToCart(item); };
     itemsDiv.appendChild(card);
@@ -1461,7 +1474,7 @@ function renderCartItems() {
         '<button onclick="changeCartQty(' + idx + ', 1)">+</button>' +
       '</div>' +
       '<div class="ci-comment">' +
-        '<input type="text" placeholder="Комментарий повару..." value="' + escapeHtml(item.comment) + '" ' +
+        '<input type="text" placeholder="' + (item.needs_cooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment) + '" ' +
         'onchange="setCartComment(' + idx + ', this.value)">' +
       '</div>';
     div.appendChild(card);
@@ -1982,25 +1995,41 @@ async function renderOrderDetail() {
 
       order.items.forEach(function(item, idx) {
         const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
+        const needsCooking = item.needs_cooking === true || item.needs_cooking === 'true' ||
+                             item.needs_cooking === 'TRUE' || item.needs_cooking === 1 || item.needs_cooking === '1';
+        const isServed = item.is_served === true || item.is_served === 'true' || item.is_served === 'TRUE';
         const card = document.createElement('div');
-        card.className = 'cart-item' + (isReady ? ' ready' : '');
-        // Build the dish name line: optional category badge + dish name + ready badge
-        const nameLine = formatItemLabel(item) + (isReady ? ' <span class="ci-ready-badge">✓ ГОТОВО</span>' : '');
+        // Class: 'ready' if cook marked it ready, 'served' if waiter marked it served
+        let cardClass = 'cart-item';
+        if (isServed) cardClass += ' served';
+        else if (isReady) cardClass += ' ready';
+        card.className = cardClass;
+        // Build the dish name line: optional category badge + dish name + status badge
+        let statusBadge = '';
+        if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
+        else if (isReady) statusBadge = ' <span class="ci-ready-badge">✓ ГОТОВО</span>';
+        const nameLine = formatItemLabel(item) + statusBadge;
         card.innerHTML =
           '<div class="ci-top">' +
             '<div class="ci-name">' + nameLine + '</div>' +
             '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
           '</div>' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
             '<div class="stepper">' +
               '<button onclick="changeOrderItemQty(\'' + item.id + '\', -1)">−</button>' +
               '<input type="number" value="' + item.quantity + '" readonly>' +
               '<button onclick="changeOrderItemQty(\'' + item.id + '\', 1)">+</button>' +
             '</div>' +
-            '<button class="btn btn-danger btn-sm" onclick="removeOrderItem(\'' + item.id + '\')">Удалить</button>' +
+            '<div style="display:flex;gap:6px;">' +
+              (isServed
+                ? '<button class="btn btn-outline btn-sm" onclick="toggleItemServed(\'' + item.id + '\', false)">↩ Не подано</button>'
+                : '<button class="btn btn-info btn-sm" onclick="toggleItemServed(\'' + item.id + '\', true)">✓ Подано</button>'
+              ) +
+              '<button class="btn btn-danger btn-sm" onclick="removeOrderItem(\'' + item.id + '\')">Удалить</button>' +
+            '</div>' +
           '</div>' +
           '<div class="ci-comment">' +
-            '<input type="text" placeholder="Комментарий повару..." value="' + escapeHtml(item.comment || '') + '" ' +
+            '<input type="text" placeholder="' + (needsCooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment || '') + '" ' +
             'onchange="updateOrderItemComment(\'' + item.id + '\', this.value)">' +
           '</div>';
         itemsDiv.appendChild(card);
@@ -2069,6 +2098,15 @@ async function removeOrderItem(itemId) {
 async function updateOrderItemComment(itemId, comment) {
   try {
     await apiPost('updateItemComment', { item_id: itemId, comment: comment });
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function toggleItemServed(itemId, newValue) {
+  try {
+    await apiPost('toggleItemServed', { item_id: itemId, is_served: newValue });
+    await renderOrderDetail();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
