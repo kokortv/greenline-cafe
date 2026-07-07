@@ -194,30 +194,32 @@ async function preloadSounds(names) {
 async function loadSound(name) {
   if (_soundCache[name] !== undefined) return _soundCache[name];
   try {
-    const url = CONFIG.API_URL + '?action=getSound&name=' + encodeURIComponent(name);
-    const res = await fetch(url);
-    // If the server returns HTML (e.g. 404 page because Apps Script wasn't
-    // redeployed), res.json() would throw. Detect this and bail out gracefully.
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      console.log('Sound ' + name + ' not available (server returned ' + contentType + ')');
-      _soundCache[name] = null;
-      return null;
+    // Sounds are stored as URLs in Settings (key: sound_<name>).
+    // First check APP_DATA.settings (already loaded) — fastest, no extra request.
+    let soundUrl = null;
+    if (typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
+      soundUrl = APP_DATA.settings['sound_' + name] || null;
     }
-    const json = await res.json();
-    if (json && json.data) {
-      // Decode base64 into a Blob and create an object URL
-      const byteChars = atob(json.data);
-      const byteNumbers = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: json.mime || 'audio/mp3' });
-      const objUrl = URL.createObjectURL(blob);
-      const audio = new Audio(objUrl);
+    // Fallback: fetch from server (for backwards compat or if APP_DATA not loaded yet)
+    if (!soundUrl) {
+      const url = CONFIG.API_URL + '?action=getSound&name=' + encodeURIComponent(name);
+      const res = await fetch(url);
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        _soundCache[name] = null;
+        return null;
+      }
+      const json = await res.json();
+      if (json && json.url) soundUrl = json.url;
+    }
+    if (soundUrl) {
+      const audio = new Audio(soundUrl);
       audio.preload = 'auto';
       _soundCache[name] = audio;
       return audio;
     }
+    _soundCache[name] = null;
+    return null;
   } catch (e) {
     console.warn('Failed to load sound', name, e);
   }

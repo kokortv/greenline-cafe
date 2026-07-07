@@ -424,9 +424,9 @@
   <div class="tab-content" id="tab-sounds" style="display:none;">
     <h2 class="section-title">Звуки уведомлений</h2>
     <div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">
-      Загрузите свои звуки — они будут воспроизводиться у сотрудников вместо стандартного сигнала.
-      Формат: <b>MP3 или WAV</b>, размер до <b>~600 КБ</b> (после base64-кодирования).
-      Если звук не загружен — используется стандартный «бип».
+      Укажите URL звукового файла — он будет воспроизводиться у сотрудников вместо стандартного сигнала.
+      Файлы нужно положить в папку <code>sounds/</code> рядом с HTML-страницами и указать путь вида
+      <code>/sounds/имя_файла.mp3</code>. Если URL не указан — используется стандартный «бип».
     </div>
     <div class="settings-card">
       <div class="form-group">
@@ -435,8 +435,8 @@
           Проигрывается у повара, когда официант принимает новый заказ.
         </p>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <input type="file" id="sound-file-cook_new_order" accept="audio/mp3,audio/wav,audio/mpeg,audio/ogg" style="flex:1;min-width:200px;">
-          <button class="btn btn-primary" onclick="withLoading(this, 'Загружаем...', function() { return uploadSoundFile('cook_new_order'); })">Загрузить</button>
+          <input type="text" id="sound-url-cook_new_order" placeholder="/sounds/cook_new_order.mp3" style="flex:1;min-width:200px;">
+          <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveSoundUrl('cook_new_order'); })">Сохранить</button>
           <button class="btn btn-outline" onclick="playSoundPreview('cook_new_order')">▶ Прослушать</button>
           <button class="btn btn-danger" onclick="deleteSoundConfirm('cook_new_order')">Удалить</button>
         </div>
@@ -449,8 +449,8 @@
           Проигрывается у официанта, когда повар отметил блюдо готовым.
         </p>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <input type="file" id="sound-file-waiter_ready" accept="audio/mp3,audio/wav,audio/mpeg,audio/ogg" style="flex:1;min-width:200px;">
-          <button class="btn btn-primary" onclick="withLoading(this, 'Загружаем...', function() { return uploadSoundFile('waiter_ready'); })">Загрузить</button>
+          <input type="text" id="sound-url-waiter_ready" placeholder="/sounds/waiter_ready.mp3" style="flex:1;min-width:200px;">
+          <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveSoundUrl('waiter_ready'); })">Сохранить</button>
           <button class="btn btn-outline" onclick="playSoundPreview('waiter_ready')">▶ Прослушать</button>
           <button class="btn btn-danger" onclick="deleteSoundConfirm('waiter_ready')">Удалить</button>
         </div>
@@ -564,9 +564,7 @@
       <div class="form-group">
         <label>Новый пароль <span id="pwd-hint" style="font-weight:normal;color:var(--text-muted);"></span></label>
         <input type="text" id="pwd-new" placeholder="Введите пароль" autocomplete="off">
-        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;" id="pwd-help-text">
-          Пароль будет сохранён в лист Users, колонка pin. Можно также задать пароль напрямую в таблице.
-        </p>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;" id="pwd-help-text"></p>
       </div>
       <div class="form-group">
         <label>Повторите пароль</label>
@@ -1671,19 +1669,19 @@ function openPasswordModal(userId) {
   const helpEl = document.getElementById('pwd-help-text');
   const inputEl = document.getElementById('pwd-new');
   if (user.role === 'admin') {
-    hintEl.textContent = '(любые символы)';
-    helpEl.textContent = 'Админ может использовать любой пароль. Сохранится в лист Users, колонка pin.';
+    hintEl.textContent = '';
+    helpEl.textContent = '';
     inputEl.setAttribute('inputmode', 'text');
     inputEl.setAttribute('pattern', '');
     inputEl.setAttribute('maxlength', '100');
     inputEl.placeholder = 'Введите пароль';
   } else {
-    hintEl.textContent = '(только цифры, как PIN)';
-    helpEl.textContent = 'Официанты и повара вводят только цифры — на телефоне открывается цифровая клавиатура. Сохранится в лист Users, колонка pin.';
+    hintEl.textContent = '';
+    helpEl.textContent = '';
     inputEl.setAttribute('inputmode', 'numeric');
     inputEl.setAttribute('pattern', '[0-9]*');
     inputEl.setAttribute('maxlength', '10');
-    inputEl.placeholder = 'Например: 1234';
+    inputEl.placeholder = 'Введите пароль';
   }
   openModal('modal-password');
 }
@@ -1738,72 +1736,56 @@ async function clearPassword() {
 }
 
 /* ---------- SOUNDS ---------- */
-async function uploadSoundFile(name) {
-  const input = document.getElementById('sound-file-' + name);
-  if (!input || !input.files || input.files.length === 0) {
-    showToast('Выберите файл', 'warning');
+async function saveSoundUrl(name) {
+  const input = document.getElementById('sound-url-' + name);
+  if (!input) return;
+  const url = input.value.trim();
+  if (!url) {
+    showToast('Введите URL звука', 'warning');
     return;
   }
-  const file = input.files[0];
-  // Limit to ~600KB raw (~800KB base64)
-  if (file.size > 600 * 1024) {
-    showToast('Файл слишком большой (макс. 600 КБ). Сожмите или обрежьте звук.', 'error');
-    return;
-  }
-  showToast('Загружаем...', 'info');
   try {
-    const base64 = await fileToBase64(file);
-    const mime = file.type || 'audio/mp3';
-    await apiPost('uploadSound', { name: name, data: base64, mime: mime });
-    showToast('Звук загружен', 'success');
-    input.value = '';
-    updateSoundStatuses();
-    // Preload into cache so preview plays the new sound
+    await apiPost('uploadSound', { name: name, url: url });
+    showToast('URL звука сохранён', 'success');
+    // Update APP_DATA locally so other parts of the app see the change
+    if (APP_DATA && APP_DATA.settings) {
+      APP_DATA.settings['sound_' + name] = url;
+    }
+    // Reset sound cache so the new URL is loaded on next play
     delete _soundCache[name];
     _soundCache[name] = undefined;
     await loadSound(name);
+    updateSoundStatuses();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
 }
 
-function fileToBase64(file) {
-  return new Promise(function(resolve, reject) {
-    const reader = new FileReader();
-    reader.onload = function() {
-      // reader.result = "data:audio/mp3;base64,XXXX"
-      const result = reader.result;
-      const idx = result.indexOf(',');
-      resolve(idx >= 0 ? result.substring(idx + 1) : result);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 async function playSoundPreview(name) {
-  // Use the same loader as the waiter/cook pages
   if (_soundCache[name] === undefined) {
     await loadSound(name);
   }
   if (_soundCache[name]) {
     _soundCache[name].currentTime = 0;
     _soundCache[name].play().catch(function() {
-      showToast('Не удалось воспроизвести. Возможно, браузер блокирует звук.', 'warning');
+      showToast('Не удалось воспроизвести. Проверьте что URL правильный и файл доступен.', 'warning');
     });
   } else {
     // Fall back to a quick beep
     if (name === 'cook_new_order') cookNotifySound();
     else notifySound();
-    showToast('Звук не загружен — проигран стандартный сигнал', 'info');
+    showToast('URL не указан — проигран стандартный сигнал', 'info');
   }
 }
 
 async function deleteSoundConfirm(name) {
-  if (!confirm('Удалить загруженный звук? Будет использоваться стандартный сигнал.')) return;
+  if (!confirm('Удалить URL звука? Будет использоваться стандартный сигнал.')) return;
   try {
     await apiPost('deleteSound', { name: name });
-    showToast('Звук удалён', 'info');
+    showToast('URL удалён', 'info');
+    if (APP_DATA && APP_DATA.settings) {
+      APP_DATA.settings['sound_' + name] = '';
+    }
     delete _soundCache[name];
     _soundCache[name] = undefined;
     updateSoundStatuses();
@@ -1814,20 +1796,23 @@ async function deleteSoundConfirm(name) {
 
 async function updateSoundStatuses() {
   ['cook_new_order', 'waiter_ready'].forEach(async function(name) {
-    const el = document.getElementById('sound-status-' + name);
-    if (!el) return;
-    // Check Settings via existing APP_DATA — sounds are stored under sound_<name> keys
+    const statusEl = document.getElementById('sound-status-' + name);
+    const inputEl = document.getElementById('sound-url-' + name);
+    if (!statusEl) return;
     const key = 'sound_' + name;
-    if (APP_DATA.settings && APP_DATA.settings[key]) {
-      el.innerHTML = '✓ Загружен пользовательский звук';
-      el.style.color = 'var(--success)';
+    const url = (APP_DATA && APP_DATA.settings && APP_DATA.settings[key]) || '';
+    // Fill the input with the current URL
+    if (inputEl) inputEl.value = url;
+    if (url) {
+      statusEl.innerHTML = '✓ URL указан: ' + escapeHtml(url);
+      statusEl.style.color = 'var(--success)';
       // Preload into cache for preview
       if (_soundCache[name] === undefined) {
         await loadSound(name);
       }
     } else {
-      el.innerHTML = 'Используется стандартный сигнал';
-      el.style.color = 'var(--text-muted)';
+      statusEl.innerHTML = 'URL не указан — используется стандартный сигнал';
+      statusEl.style.color = 'var(--text-muted)';
     }
   });
 }

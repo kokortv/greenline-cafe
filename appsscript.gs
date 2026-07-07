@@ -1258,17 +1258,17 @@ function getSetting(key) {
  *   sound_waiter_ready      — played for waiter when a dish becomes ready
  * Body: { name: 'cook_new_order' | 'waiter_ready', data: '<base64>', mime: 'audio/mp3' }
  */
+// Saves the URL for a sound (e.g. "/sounds/cook_new_order.mp3").
+// The client will load the audio directly from this URL.
+// Body: { name: 'cook_new_order', url: '/sounds/cook_new_order.mp3' }
 function uploadSound(body) {
-  if (!body.name || !body.data) throw new Error('Missing name or data');
-  if (body.data.length > 800000) {
-    throw new Error('Sound file too large (max ~600KB after base64). Use a shorter MP3/WAV.');
-  }
+  if (!body.name || !body.url) throw new Error('Missing name or url');
   const settings = {};
-  settings['sound_' + body.name] = body.data;
-  settings['sound_' + body.name + '_mime'] = body.mime || 'audio/mp3';
-  // Reuse saveSettings
+  settings['sound_' + body.name] = body.url;
+  // Clean up legacy _mime entries if any
+  settings['sound_' + body.name + '_mime'] = '';
   saveSettings({ settings: settings });
-  return { ok: true, name: body.name, size: body.data.length };
+  return { ok: true, name: body.name, url: body.url };
 }
 
 /**
@@ -1276,19 +1276,20 @@ function uploadSound(body) {
  * Used by clients via ?action=getSound&name=cook_new_order
  */
 function getSound(name) {
+  // Sounds are now stored as URLs (e.g. "/sounds/cook_new_order.mp3") in
+  // Settings under key "sound_<name>". The client fetches them directly
+  // from the URL — no need to proxy through Apps Script.
+  // This endpoint is kept for backward compat — returns the URL as JSON.
   if (!name) return jsonOut({ error: 'Missing name' });
   const key = 'sound_' + name;
-  const mimeKey = key + '_mime';
-  const data = getSetting(key);
-  const mime = getSetting(mimeKey) || 'audio/mp3';
-  if (!data) {
+  const url = getSetting(key);
+  if (!url) {
     return ContentService
       .createTextOutput(JSON.stringify({ error: 'not found' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  // Return as plain text base64 — client will decode
   return ContentService
-    .createTextOutput(JSON.stringify({ data: data, mime: mime }))
+    .createTextOutput(JSON.stringify({ url: url }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
