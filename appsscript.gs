@@ -376,7 +376,7 @@ function getData() {
         role: u.role,
         is_active: u.is_active,
         sort: u.sort,
-        has_password: !!(u.pin && u.pin.length > 0)  // boolean: whether password is set
+        has_password: !!(u.pin !== null && u.pin !== undefined && String(u.pin).length > 0)
       };
     });
 
@@ -1353,7 +1353,11 @@ function doLogin(body) {
     return jsonOut({ success: false, error: 'Пользователь не найден' });
   }
   // If user has no password set yet, reject
-  if (!user.pin) {
+  // Check if password is set (handle both string and number types — Google
+  // Sheets may store "1234" as a number, in which case !user.pin would be
+  // true for 0)
+  const pinValue = String(user.pin || '');
+  if (pinValue.length === 0) {
     return jsonOut({ success: false, error: 'Пароль не установлен. Задайте пароль в колонке pin листа Users.' });
   }
   // For waiters and cooks: enforce numeric-only passwords (PINs)

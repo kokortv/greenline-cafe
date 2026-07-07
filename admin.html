@@ -615,7 +615,8 @@ let adminState = {
   filterDate: '',
   currentUser: null,
   sessionToken: null,
-  selectedLoginUser: null
+  selectedLoginUser: null,
+  ordersPollingTimer: null
 };
 
 async function init() {
@@ -704,7 +705,6 @@ function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = adminState.currentUser.name;
-  // Keep the screen awake on the admin terminal (front desk)
   requestWakeLock();
   populateSettingsForm();
   populateCategoryFilter();
@@ -713,6 +713,8 @@ function startApp() {
   renderStaffList();
   updateSoundStatuses();
   loadOrders();
+  // Start auto-polling for orders (the default tab is "orders")
+  startOrdersPolling();
 }
 
 /* ---------- Tab switching ---------- */
@@ -721,11 +723,33 @@ function switchTab(name) {
   document.querySelector('[data-tab="' + name + '"]').classList.add('active');
   document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
   document.getElementById('tab-' + name).style.display = 'block';
-  if (name === 'orders') loadOrders();
+  if (name === 'orders') { loadOrders(); startOrdersPolling(); }
+  else { stopOrdersPolling(); }
   if (name === 'menu') renderMenuList();
   if (name === 'categories') renderCategoryList();
   if (name === 'staff') renderStaffList();
   if (name === 'sounds') updateSoundStatuses();
+}
+
+/* ---------- Orders auto-polling ---------- */
+function startOrdersPolling() {
+  stopOrdersPolling();
+  // Poll every 15 seconds — admin doesn't need real-time, just "live enough"
+  adminState.ordersPollingTimer = setInterval(function() {
+    // Only refresh if the orders tab is currently visible
+    const ordersTab = document.getElementById('tab-orders');
+    if (ordersTab && ordersTab.style.display !== 'none') {
+      loadOrders();
+    }
+  }, 15000);
+  console.log('Admin orders polling started: 15000ms');
+}
+
+function stopOrdersPolling() {
+  if (adminState.ordersPollingTimer) {
+    clearInterval(adminState.ordersPollingTimer);
+    adminState.ordersPollingTimer = null;
+  }
 }
 
 /* ---------- SETTINGS ---------- */
