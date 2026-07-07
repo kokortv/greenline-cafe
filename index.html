@@ -638,9 +638,11 @@
       <div class="amount" id="order-detail-total">0 ₽</div>
     </div>
     <div class="grid grid-2" style="margin-top:12px;">
-      <button class="btn btn-success btn-lg" onclick="completeOrder()">✓ Завершить заказ</button>
+      <button class="btn btn-success btn-lg" onclick="withLoading(this, '...', function() { return completeOrder(); })">✓ Завершить заказ</button>
       <button class="btn btn-danger btn-lg" onclick="withLoading(this, 'Отмена...', function() { return cancelOrder(); })">Отменить заказ</button>
     </div>
+    <!-- Bottom padding so buttons don't stick to the bottom of the screen -->
+    <div style="height:60px;"></div>
   </div>
 </main>
 
@@ -2022,10 +2024,13 @@ async function renderOrderDetail() {
             '</div>' +
             '<div style="display:flex;gap:6px;">' +
               (isServed
-                ? '<button class="btn btn-outline btn-sm" onclick="toggleItemServed(\'' + item.id + '\', false)">↩ Не подано</button>'
-                : '<button class="btn btn-info btn-sm" onclick="toggleItemServed(\'' + item.id + '\', true)">✓ Подано</button>'
+                ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                : (isReady || !needsCooking
+                  ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                  : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+                  )
               ) +
-              '<button class="btn btn-danger btn-sm" onclick="removeOrderItem(\'' + item.id + '\')">Удалить</button>' +
+              '<button class="btn btn-danger btn-sm" onclick="withLoading(this, \'...\', function() { return removeOrderItem(\'' + item.id + '\'); })">Удалить</button>' +
             '</div>' +
           '</div>' +
           '<div class="ci-comment">' +

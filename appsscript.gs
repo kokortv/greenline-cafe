@@ -821,11 +821,22 @@ function toggleItemServed(body) {
     const headers = data[0];
     const idCol = headers.indexOf('id');
     const servedCol = headers.indexOf('is_served');
+    const readyCol = headers.indexOf('is_ready');
+    const needsCookingCol = headers.indexOf('needs_cooking');
     if (servedCol < 0) throw new Error('Column "is_served" not found. Run migrate() first.');
     let orderId = null;
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][idCol]) === String(body.item_id)) {
-        data[i][servedCol] = body.is_served === true || body.is_served === 'true';
+        const newServed = body.is_served === true || body.is_served === 'true';
+        data[i][servedCol] = newServed;
+        // If marking as served and the item doesn't need cooking (water, bread, etc.),
+        // automatically mark it as ready too — so the "Готово" badge shows.
+        if (newServed && needsCookingCol >= 0) {
+          const needsCooking = data[i][needsCookingCol] === true || data[i][needsCookingCol] === 'true';
+          if (!needsCooking && readyCol >= 0) {
+            data[i][readyCol] = true;
+          }
+        }
         orderId = data[i][headers.indexOf('order_id')];
         break;
       }

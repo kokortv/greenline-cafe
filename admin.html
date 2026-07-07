@@ -952,18 +952,29 @@ function clearFilters() {
 async function viewOrder(orderId) {
   try {
     const order = await apiGet('getOrder', { id: orderId });
-    document.getElementById('ord-detail-id').textContent = '#' + orderId.substring(0, 8);
+    // Show a short order number (last 6 chars of the ID) instead of the full ID
+    const shortId = orderId.length > 6 ? orderId.substring(orderId.length - 6) : orderId;
+    document.getElementById('ord-detail-id').textContent = '#' + shortId;
     let itemsHtml = '';
     if (order.items && order.items.length > 0) {
-      itemsHtml = '<table style="margin:12px 0;"><thead><tr><th>Блюдо</th><th>Кол-во</th><th>Цена</th><th>Сумма</th><th>Готово</th><th>Комментарий</th></tr></thead><tbody>';
+      itemsHtml = '<table style="margin:12px 0;width:100%;table-layout:fixed;"><thead><tr>' +
+        '<th style="width:30%;">Блюдо</th>' +
+        '<th style="width:8%;">Кол-во</th>' +
+        '<th style="width:13%;">Цена</th>' +
+        '<th style="width:13%;">Сумма</th>' +
+        '<th style="width:10%;">Готово</th>' +
+        '<th style="width:10%;">Подано</th>' +
+        '<th style="width:16%;">Комментарий</th>' +
+        '</tr></thead><tbody>';
       order.items.forEach(function(it) {
         itemsHtml += '<tr>' +
-          '<td>' + escapeHtml(it.name) + '</td>' +
+          '<td style="word-break:break-word;overflow-wrap:anywhere;">' + escapeHtml(it.name) + '</td>' +
           '<td>' + it.quantity + '</td>' +
           '<td>' + formatMoney(it.price) + '</td>' +
           '<td>' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>' +
           '<td>' + (it.is_ready ? '✓' : '—') + '</td>' +
-          '<td>' + escapeHtml(it.comment || '') + '</td>' +
+          '<td>' + (it.is_served ? '✓' : '—') + '</td>' +
+          '<td style="word-break:break-word;overflow-wrap:anywhere;">' + escapeHtml(it.comment || '') + '</td>' +
         '</tr>';
       });
       itemsHtml += '</tbody></table>';
