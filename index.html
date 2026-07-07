@@ -1071,6 +1071,15 @@ async function refreshAppDataAndRender() {
 
 /* ---------- Screen navigation ---------- */
 function showScreen(name) {
+  // If leaving the order-detail screen, flush any pending quantity changes
+  const wasOnOrderDetail = document.getElementById('screen-order-detail').classList.contains('active');
+  if (wasOnOrderDetail && name !== 'order-detail') {
+    if (_qtySyncTimer) {
+      clearTimeout(_qtySyncTimer);
+      _qtySyncTimer = null;
+    }
+    flushQtyChanges(); // send accumulated changes to server
+  }
   document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
   document.getElementById('screen-' + name).classList.add('active');
   // Stop item-readiness polling when leaving order detail
@@ -2131,6 +2140,7 @@ async function renderOrderDetail() {
         if (isServed) cardClass += ' served';
         else if (isReady) cardClass += ' ready';
         card.className = cardClass;
+        card.dataset.itemId = item.id;  // for reliable DOM lookup
         // Build the dish name line: optional category badge + dish name + status badge
         let statusBadge = '';
         if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
@@ -2142,7 +2152,7 @@ async function renderOrderDetail() {
             '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
           '</div>' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
-            '<div class="stepper">' +
+            '<div class="stepper" data-item-id="' + item.id + '">' +
               '<button onclick="changeOrderItemQty(\'' + item.id + '\', -1)">−</button>' +
               '<input type="number" value="' + item.quantity + '" readonly>' +
               '<button onclick="changeOrderItemQty(\'' + item.id + '\', 1)">+</button>' +
@@ -2197,46 +2207,88 @@ async function renderOrderDetail() {
   }
 }
 
-async function changeOrderItemQty(itemId, delta) {
-  try {
-    const order = state.currentOrder;
-    const item = order.items.find(function(i) { return i.id === itemId; });
-    if (!item) return;
-    const newQty = Number(item.quantity) + delta;
-    if (newQty <= 0) {
-      await removeOrderItem(itemId);
-      return;
+// Debounced sync — accumulates changes and sends them to the server in batch
+// after the user stops clicking for 500ms. This way rapid +/- clicks don't
+// spam the server with individual requests.
+let _pendingQtyChanges = {};  // { itemId: newQty }
+let _qtySyncTimer = null;
+
+function scheduleQtySync() {
+  if (_qtySyncTimer) clearTimeout(_qtySyncTimer);
+  _qtySyncTimer = setTimeout(function() {
+    flushQtyChanges();
+  }, 800);
+}
+
+async function flushQtyChanges() {
+  const changes = Object.assign({}, _pendingQtyChanges);
+  _pendingQtyChanges = {};
+  _qtySyncTimer = null;
+  if (Object.keys(changes).length === 0) return;
+  for (const itemId in changes) {
+    try {
+      await apiPost('updateItemQuantity', { item_id: itemId, quantity: changes[itemId] });
+    } catch (err) {
+      console.error('Failed to sync qty for ' + itemId + ':', err);
     }
-    // Optimistic update: change the quantity in the local state immediately
-    // so the UI responds instantly, then send to server in the background.
-    item.quantity = newQty;
-    // Update the quantity input field immediately (no full re-render)
-    const inputEl = document.querySelector('input[readonly][value="' + (Number(item.quantity) - delta) + '"]');
-    if (inputEl) {
-      inputEl.value = newQty;
-    }
-    // Update the price display for this item
-    const itemCard = inputEl ? inputEl.closest('.cart-item') : null;
-    if (itemCard) {
-      const priceEl = itemCard.querySelector('.ci-price');
-      if (priceEl) priceEl.textContent = formatMoney(Number(item.price) * newQty);
-    }
-    // Recalculate total and update it
-    let newTotal = 0;
-    order.items.forEach(function(it) {
-      newTotal += (Number(it.price) || 0) * (Number(it.quantity) || 1);
-    });
-    order.total = newTotal;
-    document.getElementById('order-detail-total').textContent = formatMoney(newTotal);
-    // Send to server in the background (no await — don't block the UI)
-    apiPost('updateItemQuantity', { item_id: itemId, quantity: newQty }).catch(function(err) {
-      showToast('Ошибка сохранения: ' + err.message, 'error');
-      // On error, re-render to show the server's actual state
-      renderOrderDetail();
-    });
-  } catch (err) {
-    showToast('Ошибка: ' + err.message, 'error');
   }
+}
+
+async function changeOrderItemQty(itemId, delta) {
+  const order = state.currentOrder;
+  if (!order || !order.items) return;
+  const item = order.items.find(function(i) { return i.id === itemId; });
+  if (!item) return;
+  const newQty = Number(item.quantity) + delta;
+  if (newQty <= 0) {
+    // Remove — this needs server confirmation
+    if (!confirm('Удалить позицию из заказа?')) return;
+    // Optimistic: remove from local state + DOM
+    order.items = order.items.filter(function(i) { return i.id !== itemId; });
+    const cardEl = document.querySelector('.cart-item[data-item-id="' + itemId + '"]');
+    if (cardEl) cardEl.remove();
+    recalcOrderTotal();
+    // Send to server in background
+    apiPost('removeItemFromOrder', { item_id: itemId }).then(function() {
+      // Recalc total on server too
+      showToast('Позиция удалена', 'info');
+    }).catch(function(err) {
+      showToast('Ошибка удаления: ' + err.message, 'error');
+      renderOrderDetail(); // re-render to show actual state
+    });
+    return;
+  }
+  // Update local state immediately
+  item.quantity = newQty;
+  // Update DOM: find the stepper by data-item-id
+  const stepper = document.querySelector('.stepper[data-item-id="' + itemId + '"]');
+  if (stepper) {
+    const input = stepper.querySelector('input');
+    if (input) input.value = newQty;
+  }
+  // Update the price display for this item
+  const card = document.querySelector('.cart-item[data-item-id="' + itemId + '"]');
+  if (card) {
+    const priceEl = card.querySelector('.ci-price');
+    if (priceEl) priceEl.textContent = formatMoney(Number(item.price) * newQty);
+  }
+  // Recalculate total
+  recalcOrderTotal();
+  // Queue the change for batch sync
+  _pendingQtyChanges[itemId] = newQty;
+  scheduleQtySync();
+}
+
+function recalcOrderTotal() {
+  const order = state.currentOrder;
+  if (!order || !order.items) return;
+  let total = 0;
+  order.items.forEach(function(it) {
+    total += (Number(it.price) || 0) * (Number(it.quantity) || 1);
+  });
+  order.total = total;
+  const totalEl = document.getElementById('order-detail-total');
+  if (totalEl) totalEl.textContent = formatMoney(total);
 }
 
 async function removeOrderItem(itemId) {
