@@ -276,7 +276,7 @@ function handleRequest(params, body) {
     switch (action) {
       case 'getData':        result = getData(); break;
       case 'getDataVersion': result = getDataVersion(); break;
-      case 'getWaiterDashboard': result = getWaiterDashboard(body); break;
+      case 'getWaiterDashboard': result = getWaiterDashboard(params); break;
       case 'getOrders':      result = getOrders(params.status, params.since, { waiter_id: params.waiter_id }); break;
       case 'getOrder':       result = getOrder(params.id); break;
       case 'createOrder':    result = createOrder(body); break;
@@ -485,7 +485,7 @@ function getDataVersion() {
  */
 function getWaiterDashboard(body) {
   const waiterId = body.waiter_id || (body.user && body.user.id);
-  const cookEnabled = getSetting('cook_enabled') !== 'false';
+  const cookEnabled = String(getSetting('cook_enabled')) !== 'false';
 
   // 1. Active orders (accepted + paused) for this waiter + virtual/tab orders
   let orders = readSheet(SHEETS.ORDERS);
@@ -1009,7 +1009,7 @@ function toggleItemServed(body) {
     const needsCookingCol = headers.indexOf('needs_cooking');
     if (servedCol < 0) throw new Error('Column "is_served" not found. Run migrate() first.');
     // Check if cook is enabled — if not, waiters can serve anything directly
-    const cookEnabled = getSetting('cook_enabled') !== 'false';
+    const cookEnabled = String(getSetting('cook_enabled')) !== 'false';
     let orderId = null;
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][idCol]) === String(body.item_id)) {
@@ -2185,7 +2185,7 @@ function getActiveShift(params) {
   return {
     shift: shift,
     current_cash: Number(getSetting('cash_register')) || 0,
-    cook_enabled: getSetting('cook_enabled') !== 'false'
+    cook_enabled: String(getSetting('cook_enabled')) !== 'false'
   };
 }
 

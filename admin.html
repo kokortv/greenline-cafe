@@ -775,7 +775,7 @@ function populateSettingsForm() {
   document.getElementById('set-poll-waiter').value = APP_DATA.settings.poll_interval_waiter || 20;
   document.getElementById('set-poll-cook').value = APP_DATA.settings.poll_interval_cook || 10;
   document.getElementById('set-virtual-table').value = APP_DATA.settings.virtual_tables || 'Бар';
-  document.getElementById('set-cook-enabled').checked = APP_DATA.settings.cook_enabled !== 'false';
+  document.getElementById('set-cook-enabled').checked = String(APP_DATA.settings.cook_enabled) !== 'false';
   document.getElementById('set-cash-register').value = APP_DATA.settings.cash_register || 0;
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
