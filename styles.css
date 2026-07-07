@@ -93,28 +93,29 @@ input:focus, select:focus, textarea:focus {
   min-height: 30px;
 }
 .header-top {
-  justify-content: space-between;
+  justify-content: center;
+  padding: 2px 0;
 }
 .header-top h1 {
   font-size: 1.2rem;
   font-weight: 600;
-  flex: 1;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .header-bottom {
-  justify-content: flex-end;
+  justify-content: space-between;
   padding-bottom: 4px;
 }
-.shift-btn-top {
-  background: rgba(255,255,255,0.2);
-  color: white;
+/* Shift badge in the header */
+.shift-badge {
+  background: rgba(255,255,255,0.25) !important;
+  color: white !important;
   font-size: 0.8rem;
-  padding: 5px 10px;
-  border-radius: 14px;
+  padding: 4px 10px;
+  min-width: auto;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 .app-header .header-actions {
   display: flex;
@@ -478,10 +479,8 @@ tbody tr:hover { background: #fafafa; }
   .grid-2, .grid-3, .grid-4, .grid-5, .grid-6, .grid-auto { grid-template-columns: repeat(2, 1fr); }
   /* Stack the header actions if needed */
   .app-header { padding: 4px 10px; }
-  .app-header .header-actions { gap: 6px; }
-  .app-header .nav-link { padding: 6px 10px; font-size: 0.85rem; }
   .header-top h1 { font-size: 1rem; }
-  .shift-btn-top { font-size: 0.75rem; padding: 4px 8px; }
+  .shift-badge { font-size: 0.75rem; padding: 3px 8px; }
   /* Tables: stack label/value pairs */
   th, td { padding: 8px; font-size: 0.85rem; }
   /* Login buttons: smaller on phones */
