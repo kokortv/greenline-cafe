@@ -259,7 +259,7 @@ function doPost(e) {
 function handleRequest(params, body) {
   const action = params.action;
 
-  // Special-case: getSound returns raw base64 (no JSON wrapper) so the client
+  // Special-case: getSound returns the sound URL as JSON
   // can fetch and decode it directly into a Blob.
   if (action === 'getSound') {
     return getSound(params.name);
@@ -1500,14 +1500,9 @@ function getSetting(key) {
 /* ============ SOUNDS ============ */
 
 /**
- * Stores a sound as base64 in the Settings sheet under keys:
- *   sound_cook_new_order    — played for cook when a new order arrives
- *   sound_waiter_ready      — played for waiter when a dish becomes ready
- * Body: { name: 'cook_new_order' | 'waiter_ready', data: '<base64>', mime: 'audio/mp3' }
+ * Stores the URL for a sound (e.g. "/sounds/cook_new_order.mp3").
+ * Body: { name: 'cook_new_order', url: '/sounds/cook_new_order.mp3' }
  */
-// Saves the URL for a sound (e.g. "/sounds/cook_new_order.mp3").
-// The client will load the audio directly from this URL.
-// Body: { name: 'cook_new_order', url: '/sounds/cook_new_order.mp3' }
 function uploadSound(body) {
   if (!body.name || !body.url) throw new Error('Missing name or url');
   const settings = {};
@@ -1519,7 +1514,7 @@ function uploadSound(body) {
 }
 
 /**
- * Returns the raw base64-encoded sound for the given name.
+ * Returns the sound URL for the given name.
  * Used by clients via ?action=getSound&name=cook_new_order
  */
 function getSound(name) {

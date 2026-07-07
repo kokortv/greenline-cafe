@@ -166,11 +166,6 @@
     font-weight: 700;
     font-size: 1.1rem;
   }
-  .menu-item-card .item-no-cook {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    font-style: italic;
-  }
   .menu-item-card .item-add-btn {
     background: var(--success);
     color: white;
@@ -941,8 +936,8 @@ async function startApp() {
         if (state.pollingTimer) startOrderPolling();
       }
       _lastWaiterInterval = newInterval;
-      // Also refresh shift status periodically
-      checkShiftStatus();
+      // checkShiftStatus is no longer needed here — shift data comes from
+      // getWaiterDashboard batch response in refreshActiveOrders()
     }).catch(function(err) { console.warn('Background refresh failed:', err); });
   }, 60000);
 }
@@ -951,6 +946,9 @@ async function startApp() {
 let _activeShift = null;
 
 async function checkShiftStatus() {
+  // Shift status is now included in the getWaiterDashboard batch response,
+  // so this function is just a fallback for the initial load before the first
+  // dashboard poll completes. It's a lightweight call (getActiveShift only).
   try {
     const data = await apiGet('getActiveShift', { waiter_id: state.currentUser.id });
     _activeShift = data.shift || null;
