@@ -2311,16 +2311,24 @@ let _selectedPaymentMethod = null;
 
 async function completeOrderById(orderId) {
   if (!orderId) return;
-  // Find the order in state to display info
-  const order = state.activeOrders.find(function(o) { return o.id === orderId; });
+  // Fetch FRESH order data from the server — state.activeOrders may be stale
+  // (e.g. waiter just marked items as "served" but the poll hasn't updated
+  // state.activeOrders yet). The server has the correct is_ready/is_served.
+  let order;
+  try {
+    order = await apiGet('getOrder', { id: orderId });
+  } catch (err) {
+    showToast('Ошибка загрузки заказа: ' + err.message, 'error');
+    return;
+  }
   if (!order) {
     showToast('Заказ не найден, обновите страницу', 'warning');
     await refreshActiveOrders();
     return;
   }
   // Check: do not allow completing the order until all cooking items are ready.
-  // (Items with needs_cooking=false — like water, bread — don't need to be ready,
-  // they're served immediately. Only cooking items must be all ready.)
+  // When cook is disabled, toggleItemServed auto-sets is_ready=true, so this
+  // check should pass once all items are served.
   const items = order.items || [];
   const cookingItems = items.filter(function(i) {
     return i.needs_cooking === true || i.needs_cooking === 'true' ||
