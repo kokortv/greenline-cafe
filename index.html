@@ -496,10 +496,12 @@
 <body>
 
 <header class="app-header" id="app-header" style="display:none;">
-  <h1 id="restaurant-name">Ресторан</h1>
-  <div class="header-actions">
+  <div class="header-row header-top">
+    <h1 id="restaurant-name">Ресторан</h1>
+    <button class="btn btn-sm shift-btn-top" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
+  </div>
+  <div class="header-row header-bottom">
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
-    <button class="btn btn-sm" id="shift-btn" style="display:none;background:rgba(255,255,255,0.2);color:white;font-size:0.85rem;padding:6px 12px;" onclick="handleShiftClick()"></button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -965,7 +967,7 @@ function updateShiftButton() {
   if (!btn) return;
   btn.style.display = 'inline-block';
   if (_activeShift) {
-    btn.textContent = '🟢 Смена открыта · ' + formatMoney(state.currentCash || 0);
+    btn.textContent = '🟢 Смена открыта';
     btn.style.background = 'rgba(76,175,80,0.3)';
   } else {
     btn.textContent = '🔴 Открыть смену';
@@ -2205,8 +2207,33 @@ async function changeOrderItemQty(itemId, delta) {
       await removeOrderItem(itemId);
       return;
     }
-    await apiPost('updateItemQuantity', { item_id: itemId, quantity: newQty });
-    await renderOrderDetail();
+    // Optimistic update: change the quantity in the local state immediately
+    // so the UI responds instantly, then send to server in the background.
+    item.quantity = newQty;
+    // Update the quantity input field immediately (no full re-render)
+    const inputEl = document.querySelector('input[readonly][value="' + (Number(item.quantity) - delta) + '"]');
+    if (inputEl) {
+      inputEl.value = newQty;
+    }
+    // Update the price display for this item
+    const itemCard = inputEl ? inputEl.closest('.cart-item') : null;
+    if (itemCard) {
+      const priceEl = itemCard.querySelector('.ci-price');
+      if (priceEl) priceEl.textContent = formatMoney(Number(item.price) * newQty);
+    }
+    // Recalculate total and update it
+    let newTotal = 0;
+    order.items.forEach(function(it) {
+      newTotal += (Number(it.price) || 0) * (Number(it.quantity) || 1);
+    });
+    order.total = newTotal;
+    document.getElementById('order-detail-total').textContent = formatMoney(newTotal);
+    // Send to server in the background (no await — don't block the UI)
+    apiPost('updateItemQuantity', { item_id: itemId, quantity: newQty }).catch(function(err) {
+      showToast('Ошибка сохранения: ' + err.message, 'error');
+      // On error, re-render to show the server's actual state
+      renderOrderDetail();
+    });
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }

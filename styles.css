@@ -79,18 +79,42 @@ input:focus, select:focus, textarea:focus {
   position: sticky;
   top: 0;
   z-index: 100;
-  height: var(--header-h);
   background: var(--primary);
   color: white;
   display: flex;
-  align-items: center;
-  padding: 0 20px;
+  flex-direction: column;
+  padding: 4px 16px;
   box-shadow: var(--shadow);
 }
-.app-header h1 {
-  font-size: 1.3rem;
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+.header-top {
+  justify-content: space-between;
+}
+.header-top h1 {
+  font-size: 1.2rem;
   font-weight: 600;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header-bottom {
+  justify-content: flex-end;
+  padding-bottom: 4px;
+}
+.shift-btn-top {
+  background: rgba(255,255,255,0.2);
+  color: white;
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border-radius: 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .app-header .header-actions {
   display: flex;
@@ -453,9 +477,11 @@ tbody tr:hover { background: #fafafa; }
 @media (max-width: 480px) {
   .grid-2, .grid-3, .grid-4, .grid-5, .grid-6, .grid-auto { grid-template-columns: repeat(2, 1fr); }
   /* Stack the header actions if needed */
-  .app-header { padding: 0 10px; gap: 6px; }
+  .app-header { padding: 4px 10px; }
   .app-header .header-actions { gap: 6px; }
   .app-header .nav-link { padding: 6px 10px; font-size: 0.85rem; }
+  .header-top h1 { font-size: 1rem; }
+  .shift-btn-top { font-size: 0.75rem; padding: 4px 8px; }
   /* Tables: stack label/value pairs */
   th, td { padding: 8px; font-size: 0.85rem; }
   /* Login buttons: smaller on phones */
