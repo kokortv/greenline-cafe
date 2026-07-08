@@ -61,11 +61,9 @@ async function dbInsertBatch(table, records) {
 
 async function dbUpdate(table, id, updates) {
   if (!_sb) throw new Error('Supabase not initialized');
-  console.log('dbUpdate:', table, 'id=', id, 'updates=', JSON.stringify(updates));
-  const { data, error, count } = await _sb.from(table).update(updates).eq('id', id).select('*');
-  console.log('dbUpdate result:', 'data=', data, 'error=', error, 'count=', count);
+  const { error } = await _sb.from(table).update(updates).eq('id', id);
   if (error) throw new Error(error.message);
-  return data && data.length > 0 ? data[0] : Object.assign({ id: id }, updates);
+  return Object.assign({ id: id }, updates);
 }
 
 async function dbDelete(table, id) {
@@ -85,13 +83,12 @@ async function saveSettings(settings) {
   if (!_sb) throw new Error('Supabase not initialized');
   for (const key in settings) {
     const { data: existing } = await _sb.from('settings').select('key').eq('key', key);
-    console.log('saveSettings:', key, '=> existing:', existing ? existing.length : 0, 'value:', String(settings[key]));
     if (existing && existing.length > 0) {
-      const { data: updRes, error: updErr } = await _sb.from('settings').update({ value: String(settings[key]) }).eq('key', key).select('*');
-      console.log('saveSettings UPDATE:', key, '=> result:', updRes, 'error:', updErr);
+      const { error: updErr } = await _sb.from('settings').update({ value: String(settings[key]) }).eq('key', key);
+      if (updErr) console.warn('Setting update error for', key, updErr.message);
     } else {
-      const { data: insRes, error: insErr } = await _sb.from('settings').insert({ key: key, value: String(settings[key]) }).select('*');
-      console.log('saveSettings INSERT:', key, '=> result:', insRes, 'error:', insErr);
+      const { error: insErr } = await _sb.from('settings').insert({ key: key, value: String(settings[key]) });
+      if (insErr) console.warn('Setting insert error for', key, insErr.message);
     }
   }
   if (APP_DATA && APP_DATA.settings) {
