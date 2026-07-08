@@ -61,9 +61,19 @@ async function dbInsertBatch(table, records) {
 
 async function dbUpdate(table, id, updates) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { error } = await _sb.from(table).update(updates).eq('id', id);
+  // Use .select() to get the affected rows back. Without it, supabase-js returns
+  // data=null and we cannot tell whether the update actually hit any row
+  // (RLS without policy, missing id, type mismatch — all silently affect 0 rows).
+  const { data, error, count } = await _sb
+    .from(table)
+    .update(updates)
+    .eq('id', id)
+    .select();
   if (error) throw new Error(error.message);
-  return Object.assign({ id: id }, updates);
+  if (!data || data.length === 0) {
+    throw new Error('Update failed: no rows matched id=' + id + ' (check RLS policies for table "' + table + '")');
+  }
+  return data[0];
 }
 
 async function dbDelete(table, id) {
@@ -71,6 +81,40 @@ async function dbDelete(table, id) {
   const { error } = await _sb.from(table).delete().eq('id', id);
   if (error) throw new Error(error.message);
   return { ok: true };
+}
+
+// Atomic increment/decrement of a numeric column using PostgreSQL RPC.
+// Falls back to read-modify-write if the RPC is not available.
+// This avoids race conditions and bypasses potential UPDATE-only RLS issues.
+async function dbIncrementStock(menuItemId, delta) {
+  if (!_sb) throw new Error('Supabase not initialized');
+  delta = Number(delta) || 0;
+  // Try the RPC first (defined in supabase-schema.sql as replenish_stock)
+  try {
+    const { data, error } = await _sb.rpc('replenish_stock', {
+      p_menu_id: menuItemId,
+      p_delta: delta
+    });
+    if (!error && data !== null && data !== undefined) {
+      return { id: menuItemId, stock: Number(data) };
+    }
+    // If RPC fails with "function not found", fall through to read-modify-write
+    if (error && error.message && error.message.indexOf('Could not find the function') === -1) {
+      console.warn('RPC replenish_stock failed, falling back to RMW:', error.message);
+    } else {
+      console.warn('RPC replenish_stock not available, using read-modify-write');
+    }
+  } catch (e) {
+    console.warn('RPC replenish_stock exception, falling back:', e.message);
+  }
+  // Fallback: read-modify-write
+  const items = await dbSelect('menu', { id: menuItemId });
+  if (items.length === 0) throw new Error('Menu item not found: ' + menuItemId);
+  const current = Number(items[0].stock) || 0;
+  const newStock = Math.max(0, current + delta);
+  console.log('dbIncrementStock fallback: itemId=', menuItemId, 'current=', current, 'delta=', delta, 'new=', newStock);
+  await dbUpdate('menu', menuItemId, { stock: newStock });
+  return { id: menuItemId, stock: newStock };
 }
 
 /* ---------- Settings ---------- */
@@ -583,22 +627,22 @@ async function deductStock(items) {
 
   for (const it of items) {
     if (!it.menu_item_id) continue;
-    const menuItems = await dbSelect('menu', { id: it.menu_item_id });
-    if (menuItems.length === 0) continue;
-    const m = menuItems[0];
-    const current = Number(m.stock) || 0;
-    const qty = Number(it.quantity) || 1;
-    await dbUpdate('menu', it.menu_item_id, { stock: Math.max(0, current - qty) });
+    const qty = parseInt(it.quantity, 10) || 1;
+    // Use negative delta via the atomic helper so it benefits from the same RPC path
+    try {
+      await dbIncrementStock(it.menu_item_id, -qty);
+    } catch (err) {
+      console.warn('deductStock failed for', it.menu_item_id, ':', err.message);
+    }
   }
 }
 
 async function replenishStock(menuItemId, quantity) {
-  const items = await dbSelect('menu', { id: menuItemId });
-  if (items.length === 0) throw new Error('Menu item not found');
-  const current = Number(items[0].stock) || 0;
-  const newStock = current + Number(quantity);
-  await dbUpdate('menu', menuItemId, { stock: newStock });
-  return { id: menuItemId, stock: newStock };
+  const qty = parseInt(quantity, 10);
+  if (!qty || qty <= 0) throw new Error('Quantity must be a positive integer');
+  const result = await dbIncrementStock(menuItemId, qty);
+  console.log('replenishStock: itemId=', menuItemId, 'qty=', qty, 'newStock=', result.stock);
+  return result;
 }
 
 async function getStockReport() {
@@ -636,6 +680,7 @@ async function getStockReport() {
     return {
       id: m.id,
       name: m.name,
+      sort: Number(m.sort) || 0,
       stock: stock,
       consumed_day: cons.day,
       consumed_week: cons.week,
@@ -643,6 +688,14 @@ async function getStockReport() {
       consumed_total: cons.total,
       low_stock: stockTracking && stock <= threshold
     };
+  });
+  // Sort by sort field, then by name — keeps the order stable across reloads
+  // (otherwise PostgreSQL may return rows in different physical order after updates)
+  items.sort(function(a, b) {
+    const sa = Number(a.sort) || 0;
+    const sb = Number(b.sort) || 0;
+    if (sa !== sb) return sa - sb;
+    return String(a.name).localeCompare(String(b.name), 'ru');
   });
 
   return { stock_tracking: stockTracking, threshold: threshold, items: items };

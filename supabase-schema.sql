@@ -228,6 +228,39 @@ alter publication supabase_realtime add table public.categories;
 alter publication supabase_realtime add table public.users;
 
 -- =========================================================================
+-- RPC FUNCTIONS — atomic stock operations (bypass RLS for table writes)
+-- These run with SECURITY DEFINER so they work even if RLS is enabled on menu.
+-- =========================================================================
+
+-- Replenish stock: atomically add delta to menu.stock, return the new value.
+-- delta may be negative (for deducting stock when an order is placed).
+-- Stock is clamped at 0 (never goes negative).
+create or replace function public.replenish_stock(p_menu_id text, p_delta int)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new int;
+begin
+  update public.menu
+     set stock = greatest(0, coalesce(stock, 0) + p_delta)
+   where id = p_menu_id
+   returning stock into v_new;
+
+  if v_new is null then
+    raise exception 'Menu item not found: %', p_menu_id;
+  end if;
+
+  return v_new;
+end;
+$$;
+
+-- Grant execute to anon and authenticated roles
+grant execute on function public.replenish_stock(text, int) to anon, authenticated;
+
+-- =========================================================================
 -- DONE!
 -- After running this:
 -- 1. Go to Settings → API to get your Project URL and anon key
