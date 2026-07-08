@@ -1650,11 +1650,14 @@ async function loadStockReport() {
     }
     const tracking = data.stock_tracking;
     const threshold = data.threshold || 5;
+    // Store for updateStockRow() so we don't need to refetch the whole report
+    window._stockTracking = tracking;
+    window._stockThreshold = threshold;
     let html = '';
     if (!tracking) {
-      html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён. Включите в Настройках.</div>';
+      html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
     }
-    html += '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    html += '<table style="width:100%;table-layout:fixed;" id="stock-table"><thead><tr>';
     html += '<th style="width:30%;">Блюдо</th>';
     html += '<th style="width:12%;">Остаток</th>';
     html += '<th style="width:12%;">За день</th>';
@@ -1665,9 +1668,11 @@ async function loadStockReport() {
     items.forEach(function(it) {
       const lowClass = it.low_stock ? ' style="background:#ffebee;"' : '';
       const stockColor = it.low_stock ? 'color:var(--danger);font-weight:700;' : '';
-      html += '<tr' + lowClass + '>';
+      // Always show the actual stock value, even when tracking is off.
+      // tracking only controls automatic deduction on order placement.
+      html += '<tr' + lowClass + ' id="stock-row-' + it.id + '" data-stock="' + it.stock + '">';
       html += '<td style="word-break:break-word;">' + escapeHtml(it.name) + '</td>';
-      html += '<td style="' + stockColor + '">' + (tracking ? it.stock : '—') + '</td>';
+      html += '<td class="stock-cell" style="' + stockColor + '">' + it.stock + '</td>';
       html += '<td>' + it.consumed_day + '</td>';
       html += '<td>' + it.consumed_week + '</td>';
       html += '<td>' + it.consumed_month + '</td>';
@@ -1695,26 +1700,72 @@ function replenishFromInput(itemId) {
 }
 
 async function replenishStockItem(itemId, qty) {
-  const btn = event && event.target ? event.target.closest('button') : null;
+  // Find the source button so we can disable it during the request.
+  // event.target is the clicked element; for Enter-key we use document.activeElement.
+  let btn = null;
+  if (typeof event !== 'undefined' && event && event.target) {
+    btn = event.target.closest ? event.target.closest('button') : null;
+  }
+  if (!btn) {
+    const active = document.activeElement;
+    if (active && active.tagName === 'BUTTON') btn = active;
+    else if (active && active.tagName === 'INPUT') {
+      const row = active.closest('tr');
+      if (row) btn = row.querySelector('button');
+    }
+  }
   if (btn) btn.disabled = true;
   try {
     const result = await apiPost('replenishStock', { menu_item_id: itemId, quantity: qty });
     const newStock = result && typeof result.stock !== 'undefined' ? result.stock : null;
-    showToast('Склад пополнен на ' + qty + (newStock !== null ? ' (теперь: ' + newStock + ')' : ''), 'success');
-    // Update local APP_DATA menu stock without full reload
-    const menuItem = (APP_DATA.menu || []).find(function(m) { return m.id === itemId; });
-    if (menuItem && newStock !== null) {
-      menuItem.stock = newStock;
-    } else if (menuItem) {
-      menuItem.stock = (Number(menuItem.stock) || 0) + Number(qty);
+    if (newStock === null) {
+      throw new Error('Сервер не вернул новое значение остатка');
     }
-    // Reload just the stock report (fast — no loadAppDataForce needed)
-    loadStockReport();
+    showToast('Склад пополнен на ' + qty + ' (теперь: ' + newStock + ')', 'success');
+    // Update local APP_DATA cache
+    const menuItem = (APP_DATA.menu || []).find(function(m) { return m.id === itemId; });
+    if (menuItem) menuItem.stock = newStock;
+    // Update just the affected row in-place — no full table re-render.
+    updateStockRow(itemId, newStock);
   } catch (err) {
     showToast('Ошибка пополнения: ' + err.message, 'error');
     console.error('replenishStockItem error:', err);
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// Update a single stock row without re-rendering the whole table.
+// This avoids the visual "page reload" effect.
+function updateStockRow(itemId, newStock) {
+  const row = document.getElementById('stock-row-' + itemId);
+  if (!row) {
+    // Row not found (tab may have been switched) — fall back to full reload.
+    loadStockReport();
+    return;
+  }
+  row.setAttribute('data-stock', String(newStock));
+  const cell = row.querySelector('.stock-cell');
+  if (cell) {
+    cell.textContent = String(newStock);
+    // Re-evaluate low-stock styling based on current threshold
+    const threshold = Number(window._stockThreshold || 5);
+    const tracking = window._stockTracking;
+    const isLow = tracking && newStock <= threshold;
+    if (isLow) {
+      cell.style.color = 'var(--danger)';
+      cell.style.fontWeight = '700';
+      row.style.background = '#ffebee';
+    } else {
+      cell.style.color = '';
+      cell.style.fontWeight = '';
+      row.style.background = '';
+    }
+    // Brief flash to confirm the update
+    cell.style.transition = 'background-color 0.3s';
+    const prevBg = cell.style.backgroundColor;
+    cell.style.backgroundColor = '#c8e6c9';
+    setTimeout(function() { cell.style.backgroundColor = prevBg; }, 600);
   }
 }
 
