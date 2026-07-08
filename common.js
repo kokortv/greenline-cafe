@@ -4,12 +4,14 @@
  */
 
 /* ---------- Supabase client ---------- */
-let supabase = null;
+// Note: supabase-js library creates a global `supabase` object.
+// We use _sb for our client instance to avoid name collision.
+let _sb = null;
 let _realtimeChannels = [];
 
 function initSupabase() {
   if (typeof window !== 'undefined' && window.supabase && CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === -1) {
-    supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+    _sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       realtime: { params: { eventsPerSecond: 10 } }
     });
     console.log('Supabase client initialized');
@@ -24,8 +26,8 @@ function initSupabase() {
 
 // Generic: select from table with optional filters
 async function dbSelect(table, filters) {
-  if (!supabase) throw new Error('Supabase not initialized');
-  let query = supabase.from(table).select('*');
+  if (!_sb) throw new Error('Supabase not initialized');
+  let query = _sb.from(table).select('*');
   if (filters) {
     Object.keys(filters).forEach(function(k) {
       if (filters[k] !== undefined && filters[k] !== null && filters[k] !== '') {
@@ -39,29 +41,29 @@ async function dbSelect(table, filters) {
 }
 
 async function dbInsert(table, record) {
-  if (!supabase) throw new Error('Supabase not initialized');
-  const { data, error } = await supabase.from(table).insert(record).select('*');
+  if (!_sb) throw new Error('Supabase not initialized');
+  const { data, error } = await _sb.from(table).insert(record).select('*');
   if (error) throw new Error(error.message);
   return data && data.length > 0 ? data[0] : null;
 }
 
 async function dbInsertBatch(table, records) {
-  if (!supabase) throw new Error('Supabase not initialized');
-  const { data, error } = await supabase.from(table).insert(records).select('*');
+  if (!_sb) throw new Error('Supabase not initialized');
+  const { data, error } = await _sb.from(table).insert(records).select('*');
   if (error) throw new Error(error.message);
   return data || [];
 }
 
 async function dbUpdate(table, id, updates) {
-  if (!supabase) throw new Error('Supabase not initialized');
-  const { data, error } = await supabase.from(table).update(updates).eq('id', id).select('*');
+  if (!_sb) throw new Error('Supabase not initialized');
+  const { data, error } = await _sb.from(table).update(updates).eq('id', id).select('*');
   if (error) throw new Error(error.message);
   return data && data.length > 0 ? data[0] : null;
 }
 
 async function dbDelete(table, id) {
-  if (!supabase) throw new Error('Supabase not initialized');
-  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (!_sb) throw new Error('Supabase not initialized');
+  const { error } = await _sb.from(table).delete().eq('id', id);
   if (error) throw new Error(error.message);
   return { ok: true };
 }
@@ -73,10 +75,10 @@ async function getSetting(key) {
 }
 
 async function saveSettings(settings) {
-  if (!supabase) throw new Error('Supabase not initialized');
+  if (!_sb) throw new Error('Supabase not initialized');
   for (const key in settings) {
     // Upsert: insert or update on conflict
-    const { error } = await supabase
+    const { error } = await _sb
       .from('settings')
       .upsert({ key: key, value: String(settings[key]) }, { onConflict: 'key' });
     if (error) console.warn('Setting upsert error for', key, error.message);
@@ -133,7 +135,7 @@ async function loadAppDataForce() {
 
 /* ---------- Orders ---------- */
 async function getOrders(status, waiterId) {
-  let query = supabase.from('orders').select('*, order_items(*)');
+  let query = _sb.from('orders').select('*, order_items(*)');
 
   if (status === 'accepted') {
     query = query.in('status', ['accepted', 'paused']);
@@ -185,7 +187,7 @@ async function getOrders(status, waiterId) {
 }
 
 async function getOrder(id) {
-  const { data, error } = await supabase
+  const { data, error } = await _sb
     .from('orders')
     .select('*, order_items(*)')
     .eq('id', id)
@@ -222,7 +224,7 @@ async function getOrder(id) {
 async function createOrder(orderData) {
   // Check table conflict for numbered tables
   if (orderData.table_type === 'numbered' || !orderData.table_type) {
-    const { data: existing } = await supabase
+    const { data: existing } = await _sb
       .from('orders')
       .select('id, waiter_name')
       .eq('table_number', String(orderData.table_number))
@@ -389,7 +391,7 @@ async function toggleItemServed(itemId, isServed) {
 
 async function deleteOrder(orderId) {
   // Delete items first
-  await supabase.from('order_items').delete().eq('order_id', orderId);
+  await _sb.from('order_items').delete().eq('order_id', orderId);
   await dbDelete('orders', orderId);
   return { ok: true };
 }
@@ -414,7 +416,7 @@ async function recalcOrderTotal(orderId) {
 /* ---------- Tables ---------- */
 async function getTables(waiterId) {
   const tableCount = Number(await getSetting('table_count')) || 20;
-  const { data: orders } = await supabase
+  const { data: orders } = await _sb
     .from('orders')
     .select('table_number, waiter_id, waiter_name, table_type')
     .eq('status', 'accepted');
@@ -488,7 +490,7 @@ async function closeShift(waiterId) {
   const shift = shifts[0];
 
   // Calculate stats from completed orders
-  const { data: orders } = await supabase
+  const { data: orders } = await _sb
     .from('orders')
     .select('*')
     .eq('waiter_id', waiterId)
@@ -571,7 +573,7 @@ async function getStockReport() {
   const menu = await dbSelect('menu', { is_active: true });
 
   // Get all order items for consumption calculation
-  const { data: allItems } = await supabase
+  const { data: allItems } = await _sb
     .from('order_items')
     .select('menu_item_id, quantity, order_id, created_at');
 
@@ -728,8 +730,8 @@ function beep(freq, duration, volume) {
 
 /* ---------- Realtime subscriptions ---------- */
 function subscribeToOrders(callback) {
-  if (!supabase) return;
-  const channel = supabase
+  if (!_sb) return;
+  const channel = _sb
     .channel('orders-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, function(payload) {
       console.log('Realtime: orders changed', payload);
@@ -745,8 +747,8 @@ function subscribeToOrders(callback) {
 }
 
 function subscribeToTable(tableName, callback) {
-  if (!supabase) return;
-  const channel = supabase
+  if (!_sb) return;
+  const channel = _sb
     .channel('table-' + tableName + '-' + Date.now())
     .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, function(payload) {
       if (callback) callback(payload);
@@ -758,7 +760,7 @@ function subscribeToTable(tableName, callback) {
 
 function unsubscribeAll() {
   _realtimeChannels.forEach(function(ch) {
-    try { supabase.removeChannel(ch); } catch (e) {}
+    try { _sb.removeChannel(ch); } catch (e) {}
   });
   _realtimeChannels = [];
 }
