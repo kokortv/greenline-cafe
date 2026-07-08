@@ -280,6 +280,7 @@
     <button class="tab" data-tab="categories" onclick="switchTab('categories')">Категории</button>
     <button class="tab" data-tab="staff" onclick="switchTab('staff')">Сотрудники</button>
     <button class="tab" data-tab="sounds" onclick="switchTab('sounds')">Звуки</button>
+    <button class="tab" data-tab="stock" onclick="switchTab('stock')">Склад</button>
     <button class="tab" data-tab="settings" onclick="switchTab('settings')">Настройки</button>
   </div>
 
@@ -400,6 +401,14 @@
         </p>
       </div>
       <div class="form-group checkbox-field">
+        <input type="checkbox" id="set-stock-tracking">
+        <label for="set-stock-tracking" style="margin:0;">Учитывать товары на складе</label>
+      </div>
+      <div class="form-group">
+        <label>Порог низкого остатка</label>
+        <input type="number" id="set-stock-threshold" min="0" value="5">
+      </div>
+      <div class="form-group checkbox-field">
         <input type="checkbox" id="set-sound">
         <label for="set-sound" style="margin:0;">Звуковые оповещения для официанта (когда блюдо готово)</label>
       </div>
@@ -477,6 +486,14 @@
         <p style="font-size:0.85rem;margin-top:6px;color:var(--text-muted);" id="sound-status-waiter_ready"></p>
       </div>
     </div>
+  </div>
+  <!-- STOCK TAB -->
+  <div class="tab-content" id="tab-stock" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 class="section-title" style="margin:0;">Склад и отчёты</h2>
+      <button class="btn btn-primary" onclick="loadStockReport()">↻ Обновить</button>
+    </div>
+    <div id="stock-report"></div>
   </div>
 </main>
 
@@ -747,6 +764,7 @@ function switchTab(name) {
   if (name === 'categories') renderCategoryList();
   if (name === 'staff') renderStaffList();
   if (name === 'sounds') updateSoundStatuses();
+  if (name === 'stock') loadStockReport();
 }
 
 /* ---------- Orders auto-polling ---------- */
@@ -781,6 +799,8 @@ function populateSettingsForm() {
   document.getElementById('set-virtual-table').value = APP_DATA.settings.virtual_tables || 'Бар';
   document.getElementById('set-cook-enabled').checked = String(APP_DATA.settings.cook_enabled) !== 'false';
   document.getElementById('set-cash-register').value = APP_DATA.settings.cash_register || 0;
+  document.getElementById('set-stock-tracking').checked = String(APP_DATA.settings.stock_tracking) === 'true';
+  document.getElementById('set-stock-threshold').value = APP_DATA.settings.stock_threshold || 5;
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
   updateTranslationLangLabel();
@@ -813,6 +833,8 @@ async function saveSettings() {
     virtual_tables: document.getElementById('set-virtual-table').value,
     cook_enabled: document.getElementById('set-cook-enabled').checked ? 'true' : 'false',
     cash_register: document.getElementById('set-cash-register').value,
+    stock_tracking: document.getElementById('set-stock-tracking').checked ? 'true' : 'false',
+    stock_threshold: document.getElementById('set-stock-threshold').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false'
   };
   try {
@@ -1295,6 +1317,7 @@ function openMenuModal(id) {
     document.getElementById('menu-name-translation').value = item.name_translation || '';
     document.getElementById('menu-category').value = item.category_id;
     document.getElementById('menu-price').value = item.price;
+    document.getElementById('menu-stock').value = item.stock || 0;
     document.getElementById('menu-cook').checked = item.needs_cooking === true || item.needs_cooking === 'true';
     // sort field removed — ordering is done via drag & drop in the list
   } else {
@@ -1303,6 +1326,7 @@ function openMenuModal(id) {
     document.getElementById('menu-name').value = '';
     document.getElementById('menu-name-translation').value = '';
     document.getElementById('menu-price').value = '';
+    document.getElementById('menu-stock').value = '';
     document.getElementById('menu-cook').checked = true;
   }
   openModal('modal-menu');
@@ -1317,6 +1341,7 @@ async function saveMenuItem() {
     category_id: document.getElementById('menu-category').value || '', // can be empty
     price: Number(document.getElementById('menu-price').value) || 0,
     needs_cooking: document.getElementById('menu-cook').checked,
+    stock: Number(document.getElementById('menu-stock').value) || 0,
     is_active: true
   };
   if (!payload.name) { showToast('Введите название', 'warning'); return; }
@@ -1600,6 +1625,74 @@ async function deleteCategory(id) {
 /* ---------- Modal helpers ---------- */
 // openModal / closeModal are defined in common.js (shared)
 
+
+
+/* ---------- STOCK ---------- */
+async function loadStockReport() {
+  const div = document.getElementById('stock-report');
+  if (!div) return;
+  div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    const data = await apiGet('getStockReport', {});
+    const items = data.items || [];
+    if (items.length === 0) {
+      div.innerHTML = '<div class="empty-state"><h3>Нет товаров</h3></div>';
+      return;
+    }
+    const tracking = data.stock_tracking;
+    const threshold = data.threshold || 5;
+    let html = '';
+    if (!tracking) {
+      html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён. Включите в Настройках.</div>';
+    }
+    html += '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    html += '<th style="width:30%;">Блюдо</th>';
+    html += '<th style="width:12%;">Остаток</th>';
+    html += '<th style="width:12%;">За день</th>';
+    html += '<th style="width:12%;">За неделю</th>';
+    html += '<th style="width:12%;">За месяц</th>';
+    html += '<th style="width:10%;">Пополнить</th>';
+    html += '</tr></thead><tbody>';
+    items.forEach(function(it) {
+      const lowClass = it.low_stock ? ' style="background:#ffebee;"' : '';
+      const stockColor = it.low_stock ? 'color:var(--danger);font-weight:700;' : '';
+      html += '<tr' + lowClass + '>';
+      html += '<td style="word-break:break-word;">' + escapeHtml(it.name) + '</td>';
+      html += '<td style="' + stockColor + '">' + (tracking ? it.stock : '—') + '</td>';
+      html += '<td>' + it.consumed_day + '</td>';
+      html += '<td>' + it.consumed_week + '</td>';
+      html += '<td>' + it.consumed_month + '</td>';
+      html += '<td><button class="btn btn-outline btn-sm" onclick="openReplenishModal(\'' + it.id + '\', \'' + escapeHtml(it.name).replace(/'/g, "\\'") + '\')">➕</button></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+  } catch (err) {
+    div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+function openReplenishModal(itemId, itemName) {
+  const qty = prompt('Сколько добавить на склад?\n\nТовар: ' + itemName);
+  if (qty === null) return;
+  const numQty = Number(qty);
+  if (!numQty || numQty <= 0) {
+    showToast('Введите число больше 0', 'warning');
+    return;
+  }
+  replenishStockItem(itemId, numQty);
+}
+
+async function replenishStockItem(itemId, qty) {
+  try {
+    await apiPost('replenishStock', { menu_item_id: itemId, quantity: qty });
+    showToast('Склад пополнен на ' + qty, 'success');
+    await loadAppDataForce();
+    loadStockReport();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
 
 /* ---------- Init ---------- */
 init();

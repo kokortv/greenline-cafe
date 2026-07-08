@@ -18,7 +18,7 @@ const SHEETS = {
 const HEADERS = {
   Settings: ['key', 'value'],
   Categories: ['id', 'parent_id', 'name', 'name_translation', 'sort', 'is_active'],
-  Menu: ['id', 'category_id', 'name', 'name_translation', 'price', 'needs_cooking', 'sort', 'is_active'],
+  Menu: ['id', 'category_id', 'name', 'name_translation', 'price', 'needs_cooking', 'sort', 'is_active', 'stock'],
   Orders: ['id', 'table_number', 'table_type', 'tab_id', 'guests', 'main_category_id', 'main_category_name', 'status', 'total', 'created_at', 'completed_at', 'waiter_note', 'waiter_id', 'waiter_name', 'cook_id', 'cook_name', 'payment_method'],
   OrderItems: ['id', 'order_id', 'menu_item_id', 'name', 'name_translation', 'category_name', 'category_name_translation', 'price', 'quantity', 'comment', 'is_ready', 'is_served', 'needs_cooking', 'created_at'],
   Users: ['id', 'name', 'role', 'pin', 'is_active', 'sort', 'created_at'],
@@ -61,10 +61,10 @@ function setup() {
     // Each click on a virtual table opens a NEW parallel order — they're
     // never "occupied" in the exclusive sense.
     ['virtual_tables', 'Бар'],
-    // Cook enabled — if false, waiters can serve dishes without cook marking them ready
     ['cook_enabled', 'true'],
-    // Cash register — current cash amount (editable only in admin)
-    ['cash_register', '0']
+    ['cash_register', '0'],
+    ['stock_tracking', 'false'],
+    ['stock_threshold', '5']
   ];
   settingsSheet.getRange(2, 1, settings.length, 2).setValues(settings);
 
@@ -219,6 +219,8 @@ function migrate() {
     ensureSetting('virtual_tables', 'Бар');
     ensureSetting('cook_enabled', 'true');
     ensureSetting('cash_register', '0');
+    ensureSetting('stock_tracking', 'false');
+    ensureSetting('stock_threshold', '5');
   }
 
   // Ensure Tabs sheet exists
@@ -315,6 +317,8 @@ function handleRequest(params, body) {
       case 'closeShift':      result = closeShift(body); break;
       case 'getActiveShift':  result = getActiveShift(params); break;
       case 'getShifts':       result = getShifts(body); break;
+      case 'replenishStock': result = replenishStock(body); break;
+      case 'getStockReport': result = getStockReport(body); break;
       case 'ping':           result = { ok: true, time: new Date().toISOString() }; break;
       default: throw new Error('Unknown action: ' + action);
     }
@@ -788,6 +792,9 @@ function createOrder(body) {
       itemsSheet.getRange(itemsSheet.getLastRow() + 1, 1, itemRows.length, itemsHeaders.length).setValues(itemRows);
     }
 
+    // Deduct stock if stock tracking is enabled
+    deductStock(body.items);
+
     SpreadsheetApp.flush();
     invalidateAllCaches();
     return getOrder(orderId);
@@ -864,6 +871,8 @@ function addItemToOrder(body) {
     });
     itemsSheet.appendRow(row);
     recalcOrderTotal(body.order_id);
+    // Deduct stock for the added item
+    deductStock([{ menu_item_id: body.menu_item_id, quantity: body.quantity }]);
     SpreadsheetApp.flush();
     invalidateAllCaches();
     return getOrder(body.order_id);
@@ -1223,15 +1232,15 @@ function saveMenuItem(body) {
       data[i][headers.indexOf('needs_cooking')] = body.needs_cooking === true || body.needs_cooking === 'true';
       data[i][headers.indexOf('sort')] = body.sort || 0;
       data[i][headers.indexOf('is_active')] = body.is_active !== false;
+      const stockColIdx = headers.indexOf('stock');
+      if (stockColIdx >= 0) {
+        data[i][stockColIdx] = body.stock !== undefined ? Number(body.stock) : (data[i][stockColIdx] || 0);
+      }
       found = true;
       break;
     }
   }
   if (!found) {
-    // Build row by header name to be column-order-agnostic.
-    // The Menu sheet may have been created with an older setup() that didn't
-    // include name_translation (added later by migrate()). Reading headers
-    // and writing by name avoids the column-shift bug.
     const headersNow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     const row = new Array(headersNow.length).fill('');
     headersNow.forEach(function(h, idx) {
@@ -1244,6 +1253,7 @@ function saveMenuItem(body) {
         case 'needs_cooking':    row[idx] = body.needs_cooking === true || body.needs_cooking === 'true'; break;
         case 'sort':             row[idx] = body.sort || 0; break;
         case 'is_active':        row[idx] = body.is_active !== false; break;
+        case 'stock':            row[idx] = body.stock !== undefined ? Number(body.stock) : 0; break;
         default:                 row[idx] = ''; break;
       }
     });
@@ -2052,7 +2062,7 @@ function openShift(body) {
     }
     const id = genId('shift');
     const now = new Date().toISOString();
-    const openingCash = Number(getSetting('cash_register')) || 0;
+    const openingCash = body.opening_cash !== undefined ? Number(body.opening_cash) : Number(getSetting('cash_register')) || 0;
     const sheet = getSheet(SHEETS.SHIFTS);
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     const row = new Array(headers.length).fill('');
@@ -2199,4 +2209,107 @@ function getShifts(body) {
     return new Date(b.opened_at) - new Date(a.opened_at);
   });
   return { shifts: shifts };
+}
+
+/* ============ STOCK MANAGEMENT ============ */
+
+function deductStock(items) {
+  const stockTracking = String(getSetting('stock_tracking')) === 'true';
+  if (!stockTracking) return;
+  const sheet = getSheet(SHEETS.MENU);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  const stockCol = headers.indexOf('stock');
+  if (stockCol < 0) return;
+  let changed = false;
+  items.forEach(function(it) {
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][idCol]) === String(it.menu_item_id)) {
+        const current = Number(data[i][stockCol]) || 0;
+        const qty = Number(it.quantity) || 1;
+        data[i][stockCol] = Math.max(0, current - qty);
+        changed = true;
+        break;
+      }
+    }
+  });
+  if (changed) {
+    sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+  }
+}
+
+function replenishStock(body) {
+  if (!body || !body.menu_item_id) throw new Error('Missing menu_item_id');
+  const addQty = Number(body.quantity) || 0;
+  if (addQty === 0) throw new Error('Quantity must be non-zero');
+  const sheet = getSheet(SHEETS.MENU);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  const stockCol = headers.indexOf('stock');
+  if (stockCol < 0) throw new Error('Stock column not found. Run migrate().');
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(body.menu_item_id)) {
+      const current = Number(data[i][stockCol]) || 0;
+      data[i][stockCol] = current + addQty;
+      sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+      SpreadsheetApp.flush();
+      invalidateAllCaches();
+      return { id: body.menu_item_id, stock: data[i][stockCol] };
+    }
+  }
+  throw new Error('Menu item not found');
+}
+
+function getStockReport(body) {
+  const stockTracking = String(getSetting('stock_tracking')) === 'true';
+  const threshold = Number(getSetting('stock_threshold')) || 5;
+  const menu = readSheet(SHEETS.MENU).filter(function(m) { return m.is_active !== false; });
+
+  // Calculate consumption from OrderItems
+  const allItems = readSheet(SHEETS.ORDER_ITEMS);
+  const orders = readSheet(SHEETS.ORDERS);
+  const orderDateMap = {};
+  orders.forEach(function(o) { orderDateMap[o.id] = o.created_at; });
+
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const consumption = {};
+  allItems.forEach(function(it) {
+    const mid = it.menu_item_id;
+    if (!mid) return;
+    const orderDate = orderDateMap[it.order_id] ? new Date(orderDateMap[it.order_id]) : null;
+    if (!orderDate) return;
+    const qty = Number(it.quantity) || 1;
+    if (!consumption[mid]) consumption[mid] = { day: 0, week: 0, month: 0, total: 0 };
+    consumption[mid].total += qty;
+    if (orderDate >= dayAgo) consumption[mid].day += qty;
+    if (orderDate >= weekAgo) consumption[mid].week += qty;
+    if (orderDate >= monthAgo) consumption[mid].month += qty;
+  });
+
+  const items = menu.map(function(m) {
+    const stock = Number(m.stock) || 0;
+    const cons = consumption[m.id] || { day: 0, week: 0, month: 0, total: 0 };
+    return {
+      id: m.id,
+      name: m.name,
+      stock: stock,
+      consumed_day: cons.day,
+      consumed_week: cons.week,
+      consumed_month: cons.month,
+      consumed_total: cons.total,
+      low_stock: stockTracking && stock <= threshold
+    };
+  });
+
+  return {
+    stock_tracking: stockTracking,
+    threshold: threshold,
+    items: items
+  };
 }

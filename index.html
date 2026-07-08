@@ -984,14 +984,18 @@ function handleShiftClick() {
 }
 
 async function openShift() {
-  if (!confirm('Открыть смену?')) return;
+  // Ask waiter to count and enter the starting cash
+  const cashStr = prompt('Введите сумму наличных в кассе на начало смены:', String(state.currentCash || 0));
+  if (cashStr === null) return;
+  const openingCash = Number(cashStr) || 0;
   try {
     const result = await apiPost('openShift', {
       waiter_id: state.currentUser.id,
-      waiter_name: state.currentUser.name
+      waiter_name: state.currentUser.name,
+      opening_cash: openingCash
     });
     _activeShift = result;
-    state.currentCash = result.opening_cash;
+    state.currentCash = openingCash;
     showToast('Смена открыта. В кассе: ' + formatMoney(result.opening_cash), 'success');
     updateShiftButton();
   } catch (err) {
@@ -1493,6 +1497,21 @@ function renderMenu() {
 }
 
 function addToCart(item) {
+  // Check stock if tracking is enabled
+  if (APP_DATA.settings.stock_tracking === 'true' || APP_DATA.settings.stock_tracking === true) {
+    const stock = Number(item.stock) || 0;
+    const inCart = state.cart.reduce(function(s, c) {
+      return c.menu_item_id === item.id ? s + c.quantity : s;
+    }, 0);
+    if (stock <= inCart) {
+      showToast('Нет в наличии: ' + item.name + ' (осталось ' + stock + ' шт.)', 'error');
+      return;
+    }
+    const threshold = Number(APP_DATA.settings.stock_threshold) || 5;
+    if (stock - inCart <= threshold) {
+      showToast('Внимание: ' + item.name + ' — осталось ' + (stock - inCart) + ' шт.', 'warning');
+    }
+  }
   const existing = state.cart.find(function(c) { return c.menu_item_id === item.id; });
   if (existing) {
     existing.quantity += 1;
