@@ -6,7 +6,7 @@
  * and paste it below.
  */
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbyK6hltYCFuPS6hnuL-55eGpAAXF-cwGWFno72Ai_FeQvfK6T9OV33NWMtMnAEYf5Hu/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbyyFBYRfShd7k0J67nGQA77KJOXWFNjKOqsPkosZiNbWSj2SVDg3-sxVY91t7IHlAIL/exec',
 
   // Default polling intervals (ms). These are FALLBACKS used only when
   // the corresponding settings are not set in the Google Sheet.
@@ -17,7 +17,7 @@ const CONFIG = {
   POLL_COOK: 10000,       // cook fallback (10s)
 
   // Default currency symbol if not set in admin settings
-  DEFAULT_CURRENCY: '₽'
+  DEFAULT_CURRENCY: '₾'
 };
 
 // Make sure we warn if the URL was not set
