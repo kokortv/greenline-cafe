@@ -79,7 +79,7 @@ async function getSetting(key) {
   return rows.length > 0 ? rows[0].value : null;
 }
 
-async function saveSettings(settings) {
+async function saveSettingsToDB(settings) {
   if (!_sb) throw new Error('Supabase not initialized');
   for (const key in settings) {
     const { data: existing } = await _sb.from('settings').select('key').eq('key', key);
@@ -360,7 +360,7 @@ async function addItemToOrder(itemData) {
   await deductStock([{ menu_item_id: itemData.menu_item_id, quantity: itemData.quantity }]);
 
   // Recalc total
-  await recalcOrderTotal(itemData.order_id);
+  await recalcOrderTotalDB(itemData.order_id);
   return await getOrder(itemData.order_id);
 }
 
@@ -369,7 +369,7 @@ async function updateItemQuantity(itemId, quantity) {
   // Recalc order total
   const item = await dbSelect('order_items', { id: itemId });
   if (item.length > 0) {
-    await recalcOrderTotal(item[0].order_id);
+    await recalcOrderTotalDB(item[0].order_id);
     return await getOrder(item[0].order_id);
   }
   return null;
@@ -384,7 +384,7 @@ async function removeItemFromOrder(itemId) {
   if (items.length === 0) throw new Error('Item not found');
   const orderId = items[0].order_id;
   await dbDelete('order_items', itemId);
-  await recalcOrderTotal(orderId);
+  await recalcOrderTotalDB(orderId);
   return await getOrder(orderId);
 }
 
@@ -395,7 +395,7 @@ async function toggleItemReady(itemId, isReady) {
   return null;
 }
 
-async function toggleItemServed(itemId, isServed) {
+async function toggleItemServedDB(itemId, isServed) {
   // If cook disabled, also set is_ready = true
   const cookEnabled = String(await getSetting('cook_enabled')) !== 'false';
   const updates = { is_served: isServed === true };
@@ -430,15 +430,15 @@ async function deleteOrder(orderId) {
   return { ok: true };
 }
 
-async function pauseOrder(orderId) {
+async function pauseOrderDB(orderId) {
   return await dbUpdate('orders', orderId, { status: 'paused' });
 }
 
-async function resumeOrder(orderId) {
+async function resumeOrderDB(orderId) {
   return await dbUpdate('orders', orderId, { status: 'accepted' });
 }
 
-async function recalcOrderTotal(orderId) {
+async function recalcOrderTotalDB(orderId) {
   const items = await dbSelect('order_items', { order_id: orderId });
   let total = 0;
   items.forEach(function(it) {
@@ -485,7 +485,7 @@ async function getTables(waiterId) {
 }
 
 /* ---------- Shifts ---------- */
-async function openShift(waiterId, waiterName, openingCash) {
+async function openShiftDB(waiterId, waiterName, openingCash) {
   // Check if already has open shift
   const existing = await dbSelect('shifts', { waiter_id: waiterId, status: 'open' });
   if (existing.length > 0) throw new Error('У вас уже открыта смена');
@@ -551,7 +551,7 @@ async function closeShift(waiterId) {
 
   // Add cash to register
   const currentCash = Number(await getSetting('cash_register')) || 0;
-  await saveSettings({ cash_register: String(currentCash + cashTotal) });
+  await saveSettingsToDB({ cash_register: String(currentCash + cashTotal) });
 
   const openingCash = Number(shift.opening_cash) || 0;
   return {
@@ -1113,15 +1113,15 @@ async function apiPost(action, body) {
     case 'toggleItemReady':
       return await toggleItemReady(body.item_id, body.is_ready);
     case 'toggleItemServed':
-      return await toggleItemServed(body.item_id, body.is_served);
+      return await toggleItemServedDB(body.item_id, body.is_served);
     case 'deleteOrder':
       return await deleteOrder(body.order_id);
     case 'pauseOrder':
-      return await pauseOrder(body.order_id);
+      return await pauseOrderDB(body.order_id);
     case 'resumeOrder':
-      return await resumeOrder(body.order_id);
+      return await resumeOrderDB(body.order_id);
     case 'openShift':
-      return await openShift(body.waiter_id, body.waiter_name, body.opening_cash);
+      return await openShiftDB(body.waiter_id, body.waiter_name, body.opening_cash);
     case 'closeShift':
       return await closeShift(body.waiter_id);
     case 'createTab':
@@ -1137,7 +1137,7 @@ async function apiPost(action, body) {
         created_by_waiter_name: body.waiter_name || ''
       });
     case 'saveSettings':
-      return await saveSettings(body.settings);
+      return await saveSettingsToDB(body.settings);
     case 'saveCategory': {
       const catId = body.id || 'cat_' + Date.now().toString(36);
       const existing = await dbSelect('categories', { id: catId });
@@ -1223,9 +1223,9 @@ async function apiPost(action, body) {
       return { ok: true };
     }
     case 'uploadSound':
-      return await saveSettings({ ['sound_' + body.name]: body.url });
+      return await saveSettingsToDB({ ['sound_' + body.name]: body.url });
     case 'deleteSound':
-      return await saveSettings({ ['sound_' + body.name]: '' });
+      return await saveSettingsToDB({ ['sound_' + body.name]: '' });
     case 'cleanupSessions':
       return { deleted: 0 }; // No sessions in Supabase — using localStorage
     default:
