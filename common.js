@@ -147,51 +147,69 @@ async function loadAppDataForce() {
 
 /* ---------- Orders ---------- */
 async function getOrders(status, waiterId) {
-  let query = _sb.from('orders').select('*, order_items(*)');
+  // Query orders and order_items separately to avoid join issues
+  let orderQuery = _sb.from('orders').select('*');
 
   if (status === 'accepted') {
-    query = query.in('status', ['accepted', 'paused']);
+    orderQuery = orderQuery.in('status', ['accepted', 'paused']);
   } else if (status === 'accepted_only') {
-    query = query.eq('status', 'accepted');
+    orderQuery = orderQuery.eq('status', 'accepted');
   } else if (status && status !== 'all') {
-    query = query.eq('status', status);
+    orderQuery = orderQuery.eq('status', status);
   }
 
   if (waiterId) {
-    // Waiter sees own orders + virtual/tab orders
-    query = query.or(`waiter_id.eq.${waiterId},table_type.eq.virtual,table_type.eq.tab`);
+    orderQuery = orderQuery.or(`waiter_id.eq.${waiterId},table_type.eq.virtual,table_type.eq.tab`);
   }
 
-  query = query.order('created_at', { ascending: false }).limit(200);
+  orderQuery = orderQuery.order('created_at', { ascending: false }).limit(200);
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  const { data: orders, error: orderError } = await orderQuery;
+  if (orderError) {
+    console.error('getOrders error:', orderError);
+    throw new Error(orderError.message);
+  }
 
-  // Normalize items (ensure booleans)
-  const orders = (data || []).map(function(o) {
-    if (o.order_items) {
-      o.items = o.order_items.map(function(it) {
-        return {
-          id: it.id,
-          order_id: it.order_id,
-          menu_item_id: it.menu_item_id,
-          name: it.name,
-          name_translation: it.name_translation || '',
-          category_name: it.category_name || '',
-          category_name_translation: it.category_name_translation || '',
-          price: Number(it.price) || 0,
-          quantity: Number(it.quantity) || 1,
-          comment: it.comment || '',
-          is_ready: it.is_ready === true,
-          is_served: it.is_served === true,
-          needs_cooking: it.needs_cooking === true,
-          created_at: it.created_at
-        };
-      });
-      delete o.order_items;
+  // Fetch items for these orders
+  const orderIds = (orders || []).map(function(o) { return o.id; });
+  let items = [];
+  if (orderIds.length > 0) {
+    const { data: itemsData, error: itemsError } = await _sb
+      .from('order_items')
+      .select('*')
+      .in('order_id', orderIds);
+    if (itemsError) {
+      console.error('getOrders items error:', itemsError);
     } else {
-      o.items = [];
+      items = itemsData || [];
     }
+  }
+
+  // Group items by order_id
+  const itemsByOrder = {};
+  items.forEach(function(it) {
+    if (!itemsByOrder[it.order_id]) itemsByOrder[it.order_id] = [];
+    itemsByOrder[it.order_id].push({
+      id: it.id,
+      order_id: it.order_id,
+      menu_item_id: it.menu_item_id || '',
+      name: it.name,
+      name_translation: it.name_translation || '',
+      category_name: it.category_name || '',
+      category_name_translation: it.category_name_translation || '',
+      price: Number(it.price) || 0,
+      quantity: Number(it.quantity) || 1,
+      comment: it.comment || '',
+      is_ready: it.is_ready === true,
+      is_served: it.is_served === true,
+      needs_cooking: it.needs_cooking === true,
+      created_at: it.created_at
+    });
+  });
+
+  // Attach items to orders
+  const result = (orders || []).map(function(o) {
+    o.items = itemsByOrder[o.id] || [];
     return o;
   });
 
@@ -199,37 +217,39 @@ async function getOrders(status, waiterId) {
 }
 
 async function getOrder(id) {
-  const { data, error } = await _sb
+  // Query order and items separately (avoid join issues)
+  const { data: orderData, error: orderError } = await _sb
     .from('orders')
-    .select('*, order_items(*)')
+    .select('*')
     .eq('id', id)
     .single();
-  if (error) throw new Error(error.message);
+  if (orderError) throw new Error(orderError.message);
 
-  // Normalize
-  if (data.order_items) {
-    data.items = data.order_items.map(function(it) {
-      return {
-        id: it.id,
-        order_id: it.order_id,
-        menu_item_id: it.menu_item_id,
-        name: it.name,
-        name_translation: it.name_translation || '',
-        category_name: it.category_name || '',
-        category_name_translation: it.category_name_translation || '',
-        price: Number(it.price) || 0,
-        quantity: Number(it.quantity) || 1,
-        comment: it.comment || '',
-        is_ready: it.is_ready === true,
-        is_served: it.is_served === true,
-        needs_cooking: it.needs_cooking === true,
-        created_at: it.created_at
-      };
-    });
-    delete data.order_items;
-  } else {
-    data.items = [];
-  }
+  const { data: itemsData, error: itemsError } = await _sb
+    .from('order_items')
+    .select('*')
+    .eq('order_id', id);
+  if (itemsError) console.error('getOrder items error:', itemsError);
+
+  const data = orderData;
+  data.items = (itemsData || []).map(function(it) {
+    return {
+      id: it.id,
+      order_id: it.order_id,
+      menu_item_id: it.menu_item_id || '',
+      name: it.name,
+      name_translation: it.name_translation || '',
+      category_name: it.category_name || '',
+      category_name_translation: it.category_name_translation || '',
+      price: Number(it.price) || 0,
+      quantity: Number(it.quantity) || 1,
+      comment: it.comment || '',
+      is_ready: it.is_ready === true,
+      is_served: it.is_served === true,
+      needs_cooking: it.needs_cooking === true,
+      created_at: it.created_at
+    };
+  });
   return data;
 }
 
