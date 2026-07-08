@@ -61,10 +61,11 @@ async function dbInsertBatch(table, records) {
 
 async function dbUpdate(table, id, updates) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { error } = await _sb.from(table).update(updates).eq('id', id);
+  console.log('dbUpdate:', table, 'id=', id, 'updates=', JSON.stringify(updates));
+  const { data, error, count } = await _sb.from(table).update(updates).eq('id', id).select('*');
+  console.log('dbUpdate result:', 'data=', data, 'error=', error, 'count=', count);
   if (error) throw new Error(error.message);
-  // Return the updated record by merging
-  return Object.assign({ id: id }, updates);
+  return data && data.length > 0 ? data[0] : Object.assign({ id: id }, updates);
 }
 
 async function dbDelete(table, id) {
@@ -86,7 +87,7 @@ async function saveSettings(settings) {
     // Try update first, if no rows affected → insert
     const { data: existing } = await _sb.from('settings').select('key').eq('key', key);
     if (existing && existing.length > 0) {
-      const { error } = await _sb.from('settings').update({ value: String(settings[key]) }).eq('key', key);
+      const { data: updData, error: updError } = await _sb.from("settings").update({ value: String(settings[key]) }).eq('key', key);
       if (error) console.warn('Setting update error for', key, error.message);
     } else {
       const { error } = await _sb.from('settings').insert({ key: key, value: String(settings[key]) });
