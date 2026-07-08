@@ -1014,3 +1014,199 @@ function getPollInterval(settingKey, configKey) {
 if (typeof window !== 'undefined') {
   initSupabase();
 }
+
+/* ---------- Compatibility wrappers ---------- */
+// These translate old apiGet('action', params) / apiPost('action', body)
+// calls from HTML files into the new Supabase direct functions.
+
+async function apiGet(action, params) {
+  params = params || {};
+  switch (action) {
+    case 'getOrders':
+      return await getOrders(params.status, params.waiter_id);
+    case 'getOrder':
+      return await getOrder(params.id);
+    case 'getActiveShift':
+      return await getActiveShift(params.waiter_id);
+    case 'getStockReport':
+      return await getStockReport();
+    case 'getTabs': {
+      let tabs = await dbSelect('tabs');
+      if (params.status && params.status !== 'all') {
+        tabs = tabs.filter(function(t) { return t.status === params.status; });
+      }
+      // Recalc totals from orders
+      const orders = await dbSelect('orders');
+      tabs.forEach(function(t) {
+        const linked = orders.filter(function(o) {
+          return o.tab_id === t.id && o.status === 'completed';
+        });
+        t.total = linked.reduce(function(s, o) { return s + (Number(o.total) || 0); }, 0);
+        t.orders_count = linked.length;
+      });
+      tabs.sort(function(a, b) {
+        if (a.status !== b.status) return a.status === 'open' ? -1 : 1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+      return { tabs: tabs };
+    }
+    case 'getWaiterDashboard': {
+      const waiterId = params.waiter_id;
+      const cookEnabled = String(await getSetting('cook_enabled')) !== 'false';
+      // Orders
+      const ordersData = await getOrders('accepted', waiterId);
+      // Tables
+      const tablesData = await getTables(waiterId);
+      // Shift
+      const shiftData = await getActiveShift(waiterId);
+      return {
+        orders: ordersData.orders,
+        tables: tablesData.tables,
+        shift: shiftData.shift,
+        current_cash: shiftData.current_cash,
+        cook_enabled: cookEnabled,
+        server_time: new Date().toISOString()
+      };
+    }
+    default:
+      throw new Error('Unknown apiGet action: ' + action);
+  }
+}
+
+async function apiPost(action, body) {
+  body = body || {};
+  switch (action) {
+    case 'createOrder':
+      return await createOrder(body);
+    case 'updateOrderStatus':
+      return await updateOrderStatus(body.order_id, body.status, body.payment_method);
+    case 'addItemToOrder':
+      return await addItemToOrder(body);
+    case 'updateItemQuantity':
+      return await updateItemQuantity(body.item_id, body.quantity);
+    case 'updateItemComment':
+      return await updateItemComment(body.item_id, body.comment);
+    case 'removeItemFromOrder':
+      return await removeItemFromOrder(body.item_id);
+    case 'toggleItemReady':
+      return await toggleItemReady(body.item_id, body.is_ready);
+    case 'toggleItemServed':
+      return await toggleItemServed(body.item_id, body.is_served);
+    case 'deleteOrder':
+      return await deleteOrder(body.order_id);
+    case 'pauseOrder':
+      return await pauseOrder(body.order_id);
+    case 'resumeOrder':
+      return await resumeOrder(body.order_id);
+    case 'openShift':
+      return await openShift(body.waiter_id, body.waiter_name, body.opening_cash);
+    case 'closeShift':
+      return await closeShift(body.waiter_id);
+    case 'createTab':
+      return await dbInsert('tabs', {
+        id: 'tab_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6),
+        name: body.name || 'Без имени',
+        phone: body.phone || '',
+        notes: body.notes || '',
+        total: 0,
+        status: 'open',
+        created_at: new Date().toISOString(),
+        created_by_waiter_id: body.waiter_id || '',
+        created_by_waiter_name: body.waiter_name || ''
+      });
+    case 'saveSettings':
+      return await saveSettings(body.settings);
+    case 'saveCategory': {
+      const catId = body.id || 'cat_' + Date.now().toString(36);
+      const existing = await dbSelect('categories', { id: catId });
+      if (existing.length > 0) {
+        return await dbUpdate('categories', catId, {
+          parent_id: body.parent_id || '',
+          name: body.name,
+          name_translation: body.name_translation || '',
+          sort: body.sort || 0,
+          is_active: body.is_active !== false
+        });
+      } else {
+        return await dbInsert('categories', {
+          id: catId,
+          parent_id: body.parent_id || '',
+          name: body.name,
+          name_translation: body.name_translation || '',
+          sort: body.sort || 0,
+          is_active: body.is_active !== false
+        });
+      }
+    }
+    case 'deleteCategory':
+      return await dbDelete('categories', body.id);
+    case 'saveMenuItem': {
+      const mId = body.id || 'm_' + Date.now().toString(36);
+      const existing = await dbSelect('menu', { id: mId });
+      const record = {
+        category_id: body.category_id || '',
+        name: body.name,
+        name_translation: body.name_translation || '',
+        price: Number(body.price) || 0,
+        needs_cooking: body.needs_cooking === true,
+        sort: body.sort || 0,
+        is_active: body.is_active !== false,
+        stock: body.stock !== undefined ? Number(body.stock) : 0
+      };
+      if (existing.length > 0) {
+        return await dbUpdate('menu', mId, record);
+      } else {
+        record.id = mId;
+        return await dbInsert('menu', record);
+      }
+    }
+    case 'deleteMenuItem':
+      return await dbDelete('menu', body.id);
+    case 'saveUser': {
+      const uId = body.id || 'u_' + Date.now().toString(36);
+      const existing = await dbSelect('users', { id: uId });
+      const record = {
+        name: body.name,
+        role: body.role || 'waiter',
+        is_active: body.is_active !== false,
+        sort: body.sort || 0
+      };
+      if (existing.length > 0) {
+        return await dbUpdate('users', uId, record);
+      } else {
+        record.id = uId;
+        record.pin = '';
+        record.created_at = new Date().toISOString();
+        return await dbInsert('users', record);
+      }
+    }
+    case 'deleteUser':
+      return await dbDelete('users', body.id);
+    case 'setPassword':
+      return await setPassword(body.user_id, body.new_password, body.plaintext);
+    case 'replenishStock':
+      return await replenishStock(body.menu_item_id, body.quantity);
+    case 'reorderMenu': {
+      const items = body.items || [];
+      for (const it of items) {
+        await dbUpdate('menu', it.id, { sort: it.sort });
+      }
+      return { ok: true };
+    }
+    case 'reorderCategories': {
+      const items = body.items || [];
+      for (const it of items) {
+        await dbUpdate('categories', it.id, { sort: it.sort });
+      }
+      return { ok: true };
+    }
+    case 'uploadSound':
+      return await saveSettings({ ['sound_' + body.name]: body.url });
+    case 'deleteSound':
+      return await saveSettings({ ['sound_' + body.name]: '' });
+    case 'cleanupSessions':
+      return { deleted: 0 }; // No sessions in Supabase — using localStorage
+    default:
+      throw new Error('Unknown apiPost action: ' + action);
+  }
+}
