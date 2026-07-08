@@ -994,9 +994,9 @@ function getPollInterval(settingKey, configKey) {
 }
 
 /* ---------- Init Supabase on load ---------- */
+// Initialize Supabase IMMEDIATELY (not on DOMContentLoaded) so that
+// init() in HTML files can use it. The supabase.js library is loaded
+// synchronously before common.js, so window.supabase is already available.
 if (typeof window !== 'undefined') {
-  // Will be called after the supabase-js library is loaded
-  window.addEventListener('DOMContentLoaded', function() {
-    initSupabase();
-  });
+  initSupabase();
 }
