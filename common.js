@@ -82,14 +82,18 @@ async function getSetting(key) {
 async function saveSettings(settings) {
   if (!_sb) throw new Error('Supabase not initialized');
   for (const key in settings) {
-    // Upsert: insert or update on conflict
-    const { error } = await _sb
-      .from('settings')
-      .upsert({ key: key, value: String(settings[key]) }, { onConflict: 'key' });
-    if (error) console.warn('Setting upsert error for', key, error.message);
+    // Try update first, if no rows affected → insert
+    const { data: existing } = await _sb.from('settings').select('key').eq('key', key);
+    if (existing && existing.length > 0) {
+      const { error } = await _sb.from('settings').update({ value: String(settings[key]) }).eq('key', key);
+      if (error) console.warn('Setting update error for', key, error.message);
+    } else {
+      const { error } = await _sb.from('settings').insert({ key: key, value: String(settings[key]) });
+      if (error) console.warn('Setting insert error for', key, error.message);
+    }
   }
-  // Refresh APP_DATA settings
-  if (APP_DATA) {
+  // Update local APP_DATA settings
+  if (APP_DATA && APP_DATA.settings) {
     for (const key in settings) {
       APP_DATA.settings[key] = String(settings[key]);
     }

@@ -634,7 +634,6 @@
 </div>
 
 <script src="config.js"></script>
-<script src="supabase.min.js"></script>
 <script src="common.js"></script>
 <script>
 // Global error handler — shows errors as a visible banner so the user can
@@ -858,8 +857,9 @@ async function saveSettings() {
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false'
   };
   try {
-    const result = await apiPost('saveSettings', { settings: settings });
-    APP_DATA.settings = result;
+    await apiPost('saveSettings', { settings: settings });
+    // Reload APP_DATA to get fresh settings from Supabase
+    await loadAppDataForce();
     // Update header title in case restaurant_name changed
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан') + ' — Админ';
