@@ -32,20 +32,16 @@ async function dbSelect(table, filters) {
     Object.keys(filters).forEach(function(k) {
       const v = filters[k];
       if (v !== undefined && v !== null && v !== '') {
-        // For boolean columns, ensure proper type
-        if (v === true || v === false) {
-          query = query.eq(k, v);
-        } else {
-          query = query.eq(k, v);
-        }
+        query = query.eq(k, v);
       }
     });
   }
   const { data, error } = await query;
   if (error) {
-    console.error('dbSelect error:', table, error.message);
+    console.error('dbSelect error:', table, error.message, error);
     throw new Error(error.message);
   }
+  console.log('dbSelect', table, '→', (data || []).length, 'rows');
   return data || [];
 }
 
@@ -108,24 +104,29 @@ var _cachedDataVersion = null;
 async function loadAppData(force) {
   if (APP_DATA && !force) return APP_DATA;
 
-  // Load all reference data in parallel
+  // Load all reference data in parallel (no is_active filter — filter on client)
   const [settings, categories, menu, users] = await Promise.all([
     dbSelect('settings'),
-    dbSelect('categories', { is_active: true }),
-    dbSelect('menu', { is_active: true }),
-    dbSelect('users', { is_active: true })
+    dbSelect('categories'),
+    dbSelect('menu'),
+    dbSelect('users')
   ]);
 
   console.log('loadAppData: settings=', settings.length, 'categories=', categories.length, 'menu=', menu.length, 'users=', users.length);
+
+  // Filter active items on client side
+  const activeCategories = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
+  const activeMenu = menu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
+  const activeUsers = users.filter(function(u) { return u.is_active === true || u.is_active === 'true'; });
 
   const settingsObj = {};
   settings.forEach(function(s) { settingsObj[s.key] = s.value; });
 
   APP_DATA = {
     settings: settingsObj,
-    categories: categories,
-    menu: menu,
-    users: users.map(function(u) {
+    categories: activeCategories,
+    menu: activeMenu,
+    users: activeUsers.map(function(u) {
       return {
         id: u.id,
         name: u.name,
