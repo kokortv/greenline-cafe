@@ -47,23 +47,24 @@ async function dbSelect(table, filters) {
 
 async function dbInsert(table, record) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { data, error } = await _sb.from(table).insert(record).select('*');
+  const { error } = await _sb.from(table).insert(record);
   if (error) throw new Error(error.message);
-  return data && data.length > 0 ? data[0] : null;
+  return record;
 }
 
 async function dbInsertBatch(table, records) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { data, error } = await _sb.from(table).insert(records).select('*');
+  const { error } = await _sb.from(table).insert(records);
   if (error) throw new Error(error.message);
-  return data || [];
+  return records;
 }
 
 async function dbUpdate(table, id, updates) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { data, error } = await _sb.from(table).update(updates).eq('id', id).select('*');
+  const { error } = await _sb.from(table).update(updates).eq('id', id);
   if (error) throw new Error(error.message);
-  return data && data.length > 0 ? data[0] : null;
+  // Return the updated record by merging
+  return Object.assign({ id: id }, updates);
 }
 
 async function dbDelete(table, id) {
