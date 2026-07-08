@@ -1,52 +1,779 @@
 /**
- * Common utilities shared by all pages.
+ * Common utilities — Supabase edition
+ * Replaces all Google Apps Script API calls with direct Supabase queries.
  */
 
-/* ---------- API ---------- */
-async function apiGet(action, params) {
-  const url = new URL(CONFIG.API_URL);
-  url.searchParams.set('action', action);
-  if (params) {
-    Object.keys(params).forEach(function(k) {
-      if (params[k] !== undefined && params[k] !== null) {
-        url.searchParams.set(k, params[k]);
+/* ---------- Supabase client ---------- */
+let supabase = null;
+let _realtimeChannels = [];
+
+function initSupabase() {
+  if (typeof window !== 'undefined' && window.supabase && CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === -1) {
+    supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      realtime: { params: { eventsPerSecond: 10 } }
+    });
+    console.log('Supabase client initialized');
+    return true;
+  }
+  console.warn('Supabase not initialized — check config.js');
+  return false;
+}
+
+/* ---------- API helpers (Supabase queries) ---------- */
+// All functions return promises, same as before.
+
+// Generic: select from table with optional filters
+async function dbSelect(table, filters) {
+  if (!supabase) throw new Error('Supabase not initialized');
+  let query = supabase.from(table).select('*');
+  if (filters) {
+    Object.keys(filters).forEach(function(k) {
+      if (filters[k] !== undefined && filters[k] !== null && filters[k] !== '') {
+        query = query.eq(k, filters[k]);
       }
     });
   }
-  const res = await fetch(url.toString(), { method: 'GET' });
-  // Check that the server returned JSON, not an HTML error page.
-  // If Apps Script returns HTML, it usually means the Web App wasn't
-  // redeployed after updating the code, so the new action doesn't exist yet.
-  const ct = res.headers.get('content-type') || '';
-  if (!ct.includes('application/json')) {
-    throw new Error('Сервер вернул HTML вместо JSON. Возможно, Apps Script не переразвёрнут (Deploy → New version) — действие "' + action + '" не существует на сервере.');
-  }
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || 'API error');
-  return json.data;
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data || [];
 }
 
-async function apiPost(action, payload) {
-  const res = await fetch(CONFIG.API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ action: action }, payload))
-  });
-  const ct = res.headers.get('content-type') || '';
-  if (!ct.includes('application/json')) {
-    throw new Error('Сервер вернул HTML вместо JSON. Возможно, Apps Script не переразвёрнут (Deploy → New version) — действие "' + action + '" не существует на сервере.');
+async function dbInsert(table, record) {
+  if (!supabase) throw new Error('Supabase not initialized');
+  const { data, error } = await supabase.from(table).insert(record).select('*');
+  if (error) throw new Error(error.message);
+  return data && data.length > 0 ? data[0] : null;
+}
+
+async function dbInsertBatch(table, records) {
+  if (!supabase) throw new Error('Supabase not initialized');
+  const { data, error } = await supabase.from(table).insert(records).select('*');
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function dbUpdate(table, id, updates) {
+  if (!supabase) throw new Error('Supabase not initialized');
+  const { data, error } = await supabase.from(table).update(updates).eq('id', id).select('*');
+  if (error) throw new Error(error.message);
+  return data && data.length > 0 ? data[0] : null;
+}
+
+async function dbDelete(table, id) {
+  if (!supabase) throw new Error('Supabase not initialized');
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  return { ok: true };
+}
+
+/* ---------- Settings ---------- */
+async function getSetting(key) {
+  const rows = await dbSelect('settings', { key: key });
+  return rows.length > 0 ? rows[0].value : null;
+}
+
+async function saveSettings(settings) {
+  if (!supabase) throw new Error('Supabase not initialized');
+  for (const key in settings) {
+    // Upsert: insert or update on conflict
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ key: key, value: String(settings[key]) }, { onConflict: 'key' });
+    if (error) console.warn('Setting upsert error for', key, error.message);
   }
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || 'API error');
-  return json.data;
+  // Refresh APP_DATA settings
+  if (APP_DATA) {
+    for (const key in settings) {
+      APP_DATA.settings[key] = String(settings[key]);
+    }
+  }
+  return APP_DATA ? APP_DATA.settings : settings;
+}
+
+/* ---------- Data loader ---------- */
+var APP_DATA = null;
+var _cachedDataVersion = null;
+
+async function loadAppData(force) {
+  if (APP_DATA && !force) return APP_DATA;
+
+  // Load all reference data in parallel
+  const [settings, categories, menu, users] = await Promise.all([
+    dbSelect('settings'),
+    dbSelect('categories', { is_active: true }),
+    dbSelect('menu', { is_active: true }),
+    dbSelect('users', { is_active: true })
+  ]);
+
+  const settingsObj = {};
+  settings.forEach(function(s) { settingsObj[s.key] = s.value; });
+
+  APP_DATA = {
+    settings: settingsObj,
+    categories: categories,
+    menu: menu,
+    users: users.map(function(u) {
+      return {
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        is_active: u.is_active,
+        sort: u.sort,
+        has_password: !!(u.pin && String(u.pin).length > 0)
+      };
+    })
+  };
+
+  return APP_DATA;
+}
+
+async function loadAppDataForce() {
+  return loadAppData(true);
+}
+
+/* ---------- Orders ---------- */
+async function getOrders(status, waiterId) {
+  let query = supabase.from('orders').select('*, order_items(*)');
+
+  if (status === 'accepted') {
+    query = query.in('status', ['accepted', 'paused']);
+  } else if (status === 'accepted_only') {
+    query = query.eq('status', 'accepted');
+  } else if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+
+  if (waiterId) {
+    // Waiter sees own orders + virtual/tab orders
+    query = query.or(`waiter_id.eq.${waiterId},table_type.eq.virtual,table_type.eq.tab`);
+  }
+
+  query = query.order('created_at', { ascending: false }).limit(200);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  // Normalize items (ensure booleans)
+  const orders = (data || []).map(function(o) {
+    if (o.order_items) {
+      o.items = o.order_items.map(function(it) {
+        return {
+          id: it.id,
+          order_id: it.order_id,
+          menu_item_id: it.menu_item_id,
+          name: it.name,
+          name_translation: it.name_translation || '',
+          category_name: it.category_name || '',
+          category_name_translation: it.category_name_translation || '',
+          price: Number(it.price) || 0,
+          quantity: Number(it.quantity) || 1,
+          comment: it.comment || '',
+          is_ready: it.is_ready === true,
+          is_served: it.is_served === true,
+          needs_cooking: it.needs_cooking === true,
+          created_at: it.created_at
+        };
+      });
+      delete o.order_items;
+    } else {
+      o.items = [];
+    }
+    return o;
+  });
+
+  return { orders: orders, server_time: new Date().toISOString() };
+}
+
+async function getOrder(id) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('id', id)
+    .single();
+  if (error) throw new Error(error.message);
+
+  // Normalize
+  if (data.order_items) {
+    data.items = data.order_items.map(function(it) {
+      return {
+        id: it.id,
+        order_id: it.order_id,
+        menu_item_id: it.menu_item_id,
+        name: it.name,
+        name_translation: it.name_translation || '',
+        category_name: it.category_name || '',
+        category_name_translation: it.category_name_translation || '',
+        price: Number(it.price) || 0,
+        quantity: Number(it.quantity) || 1,
+        comment: it.comment || '',
+        is_ready: it.is_ready === true,
+        is_served: it.is_served === true,
+        needs_cooking: it.needs_cooking === true,
+        created_at: it.created_at
+      };
+    });
+    delete data.order_items;
+  } else {
+    data.items = [];
+  }
+  return data;
+}
+
+async function createOrder(orderData) {
+  // Check table conflict for numbered tables
+  if (orderData.table_type === 'numbered' || !orderData.table_type) {
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id, waiter_name')
+      .eq('table_number', String(orderData.table_number))
+      .eq('status', 'accepted')
+      .neq('waiter_id', orderData.waiter_id || '')
+      .limit(1);
+    if (existing && existing.length > 0) {
+      throw new Error('Столик №' + orderData.table_number + ' уже занят другим официантом (' + (existing[0].waiter_name || '') + ')');
+    }
+  }
+
+  // Generate ID
+  const orderId = 'ord_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+  const now = new Date().toISOString();
+
+  const items = orderData.items || [];
+  let total = 0;
+  items.forEach(function(it) { total += (Number(it.price) || 0) * (Number(it.quantity) || 1); });
+
+  // Insert order
+  const orderRecord = {
+    id: orderId,
+    table_number: String(orderData.table_number || ''),
+    table_type: orderData.table_type || 'numbered',
+    tab_id: orderData.tab_id || '',
+    guests: orderData.guests || 1,
+    main_category_id: orderData.main_category_id || '',
+    main_category_name: orderData.main_category_name || '',
+    status: 'accepted',
+    total: total,
+    created_at: now,
+    waiter_id: orderData.waiter_id || '',
+    waiter_name: orderData.waiter_name || '',
+    payment_method: ''
+  };
+
+  await dbInsert('orders', orderRecord);
+
+  // Insert items
+  const itemRecords = items.map(function(it) {
+    return {
+      id: 'it_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6),
+      order_id: orderId,
+      menu_item_id: it.menu_item_id || '',
+      name: it.name,
+      name_translation: it.name_translation || '',
+      category_name: it.category_name || '',
+      category_name_translation: it.category_name_translation || '',
+      price: Number(it.price) || 0,
+      quantity: Number(it.quantity) || 1,
+      comment: it.comment || '',
+      is_ready: false,
+      is_served: false,
+      needs_cooking: it.needs_cooking === true,
+      created_at: now
+    };
+  });
+
+  if (itemRecords.length > 0) {
+    await dbInsertBatch('order_items', itemRecords);
+  }
+
+  // Deduct stock if tracking enabled
+  await deductStock(items);
+
+  return await getOrder(orderId);
+}
+
+async function updateOrderStatus(orderId, status, paymentMethod) {
+  const updates = { status: status };
+  if (status === 'completed') {
+    updates.completed_at = new Date().toISOString();
+    if (paymentMethod) updates.payment_method = paymentMethod;
+  }
+  await dbUpdate('orders', orderId, updates);
+  return await getOrder(orderId);
+}
+
+async function addItemToOrder(itemData) {
+  const itemId = 'it_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+  await dbInsert('order_items', {
+    id: itemId,
+    order_id: itemData.order_id,
+    menu_item_id: itemData.menu_item_id || '',
+    name: itemData.name,
+    name_translation: itemData.name_translation || '',
+    category_name: itemData.category_name || '',
+    category_name_translation: itemData.category_name_translation || '',
+    price: Number(itemData.price) || 0,
+    quantity: Number(itemData.quantity) || 1,
+    comment: itemData.comment || '',
+    is_ready: false,
+    is_served: false,
+    needs_cooking: itemData.needs_cooking === true,
+    created_at: new Date().toISOString()
+  });
+
+  // Deduct stock
+  await deductStock([{ menu_item_id: itemData.menu_item_id, quantity: itemData.quantity }]);
+
+  // Recalc total
+  await recalcOrderTotal(itemData.order_id);
+  return await getOrder(itemData.order_id);
+}
+
+async function updateItemQuantity(itemId, quantity) {
+  await dbUpdate('order_items', itemId, { quantity: Number(quantity) });
+  // Recalc order total
+  const item = await dbSelect('order_items', { id: itemId });
+  if (item.length > 0) {
+    await recalcOrderTotal(item[0].order_id);
+    return await getOrder(item[0].order_id);
+  }
+  return null;
+}
+
+async function updateItemComment(itemId, comment) {
+  await dbUpdate('order_items', itemId, { comment: comment || '' });
+}
+
+async function removeItemFromOrder(itemId) {
+  const items = await dbSelect('order_items', { id: itemId });
+  if (items.length === 0) throw new Error('Item not found');
+  const orderId = items[0].order_id;
+  await dbDelete('order_items', itemId);
+  await recalcOrderTotal(orderId);
+  return await getOrder(orderId);
+}
+
+async function toggleItemReady(itemId, isReady) {
+  await dbUpdate('order_items', itemId, { is_ready: isReady === true });
+  const items = await dbSelect('order_items', { id: itemId });
+  if (items.length > 0) return await getOrder(items[0].order_id);
+  return null;
+}
+
+async function toggleItemServed(itemId, isServed) {
+  // If cook disabled, also set is_ready = true
+  const cookEnabled = String(await getSetting('cook_enabled')) !== 'false';
+  const updates = { is_served: isServed === true };
+  if (isServed && !cookEnabled) {
+    // Check if item needs cooking
+    const items = await dbSelect('order_items', { id: itemId });
+    if (items.length > 0) {
+      const it = items[0];
+      const needsCooking = it.needs_cooking === true;
+      if (needsCooking) {
+        updates.is_ready = true;
+      }
+    }
+  }
+  // Also auto-set is_ready for non-cooking items
+  if (isServed) {
+    const items = await dbSelect('order_items', { id: itemId });
+    if (items.length > 0 && !items[0].needs_cooking) {
+      updates.is_ready = true;
+    }
+  }
+  await dbUpdate('order_items', itemId, updates);
+  const items2 = await dbSelect('order_items', { id: itemId });
+  if (items2.length > 0) return await getOrder(items2[0].order_id);
+  return null;
+}
+
+async function deleteOrder(orderId) {
+  // Delete items first
+  await supabase.from('order_items').delete().eq('order_id', orderId);
+  await dbDelete('orders', orderId);
+  return { ok: true };
+}
+
+async function pauseOrder(orderId) {
+  return await dbUpdate('orders', orderId, { status: 'paused' });
+}
+
+async function resumeOrder(orderId) {
+  return await dbUpdate('orders', orderId, { status: 'accepted' });
+}
+
+async function recalcOrderTotal(orderId) {
+  const items = await dbSelect('order_items', { order_id: orderId });
+  let total = 0;
+  items.forEach(function(it) {
+    total += (Number(it.price) || 0) * (Number(it.quantity) || 1);
+  });
+  await dbUpdate('orders', orderId, { total: total });
+}
+
+/* ---------- Tables ---------- */
+async function getTables(waiterId) {
+  const tableCount = Number(await getSetting('table_count')) || 20;
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('table_number, waiter_id, waiter_name, table_type')
+    .eq('status', 'accepted');
+
+  const tables = [];
+  const activeOrders = orders || [];
+
+  for (let i = 1; i <= tableCount; i++) {
+    const occ = activeOrders.find(function(o) {
+      return String(o.table_number) === String(i) && (!o.table_type || o.table_type === 'numbered');
+    });
+    let status = 'free', waiterName = '';
+    if (occ) {
+      waiterName = occ.waiter_name || '';
+      if (waiterId && occ.waiter_id === waiterId) status = 'mine';
+      else status = 'other';
+    }
+    tables.push({ table: i, type: 'numbered', status: status, waiter_name: waiterName });
+  }
+
+  // Virtual tables
+  const virtualTablesSetting = await getSetting('virtual_tables') || '';
+  const virtualNames = virtualTablesSetting.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  virtualNames.forEach(function(name) {
+    const activeCount = activeOrders.filter(function(o) {
+      return o.table_type === 'virtual' && String(o.table_number).indexOf(name) === 0;
+    }).length;
+    tables.push({ table: name, type: 'virtual', status: activeCount > 0 ? 'active' : 'free', active_count: activeCount });
+  });
+
+  return { tables: tables };
+}
+
+/* ---------- Shifts ---------- */
+async function openShift(waiterId, waiterName, openingCash) {
+  // Check if already has open shift
+  const existing = await dbSelect('shifts', { waiter_id: waiterId, status: 'open' });
+  if (existing.length > 0) throw new Error('У вас уже открыта смена');
+
+  const id = 'shift_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+  const now = new Date().toISOString();
+  const cash = openingCash !== undefined ? Number(openingCash) : Number(await getSetting('cash_register')) || 0;
+
+  const shift = await dbInsert('shifts', {
+    id: id,
+    waiter_id: waiterId,
+    waiter_name: waiterName || '',
+    opened_at: now,
+    opening_cash: cash,
+    orders_count: 0,
+    guests_count: 0,
+    cash_total: 0,
+    card_total: 0,
+    status: 'open'
+  });
+
+  return {
+    id: id,
+    waiter_id: waiterId,
+    waiter_name: waiterName || '',
+    opened_at: now,
+    opening_cash: cash,
+    status: 'open',
+    current_cash: cash
+  };
+}
+
+async function closeShift(waiterId) {
+  const shifts = await dbSelect('shifts', { waiter_id: waiterId, status: 'open' });
+  if (shifts.length === 0) throw new Error('Нет открытой смены');
+  const shift = shifts[0];
+
+  // Calculate stats from completed orders
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('waiter_id', waiterId)
+    .eq('status', 'completed')
+    .gte('completed_at', shift.opened_at);
+
+  let cashTotal = 0, cardTotal = 0, guestsCount = 0;
+  (orders || []).forEach(function(o) {
+    const total = Number(o.total) || 0;
+    if (o.payment_method === 'cash') cashTotal += total;
+    else if (o.payment_method === 'card') cardTotal += total;
+    guestsCount += Number(o.guests) || 0;
+  });
+
+  const now = new Date().toISOString();
+  await dbUpdate('shifts', shift.id, {
+    closed_at: now,
+    status: 'closed',
+    cash_total: cashTotal,
+    card_total: cardTotal,
+    orders_count: (orders || []).length,
+    guests_count: guestsCount
+  });
+
+  // Add cash to register
+  const currentCash = Number(await getSetting('cash_register')) || 0;
+  await saveSettings({ cash_register: String(currentCash + cashTotal) });
+
+  const openingCash = Number(shift.opening_cash) || 0;
+  return {
+    id: shift.id,
+    opened_at: shift.opened_at,
+    closed_at: now,
+    opening_cash: openingCash,
+    orders_count: (orders || []).length,
+    guests_count: guestsCount,
+    cash_total: cashTotal,
+    card_total: cardTotal,
+    final_cash: openingCash + cashTotal,
+    status: 'closed'
+  };
+}
+
+async function getActiveShift(waiterId) {
+  const shifts = await dbSelect('shifts', { waiter_id: waiterId, status: 'open' });
+  const shift = shifts.length > 0 ? shifts[0] : null;
+  const currentCash = Number(await getSetting('cash_register')) || 0;
+  const cookEnabled = String(await getSetting('cook_enabled')) !== 'false';
+  return { shift: shift, current_cash: currentCash, cook_enabled: cookEnabled };
+}
+
+/* ---------- Stock ---------- */
+async function deductStock(items) {
+  const stockTracking = String(await getSetting('stock_tracking')) === 'true';
+  if (!stockTracking) return;
+
+  for (const it of items) {
+    if (!it.menu_item_id) continue;
+    const menuItems = await dbSelect('menu', { id: it.menu_item_id });
+    if (menuItems.length === 0) continue;
+    const m = menuItems[0];
+    const current = Number(m.stock) || 0;
+    const qty = Number(it.quantity) || 1;
+    await dbUpdate('menu', it.menu_item_id, { stock: Math.max(0, current - qty) });
+  }
+}
+
+async function replenishStock(menuItemId, quantity) {
+  const items = await dbSelect('menu', { id: menuItemId });
+  if (items.length === 0) throw new Error('Menu item not found');
+  const current = Number(items[0].stock) || 0;
+  const newStock = current + Number(quantity);
+  await dbUpdate('menu', menuItemId, { stock: newStock });
+  return { id: menuItemId, stock: newStock };
+}
+
+async function getStockReport() {
+  const stockTracking = String(await getSetting('stock_tracking')) === 'true';
+  const threshold = Number(await getSetting('stock_threshold')) || 5;
+  const menu = await dbSelect('menu', { is_active: true });
+
+  // Get all order items for consumption calculation
+  const { data: allItems } = await supabase
+    .from('order_items')
+    .select('menu_item_id, quantity, order_id, created_at');
+
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const consumption = {};
+  (allItems || []).forEach(function(it) {
+    const mid = it.menu_item_id;
+    if (!mid) return;
+    const created = new Date(it.created_at);
+    const qty = Number(it.quantity) || 1;
+    if (!consumption[mid]) consumption[mid] = { day: 0, week: 0, month: 0, total: 0 };
+    consumption[mid].total += qty;
+    if (created >= dayAgo) consumption[mid].day += qty;
+    if (created >= weekAgo) consumption[mid].week += qty;
+    if (created >= monthAgo) consumption[mid].month += qty;
+  });
+
+  const items = menu.map(function(m) {
+    const stock = Number(m.stock) || 0;
+    const cons = consumption[m.id] || { day: 0, week: 0, month: 0, total: 0 };
+    return {
+      id: m.id,
+      name: m.name,
+      stock: stock,
+      consumed_day: cons.day,
+      consumed_week: cons.week,
+      consumed_month: cons.month,
+      consumed_total: cons.total,
+      low_stock: stockTracking && stock <= threshold
+    };
+  });
+
+  return { stock_tracking: stockTracking, threshold: threshold, items: items };
+}
+
+/* ---------- Auth (login) ---------- */
+async function loginWithPassword(userId, password) {
+  const users = await dbSelect('users', { id: userId });
+  if (users.length === 0) throw new Error('Пользователь не найден');
+  const user = users[0];
+
+  const pinValue = String(user.pin || '');
+  if (pinValue.length === 0) throw new Error('Пароль не установлен. Задайте пароль в админке.');
+
+  // For waiters/cooks: enforce numeric password
+  if (user.role !== 'admin') {
+    if (!/^\d+$/.test(password)) throw new Error('Пароль должен состоять только из цифр');
+  }
+
+  // Compare: if pin is 64 hex chars → SHA-256 hash, otherwise plaintext
+  const isHex64 = /^[a-f0-9]{64}$/.test(pinValue);
+  let match = false;
+  if (isHex64) {
+    match = (hashPassword(user.id, password) === pinValue);
+  } else {
+    match = (String(password) === pinValue);
+  }
+  if (!match) throw new Error('Неверный пароль');
+
+  return {
+    token: 'session_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 12),
+    user: { id: user.id, name: user.name, role: user.role },
+    expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+  };
+}
+
+function hashPassword(userId, password) {
+  // Simple hash for compatibility — in Supabase we use plaintext or RLS
+  // This is a fallback for hashed passwords migrated from Apps Script
+  const raw = (userId || '') + ':' + (password || '');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(64, '0');
+}
+
+async function setPassword(userId, newPassword, plaintext) {
+  const value = newPassword ? (plaintext ? newPassword : hashPassword(userId, newPassword)) : '';
+  await dbUpdate('users', userId, { pin: value });
+  return { ok: true };
+}
+
+/* ---------- Sound URLs ---------- */
+const _soundCache = {};
+
+async function loadSound(name) {
+  if (_soundCache[name] !== undefined) return _soundCache[name];
+  try {
+    let soundUrl = null;
+    if (APP_DATA && APP_DATA.settings) {
+      soundUrl = APP_DATA.settings['sound_' + name] || null;
+    }
+    if (soundUrl) {
+      const audio = new Audio(soundUrl);
+      audio.preload = 'auto';
+      _soundCache[name] = audio;
+      return audio;
+    }
+  } catch (e) { console.warn('Failed to load sound', name, e); }
+  _soundCache[name] = null;
+  return null;
+}
+
+async function preloadSounds(names) {
+  await Promise.all(names.map(function(n) { return loadSound(n); }));
+}
+
+function playCustomSound(name, fallback) {
+  const audio = _soundCache[name];
+  if (audio) {
+    try {
+      audio.currentTime = 0;
+      const p = audio.play();
+      if (p && p.catch) p.catch(function() { if (fallback) fallback(); });
+    } catch (e) { if (fallback) fallback(); }
+  } else if (fallback) { fallback(); }
+}
+
+function notifySound() {
+  playCustomSound('waiter_ready', function() {
+    beep(880, 150, 0.25);
+    setTimeout(function() { beep(1100, 200, 0.25); }, 180);
+  });
+}
+
+function cookNotifySound() {
+  playCustomSound('cook_new_order', function() {
+    beep(660, 200, 0.25);
+    setTimeout(function() { beep(880, 250, 0.25); }, 220);
+  });
+}
+
+let _audioCtx = null;
+function beep(freq, duration, volume) {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq || 880;
+    gain.gain.value = volume || 0.2;
+    osc.connect(gain);
+    gain.connect(_audioCtx.destination);
+    osc.start();
+    setTimeout(function() { osc.stop(); }, duration || 200);
+  } catch (e) {}
+}
+
+/* ---------- Realtime subscriptions ---------- */
+function subscribeToOrders(callback) {
+  if (!supabase) return;
+  const channel = supabase
+    .channel('orders-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, function(payload) {
+      console.log('Realtime: orders changed', payload);
+      if (callback) callback(payload);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, function(payload) {
+      console.log('Realtime: order_items changed', payload);
+      if (callback) callback(payload);
+    })
+    .subscribe();
+  _realtimeChannels.push(channel);
+  return channel;
+}
+
+function subscribeToTable(tableName, callback) {
+  if (!supabase) return;
+  const channel = supabase
+    .channel('table-' + tableName + '-' + Date.now())
+    .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, function(payload) {
+      if (callback) callback(payload);
+    })
+    .subscribe();
+  _realtimeChannels.push(channel);
+  return channel;
+}
+
+function unsubscribeAll() {
+  _realtimeChannels.forEach(function(ch) {
+    try { supabase.removeChannel(ch); } catch (e) {}
+  });
+  _realtimeChannels = [];
+}
+
+/* ---------- Modal helpers ---------- */
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('open');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
 }
 
 /* ---------- Format ---------- */
-// Format a table label for an order, depending on its table_type.
-//  - 'tab'     → just the client name (e.g. "Иван П.")
-//  - 'virtual' → just the virtual name (e.g. "Бар — Иван" or "Бар")
-//  - 'numbered' (or undefined for legacy orders) → "Столик №5"
-// NEVER prepend "Столик №" to virtual or tab orders — they are not tables.
 function formatTableLabel(order) {
   if (!order) return '';
   const type = order.table_type || 'numbered';
@@ -58,13 +785,11 @@ function formatTableLabel(order) {
 
 function formatMoney(amount, currency) {
   const n = Number(amount) || 0;
-  // Resolve currency: explicit param → APP_DATA.settings.currency → CONFIG default
   let cur = currency;
   if (!cur && typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
     cur = APP_DATA.settings.currency;
   }
   if (!cur) cur = CONFIG.DEFAULT_CURRENCY;
-  // Round to integer if no decimals needed
   const hasDec = (n % 1) !== 0;
   const formatted = hasDec ? n.toFixed(2) : Math.round(n).toString();
   return formatted + ' ' + cur;
@@ -97,72 +822,7 @@ function timeAgo(iso) {
   return formatDateTime(iso);
 }
 
-/* ---------- Data loader ---------- */
-// Use var (not let) so APP_DATA is accessible as a global across scripts
-// and as a property of window (some code paths check window.APP_DATA).
-var APP_DATA = null;
-var _cachedDataVersion = null;
-const APP_DATA_CACHE_KEY = 'restaurant_app_data_cache';
-const APP_DATA_CACHE_TTL = 300000; // 5 minutes — menu/categories don't change often
-
-async function loadAppData(force) {
-  // If no force, try cached APP_DATA from memory
-  if (APP_DATA && !force) return APP_DATA;
-
-  // If force but not _skipVersionCheck — try localStorage cache first
-  if (APP_DATA && force && !force._skipVersionCheck) {
-    // Try localStorage cache (5 min TTL)
-    try {
-      const cached = localStorage.getItem(APP_DATA_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        const age = Date.now() - (parsed._cachedAt || 0);
-        if (age < APP_DATA_CACHE_TTL) {
-          APP_DATA = parsed.data;
-          _cachedDataVersion = parsed.data._version;
-          // Still check version in background, but return cached immediately
-          apiGet('getDataVersion', {}).then(function(v) {
-            if (v && v._version && v._version !== _cachedDataVersion) {
-              // Version changed — fetch fresh data in background
-              loadAppDataForce().then(function() {
-                console.log('APP_DATA updated in background (version changed)');
-              });
-            }
-          }).catch(function() {});
-          return APP_DATA;
-        }
-      }
-    } catch (e) { /* fall through to server fetch */ }
-
-    // No localStorage cache — check version with server
-    try {
-      const v = await apiGet('getDataVersion', {});
-      if (v && v._version && v._version === _cachedDataVersion) {
-        return APP_DATA; // version unchanged
-      }
-      if (v && v._version) _cachedDataVersion = v._version;
-    } catch (e) { /* proceed with full fetch */ }
-  }
-
-  // Full fetch from server
-  APP_DATA = await apiGet('getData');
-  if (APP_DATA && APP_DATA._version) _cachedDataVersion = APP_DATA._version;
-  // Save to localStorage
-  try {
-    localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify({
-      data: APP_DATA,
-      _cachedAt: Date.now()
-    }));
-  } catch (e) { /* localStorage might be full or unavailable */ }
-  return APP_DATA;
-}
-
-// Force-refresh that skips the version check (use after admin saves changes)
-async function loadAppDataForce() {
-  return loadAppData({ _skipVersionCheck: true });
-}
-
-/* ---------- Toast / notifications ---------- */
+/* ---------- Toast ---------- */
 function showToast(msg, type) {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -180,368 +840,107 @@ function showToast(msg, type) {
   }, 3000);
 }
 
-/* ---------- Sound (simple beep via WebAudio) ---------- */
-let _audioCtx = null;
-function beep(freq, duration, volume) {
+/* ---------- Wake Lock ---------- */
+let _wakeLockSentinel = null;
+
+async function requestWakeLock() {
   try {
-    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = _audioCtx.createOscillator();
-    const gain = _audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq || 880;
-    gain.gain.value = volume || 0.2;
-    osc.connect(gain);
-    gain.connect(_audioCtx.destination);
-    osc.start();
-    setTimeout(function() { osc.stop(); }, duration || 200);
-  } catch (e) { /* ignore */ }
+    if (!('wakeLock' in navigator)) return;
+    if (document.visibilityState !== 'visible') return;
+    if (_wakeLockSentinel !== null) return;
+    _wakeLockSentinel = await navigator.wakeLock.request('screen');
+    _wakeLockSentinel.addEventListener('release', function() { _wakeLockSentinel = null; });
+    console.log('Wake Lock acquired');
+  } catch (err) { console.warn('Wake Lock failed:', err.message); }
 }
 
-function notifySound() {
-  // Plays the "ready" notification for the waiter.
-  // If a custom sound is loaded, uses it; otherwise falls back to beep.
-  playCustomSound('waiter_ready', function() {
-    beep(880, 150, 0.25);
-    setTimeout(function() { beep(1100, 200, 0.25); }, 180);
-  });
-}
-
-function cookNotifySound() {
-  // Plays the "new order" notification for the cook.
-  playCustomSound('cook_new_order', function() {
-    beep(660, 200, 0.25);
-    setTimeout(function() { beep(880, 250, 0.25); }, 220);
-  });
-}
-
-/* ---------- Custom sounds (loaded from server, cached in memory) ---------- */
-const _soundCache = {}; // name -> HTMLAudioElement (or null if not found)
-
-async function preloadSounds(names) {
-  // names: ['cook_new_order', 'waiter_ready']
-  await Promise.all(names.map(function(n) { return loadSound(n); }));
-}
-
-async function loadSound(name) {
-  if (_soundCache[name] !== undefined) return _soundCache[name];
-  try {
-    // Sounds are stored as URLs in Settings (key: sound_<name>).
-    // First check APP_DATA.settings (already loaded) — fastest, no extra request.
-    let soundUrl = null;
-    if (typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
-      soundUrl = APP_DATA.settings['sound_' + name] || null;
-    }
-    // Fallback: fetch from server (for backwards compat or if APP_DATA not loaded yet)
-    if (!soundUrl) {
-      const url = CONFIG.API_URL + '?action=getSound&name=' + encodeURIComponent(name);
-      const res = await fetch(url);
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        _soundCache[name] = null;
-        return null;
-      }
-      const json = await res.json();
-      if (json && json.url) soundUrl = json.url;
-    }
-    if (soundUrl) {
-      const audio = new Audio(soundUrl);
-      audio.preload = 'auto';
-      _soundCache[name] = audio;
-      return audio;
-    }
-    _soundCache[name] = null;
-    return null;
-  } catch (e) {
-    console.warn('Failed to load sound', name, e);
-  }
-  _soundCache[name] = null;
-  return null;
-}
-
-function playCustomSound(name, fallback) {
-  const audio = _soundCache[name];
-  if (audio) {
-    try {
-      audio.currentTime = 0;
-      const p = audio.play();
-      if (p && p.catch) {
-        p.catch(function() {
-          // Autoplay blocked — fall back to beep
-          if (fallback) fallback();
-        });
-      }
-    } catch (e) {
-      if (fallback) fallback();
-    }
-  } else if (fallback) {
-    fallback();
-  }
-}
-
-/* ---------- Current user (login) ---------- */
-// Session token + user info are stored in localStorage.
-// The token is verified by the server on each request (sent as a param).
-const USER_STORAGE_KEY = 'restaurant_session';
-const OLD_USER_STORAGE_KEY = 'restaurant_current_user'; // legacy key, cleaned up
-
-function getCurrentSession() {
-  try {
-    // Clean up legacy key from older versions
-    if (localStorage.getItem(OLD_USER_STORAGE_KEY)) {
-      localStorage.removeItem(OLD_USER_STORAGE_KEY);
-    }
-    const raw = localStorage.getItem(USER_STORAGE_KEY);
-    if (!raw) return null;
-    const session = JSON.parse(raw);
-    // Validate structure
-    if (!session || !session.user || !session.token) {
-      localStorage.removeItem(USER_STORAGE_KEY);
-      return null;
-    }
-    return session;
-  } catch (e) {
-    try { localStorage.removeItem(USER_STORAGE_KEY); } catch (_) {}
-    return null;
-  }
-}
-
-function getCurrentUser() {
-  const session = getCurrentSession();
-  return session ? session.user : null;
-}
-
-function getCurrentToken() {
-  const session = getCurrentSession();
-  return session ? session.token : null;
-}
-
-function setCurrentSession(session) {
-  if (session) {
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(session));
-  } else {
-    localStorage.removeItem(USER_STORAGE_KEY);
-  }
-}
-
-async function logoutUser() {
-  const token = getCurrentToken();
-  if (token) {
-    try { await apiPost('logout', { token: token }); } catch (e) { /* ignore */ }
-  }
-  setCurrentSession(null);
-  location.reload();
-}
-
-/* Login: returns session {token, user, expires_at} or throws Error */
-async function loginWithPassword(userId, password) {
-  const res = await fetch(CONFIG.API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'login', user_id: userId, password: password })
-  });
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || 'Ошибка входа');
-  return json.data;
-}
-
-/* ---------- Modal helpers (shared across pages) ---------- */
-function openModal(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.add('open');
-}
-function closeModal(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.remove('open');
-}
-// Close modal when clicking on the backdrop (outside the modal content)
 if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.modal-backdrop').forEach(function(m) {
-      m.addEventListener('click', function(e) {
-        if (e.target === m) m.classList.remove('open');
-      });
-    });
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') requestWakeLock();
   });
 }
 
-/* ---------- Notifications (system-level, work when tab is hidden) ---------- */
-// Uses the Notifications API + a service worker so that alerts fire even when
-// the user has switched to another tab/app. On iOS, requires the page to be
-// added to Home Screen (PWA mode).
-//
-// Workflow:
-//   1. requestNotificationPermission() — ask user once (returns Promise<boolean>)
-//   2. showSystemNotification(title, body, tag) — fires a notification via SW
-
+/* ---------- Notifications ---------- */
 let _swReady = false;
 
 async function initServiceWorker() {
-  // Service Workers only work on http:// or https:// origins — NOT on file://.
-  // If the user opens index.html directly from disk, SW registration will fail.
-  // That's fine: we just skip SW and fall back to plain Notification (which
-  // only fires when the tab is focused).
   if (!('serviceWorker' in navigator)) return false;
-  if (location.protocol !== 'http:' && location.protocol !== 'https:') {
-    console.log('Service Worker skipped: requires http(s), current protocol is ' + location.protocol);
-    return false;
-  }
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return false;
   try {
-    const reg = await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.register('sw.js');
     await navigator.serviceWorker.ready;
     _swReady = true;
-    console.log('Service Worker registered for notifications');
     return true;
-  } catch (err) {
-    console.warn('SW registration failed:', err.message);
-    return false;
-  }
+  } catch (err) { console.warn('SW failed:', err.message); return false; }
 }
 
 async function requestNotificationPermission() {
   if (!('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
   if (Notification.permission === 'denied') return false;
-  try {
-    const result = await Notification.requestPermission();
-    return result === 'granted';
-  } catch (e) {
-    return false;
-  }
+  try { return (await Notification.requestPermission()) === 'granted'; }
+  catch (e) { return false; }
 }
 
 function showSystemNotification(title, body, tag) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
     if (_swReady && navigator.serviceWorker.controller) {
-      // Use service worker so it works when tab is hidden
       navigator.serviceWorker.controller.postMessage({
-        type: 'NOTIFY',
-        title: title,
-        body: body,
-        tag: tag || 'restaurant',
-        requireInteraction: true,
-        vibrate: true
+        type: 'NOTIFY', title: title, body: body, tag: tag || 'restaurant',
+        requireInteraction: true, vibrate: true
       });
     } else {
-      // Fallback: plain Notification (only works when tab is focused)
       new Notification(title, { body: body, tag: tag || 'restaurant', requireInteraction: true });
     }
-  } catch (e) {
-    console.warn('Notification failed:', e);
-  }
+  } catch (e) {}
 }
 
-/* ---------- Dynamic polling intervals ---------- */
-// Reads interval (in seconds) from APP_DATA.settings, falls back to CONFIG defaults.
-// Returns milliseconds (for use with setInterval).
-//
-// Settings keys (set in admin UI):
-//   poll_interval_waiter — refresh rate for waiter (active orders + ready alerts)
-//   poll_interval_cook   — refresh rate for cook (new orders + readiness)
-//
-// Minimum 5 seconds enforced (to prevent abuse / quota burn).
-function getPollInterval(settingKey, configKey) {
-  let seconds = null;
-  if (typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
-    const v = APP_DATA.settings[settingKey];
-    if (v) seconds = Number(v);
-  }
-  if (!seconds || isNaN(seconds) || seconds < 5) {
-    seconds = (CONFIG[configKey] || 15000) / 1000;
-  }
-  if (seconds < 5) seconds = 5;
-  return seconds * 1000;
-}
+/* ---------- Session ---------- */
+const USER_STORAGE_KEY = 'restaurant_session';
 
-/* ---------- Wake Lock (keep screen awake) ---------- */
-// Uses the Screen Wake Lock API to prevent the screen from turning off while
-// the page is open. Supported in Chrome/Edge Android (84+), Safari iOS (16.4+).
-// On unsupported browsers (older Safari, desktop Firefox without flag) this
-// silently does nothing — the page still works, just may sleep normally.
-//
-// The wake lock is RELEASED when the tab is hidden, minimized, or navigated
-// away. We re-acquire it on visibilitychange.
-let _wakeLockSentinel = null;
-
-async function requestWakeLock() {
+function getCurrentSession() {
   try {
-    if (!('wakeLock' in navigator)) return;
-    // Don't request if the page is hidden — would fail
-    if (document.visibilityState !== 'visible') return;
-    // Don't double-acquire
-    if (_wakeLockSentinel !== null) return;
-    _wakeLockSentinel = await navigator.wakeLock.request('screen');
-    _wakeLockSentinel.addEventListener('release', function() {
-      _wakeLockSentinel = null;
-    });
-    console.log('Wake Lock acquired — screen will stay awake');
-  } catch (err) {
-    // Not fatal — fall back to normal screen behavior
-    console.warn('Wake Lock request failed:', err.message);
-  }
-}
-
-function releaseWakeLock() {
-  if (_wakeLockSentinel !== null) {
-    try { _wakeLockSentinel.release(); } catch (e) {}
-    _wakeLockSentinel = null;
-  }
-}
-
-// Re-acquire on visibility change (e.g. user switches back to the tab)
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible') {
-      requestWakeLock();
+    const raw = localStorage.getItem(USER_STORAGE_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.user || !session.token) {
+      localStorage.removeItem(USER_STORAGE_KEY);
+      return null;
     }
-  });
+    return session;
+  } catch (e) { return null; }
 }
 
-/* ---------- Config check ---------- */
-function checkConfig() {
-  if (!CONFIG.API_URL || CONFIG.API_URL.indexOf('PASTE_YOUR') === 0) {
-    document.body.innerHTML = '' +
-      '<div class="config-error">' +
-      '<h1>Не настроено подключение</h1>' +
-      '<p>Откройте файл <code>config.js</code> и вставьте URL вашего развернутого Google Apps Script Web App.</p>' +
-      '<p>Подробная инструкция — в файле <code>README.md</code>.</p>' +
-      '</div>';
-    return false;
-  }
-  return true;
+function getCurrentUser() {
+  const s = getCurrentSession();
+  return s ? s.user : null;
+}
+
+function setCurrentSession(session) {
+  if (session) localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(session));
+  else localStorage.removeItem(USER_STORAGE_KEY);
+}
+
+async function logoutUser() {
+  unsubscribeAll();
+  setCurrentSession(null);
+  location.reload();
 }
 
 /* ---------- Button loading state ---------- */
 const _loadingButtons = new WeakSet();
 
-/**
- * Wraps an async action with a button loading state.
- * Disables the button, shows a spinner text, runs the action, then restores.
- * Prevents double-clicks (button stays disabled until the action completes).
- *
- * Usage from HTML:
- *   <button onclick="withLoading(this, 'Готово...', () => myAsyncFunc())">Сохранить</button>
- *
- * Or for buttons that already have an onclick handler, you can wrap the call:
- *   onclick="withLoading(this, 'Принимаем...', () => acceptOrder())"
- *
- * If called on a button that's already loading, it's a no-op.
- */
 async function withLoading(btn, loadingText, action) {
   if (!btn) return action();
-  // If button is disabled (already loading) — ignore the click
   if (btn.disabled) return;
-  // Block re-entry by tagging the button
   if (_loadingButtons.has(btn)) return;
   _loadingButtons.add(btn);
-
   const originalText = btn.innerHTML;
   const originalDisabled = btn.disabled;
   btn.disabled = true;
   btn.classList.add('btn-loading');
   btn.innerHTML = '<span class="btn-spinner"></span> ' + (loadingText || '...');
-
-  // Safety net: re-enable after 30s no matter what
   const safety = setTimeout(function() {
     if (_loadingButtons.has(btn)) {
       _loadingButtons.delete(btn);
@@ -550,10 +949,8 @@ async function withLoading(btn, loadingText, action) {
       btn.innerHTML = originalText;
     }
   }, 30000);
-
-  try {
-    return await action();
-  } finally {
+  try { return await action(); }
+  finally {
     clearTimeout(safety);
     _loadingButtons.delete(btn);
     btn.disabled = originalDisabled;
@@ -562,24 +959,42 @@ async function withLoading(btn, loadingText, action) {
   }
 }
 
-/* Simple debounce — prevents a function from being called more than once
-   within the given delay. Useful for inputs and rapid clicks. */
-function debounce(fn, delay) {
-  let t = null;
-  return function() {
-    const ctx = this, args = arguments;
-    if (t) clearTimeout(t);
-    t = setTimeout(function() { fn.apply(ctx, args); }, delay);
-  };
-}
-
 /* ---------- Escape ---------- */
 function escapeHtml(s) {
   if (s === null || s === undefined) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+/* ---------- Config check ---------- */
+function checkConfig() {
+  if (!CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === 0) {
+    document.body.innerHTML =
+      '<div class="config-error"><h1>Не настроено подключение</h1>' +
+      '<p>Откройте файл <code>config.js</code> и вставьте URL и anon key вашего Supabase проекта.</p></div>';
+    return false;
+  }
+  return true;
+}
+
+/* ---------- Dynamic polling intervals ---------- */
+function getPollInterval(settingKey, configKey) {
+  let seconds = null;
+  if (typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
+    const v = APP_DATA.settings[settingKey];
+    if (v) seconds = Number(v);
+  }
+  if (!seconds || isNaN(seconds) || seconds < 5) {
+    seconds = (CONFIG[configKey] || 5000) / 1000;
+  }
+  if (seconds < 5) seconds = 5;
+  return seconds * 1000;
+}
+
+/* ---------- Init Supabase on load ---------- */
+if (typeof window !== 'undefined') {
+  // Will be called after the supabase-js library is loaded
+  window.addEventListener('DOMContentLoaded', function() {
+    initSupabase();
+  });
 }

@@ -1,26 +1,23 @@
 /**
- * CONFIG — PASTE YOUR DEPLOYED GOOGLE APPS SCRIPT WEB APP URL HERE
+ * CONFIG — Supabase connection settings
  *
- * After deploying your Apps Script as a Web App (see README.md),
- * copy the URL (looks like https://script.google.com/macros/s/AKfyc.../exec)
- * and paste it below.
+ * 1. Create a project at supabase.com
+ * 2. Go to Settings → API
+ * 3. Copy "Project URL" and "anon public" key
+ * 4. Paste them below
  */
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbyyFBYRfShd7k0J67nGQA77KJOXWFNjKOqsPkosZiNbWSj2SVDg3-sxVY91t7IHlAIL/exec',
+  SUPABASE_URL: 'https://hsqtujhzuiufweqkored.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_DLGWsyPClY2Krat7TGSsZg_9shyCrLh',
 
-  // Default polling intervals (ms). These are FALLBACKS used only when
-  // the corresponding settings are not set in the Google Sheet.
-  // Admin can change them in the UI (Settings tab) — those values override
-  // these defaults at runtime via getPollInterval() in common.js.
-  POLL_ORDERS: 20000,     // waiter fallback (20s)
-  POLL_BADGE: 20000,      // waiter fallback (20s)
-  POLL_COOK: 10000,       // cook fallback (10s)
+  // Polling intervals (ms) — used as fallback if realtime fails
+  POLL_ORDERS: 5000,
+  POLL_BADGE: 5000,
+  POLL_COOK: 5000,
 
-  // Default currency symbol if not set in admin settings
-  DEFAULT_CURRENCY: '₾'
+  DEFAULT_CURRENCY: '₽'
 };
 
-// Make sure we warn if the URL was not set
-if (typeof window !== 'undefined' && CONFIG.API_URL.indexOf('PASTE_YOUR') === 0) {
-  console.warn('CONFIG.API_URL is not set! Open config.js and paste your Apps Script Web App URL.');
+if (typeof window !== 'undefined' && CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === 0) {
+  console.warn('CONFIG.SUPABASE_URL is not set! Open config.js and paste your Supabase URL and anon key.');
 }
