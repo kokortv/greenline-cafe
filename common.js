@@ -604,7 +604,8 @@ async function replenishStock(menuItemId, quantity) {
 async function getStockReport() {
   const stockTracking = String(await getSetting('stock_tracking')) === 'true';
   const threshold = Number(await getSetting('stock_threshold')) || 5;
-  const menu = await dbSelect('menu', { is_active: true });
+  const allMenu = await dbSelect('menu');
+  const menu = allMenu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
 
   // Get all order items for consumption calculation
   const { data: allItems } = await _sb

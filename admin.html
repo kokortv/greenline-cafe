@@ -1671,7 +1671,8 @@ async function loadStockReport() {
       html += '<td>' + it.consumed_day + '</td>';
       html += '<td>' + it.consumed_week + '</td>';
       html += '<td>' + it.consumed_month + '</td>';
-      html += '<td><button class="btn btn-outline btn-sm" onclick="openReplenishModal(\'' + it.id + '\', \'' + escapeHtml(it.name).replace(/'/g, "\\'") + '\')">➕</button></td>';
+      html += '<td><input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" style="width:60px;padding:4px;font-size:0.9rem;">' +
+        '<button class="btn btn-success btn-sm" style="margin-left:4px;padding:4px 8px;" onclick="replenishFromInput(\'' + it.id + '\')">✓</button></td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
@@ -1681,22 +1682,28 @@ async function loadStockReport() {
   }
 }
 
-function openReplenishModal(itemId, itemName) {
-  const qty = prompt('Сколько добавить на склад?\n\nТовар: ' + itemName);
-  if (qty === null) return;
-  const numQty = Number(qty);
-  if (!numQty || numQty <= 0) {
+function replenishFromInput(itemId) {
+  const input = document.getElementById('stock-input-' + itemId);
+  if (!input) return;
+  const qty = Number(input.value);
+  if (!qty || qty <= 0) {
     showToast('Введите число больше 0', 'warning');
     return;
   }
-  replenishStockItem(itemId, numQty);
+  input.value = '';
+  replenishStockItem(itemId, qty);
 }
 
 async function replenishStockItem(itemId, qty) {
   try {
     await apiPost('replenishStock', { menu_item_id: itemId, quantity: qty });
     showToast('Склад пополнен на ' + qty, 'success');
-    await loadAppDataForce();
+    // Update local APP_DATA menu stock without full reload
+    const menuItem = (APP_DATA.menu || []).find(function(m) { return m.id === itemId; });
+    if (menuItem) {
+      menuItem.stock = (Number(menuItem.stock) || 0) + Number(qty);
+    }
+    // Reload just the stock report (fast — no loadAppDataForce needed)
     loadStockReport();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
