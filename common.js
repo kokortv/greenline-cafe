@@ -30,13 +30,22 @@ async function dbSelect(table, filters) {
   let query = _sb.from(table).select('*');
   if (filters) {
     Object.keys(filters).forEach(function(k) {
-      if (filters[k] !== undefined && filters[k] !== null && filters[k] !== '') {
-        query = query.eq(k, filters[k]);
+      const v = filters[k];
+      if (v !== undefined && v !== null && v !== '') {
+        // For boolean columns, ensure proper type
+        if (v === true || v === false) {
+          query = query.eq(k, v);
+        } else {
+          query = query.eq(k, v);
+        }
       }
     });
   }
   const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('dbSelect error:', table, error.message);
+    throw new Error(error.message);
+  }
   return data || [];
 }
 
@@ -106,6 +115,8 @@ async function loadAppData(force) {
     dbSelect('menu', { is_active: true }),
     dbSelect('users', { is_active: true })
   ]);
+
+  console.log('loadAppData: settings=', settings.length, 'categories=', categories.length, 'menu=', menu.length, 'users=', users.length);
 
   const settingsObj = {};
   settings.forEach(function(s) { settingsObj[s.key] = s.value; });
@@ -615,7 +626,9 @@ async function getStockReport() {
 
 /* ---------- Auth (login) ---------- */
 async function loginWithPassword(userId, password) {
+  console.log('loginWithPassword: userId=', userId);
   const users = await dbSelect('users', { id: userId });
+  console.log('loginWithPassword: found users=', users.length, users);
   if (users.length === 0) throw new Error('Пользователь не найден');
   const user = users[0];
 
