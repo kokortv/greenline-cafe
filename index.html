@@ -745,6 +745,17 @@
         <div class="po-amount" id="pay-amount-card">—</div>
       </div>
     </div>
+    <!-- Cash change calculator -->
+    <div id="cash-change-section" style="display:none;margin-top:16px;">
+      <div class="form-group">
+        <label>Получено от клиента</label>
+        <input type="number" id="cash-received" min="0" step="0.01" placeholder="0"
+               oninput="calculateChange()" style="font-size:1.3rem;font-weight:700;">
+      </div>
+      <div id="change-display" style="padding:16px;border-radius:8px;text-align:center;font-size:1.5rem;font-weight:700;margin-bottom:8px;">
+        Сдача: —
+      </div>
+    </div>
     <div class="modal-actions" style="flex-direction:column;gap:8px;">
       <button class="btn btn-success btn-lg" id="confirm-payment-btn" disabled
               onclick="withLoading(this, 'Завершаем...', function() { return confirmCompleteOrder(); })"
@@ -2522,6 +2533,49 @@ function selectPaymentMethod(method) {
     el.classList.toggle('selected', el.dataset.method === method);
   });
   document.getElementById('confirm-payment-btn').disabled = false;
+  // Show/hide cash change calculator
+  const cashSection = document.getElementById('cash-change-section');
+  if (cashSection) {
+    cashSection.style.display = (method === 'cash') ? 'block' : 'none';
+  }
+  // Reset change display
+  const changeDisplay = document.getElementById('change-display');
+  if (changeDisplay) {
+    changeDisplay.textContent = 'Сдача: —';
+    changeDisplay.style.background = '';
+  }
+  const cashInput = document.getElementById('cash-received');
+  if (cashInput) cashInput.value = '';
+}
+
+function calculateChange() {
+  const cashInput = document.getElementById('cash-received');
+  const changeDisplay = document.getElementById('change-display');
+  if (!cashInput || !changeDisplay) return;
+  const received = Number(cashInput.value) || 0;
+  // Get the order total from the modal
+  const order = state.activeOrders.find(function(o) { return o.id === _pendingCompleteOrderId; });
+  if (!order) return;
+  const total = Number(order.total) || 0;
+  if (received === 0) {
+    changeDisplay.textContent = 'Сдача: —';
+    changeDisplay.style.background = '';
+    return;
+  }
+  const change = received - total;
+  if (change < 0) {
+    changeDisplay.textContent = 'Не хватает: ' + formatMoney(Math.abs(change));
+    changeDisplay.style.background = '#ffebee';
+    changeDisplay.style.color = 'var(--danger)';
+  } else if (change === 0) {
+    changeDisplay.textContent = 'Без сдачи';
+    changeDisplay.style.background = '#e8f5e9';
+    changeDisplay.style.color = 'var(--success)';
+  } else {
+    changeDisplay.textContent = 'Сдача: ' + formatMoney(change);
+    changeDisplay.style.background = '#e8f5e9';
+    changeDisplay.style.color = 'var(--success)';
+  }
 }
 
 function closePaymentModal() {
