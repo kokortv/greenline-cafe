@@ -775,28 +775,12 @@ function switchTab(name) {
 /* ---------- Orders auto-polling ---------- */
 function startOrdersPolling() {
   stopOrdersPolling();
-  // Poll every 15 seconds — refresh orders AND settings (cash_register may change
-  // when a waiter closes their shift, so we keep the admin's settings form in sync)
+  // Poll every 15 seconds — refresh orders only
   adminState.ordersPollingTimer = setInterval(function() {
-    // Only refresh if the orders tab is currently visible
     const ordersTab = document.getElementById('tab-orders');
     if (ordersTab && ordersTab.style.display !== 'none') {
       loadOrders();
     }
-    // Always refresh settings in background to catch cash_register changes
-    // (waiter closes shift → cash added to register → admin should see it)
-    loadAppData(true).then(function() {
-      // Update cash register field if the settings tab is visible or always
-      const cashField = document.getElementById('set-cash-register');
-      if (cashField && APP_DATA.settings) {
-        cashField.value = APP_DATA.settings.cash_register || 0;
-      }
-      // Also update cook_enabled checkbox in case it changed
-      const cookField = document.getElementById('set-cook-enabled');
-      if (cookField && APP_DATA.settings) {
-        cookField.checked = String(APP_DATA.settings.cook_enabled) !== 'false';
-      }
-    }).catch(function() {});
   }, 15000);
   console.log('Admin orders polling started: 15000ms');
 }
@@ -859,8 +843,12 @@ async function saveSettings() {
   };
   try {
     await apiPost('saveSettings', { settings: settings });
-    // Reload APP_DATA to get fresh settings from Supabase
-    await loadAppDataForce();
+    // Update local APP_DATA settings directly (no need to reload everything)
+    if (APP_DATA && APP_DATA.settings) {
+      for (const key in settings) {
+        APP_DATA.settings[key] = String(settings[key]);
+      }
+    }
     // Update header title in case restaurant_name changed
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан') + ' — Админ';
