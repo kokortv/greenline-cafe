@@ -427,6 +427,34 @@
       <button class="btn btn-primary btn-lg" onclick="withLoading(this, 'Сохраняем...', function() { return saveSettings(); })" style="width:100%;">Сохранить настройки</button>
     </div>
 
+    <!-- QR MENU FOR VISITORS -->
+    <h2 class="section-title" style="margin-top:30px;">QR-код меню для посетителей</h2>
+    <div class="settings-card">
+      <p style="margin-bottom:12px;">
+        Сгенерируйте QR-код для публичного меню. Посетитель наведёт камеру телефона и увидит меню с ценами —
+        без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
+      </p>
+      <div id="qr-menu-categories" style="margin-bottom:16px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(true)">☑ Выбрать все</button>
+        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(false)">☐ Снять все</button>
+        <button class="btn btn-primary" type="button" onclick="generateQrMenu()">Сгенерировать QR-код</button>
+      </div>
+      <div id="qr-menu-result" style="display:none;">
+        <div style="background:#fff;padding:16px;border-radius:8px;display:inline-block;border:1px solid var(--border);">
+          <img id="qr-menu-image" alt="QR-код меню" style="display:block;width:280px;height:280px;">
+        </div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+          <a id="qr-menu-link" href="#" target="_blank" style="color:var(--primary);word-break:break-all;"></a>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" type="button" onclick="downloadQrMenuImage()">⬇ Скачать QR-код (PNG)</button>
+            <button class="btn btn-outline" type="button" onclick="openVisitorMenuInNewTab()">↗ Открыть меню в новой вкладке</button>
+            <button class="btn btn-outline" type="button" onclick="printQrMenu()">🖨 Печать QR-кода</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <h2 class="section-title" style="margin-top:30px;">Опасная зона</h2>
     <div class="settings-card" style="border:2px solid var(--danger);">
       <p style="margin-bottom:12px;"><b>Сброс данных</b> — удалит все заказы, но сохранит настройки, категории и меню.</p>
@@ -1037,6 +1065,7 @@ function switchTab(name) {
     switchStockSub(window._currentStockSub);
   }
   if (name === 'tables') loadTablesConfig();
+  if (name === 'settings') renderQrMenuCategories();
 }
 
 /* ---------- Orders auto-polling ---------- */
@@ -1164,6 +1193,138 @@ async function cleanupSessionsBtn() {
     // If the action doesn't exist (old server), show a helpful message
     showToast('Функция недоступна. Обновите Apps Script и переразверните Web App.', 'warning');
   }
+}
+
+/* ---------- QR MENU FOR VISITORS ---------- */
+// Render the list of subcategories with checkboxes so the admin can choose
+// which categories to include in the visitor menu QR code.
+function renderQrMenuCategories() {
+  const div = document.getElementById('qr-menu-categories');
+  if (!div) return;
+  const categories = APP_DATA.categories || [];
+  const mainCats = categories.filter(function(c) { return !c.parent_id; });
+  if (mainCats.length === 0) {
+    div.innerHTML = '<p style="color:var(--text-muted);">Сначала создайте категории во вкладке «Категории».</p>';
+    return;
+  }
+  // Sort main cats
+  mainCats.sort(function(a, b) {
+    return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+           String(a.name).localeCompare(String(b.name), 'ru');
+  });
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:8px;">';
+  mainCats.forEach(function(mc) {
+    // Show main category as a header
+    html += '<div style="grid-column:1/-1;font-weight:700;margin-top:8px;color:var(--primary);">' + escapeHtml(mc.name) + '</div>';
+    // Subcategories of this main cat
+    const subs = categories.filter(function(c) { return c.parent_id === mc.id; });
+    subs.sort(function(a, b) {
+      return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+             String(a.name).localeCompare(String(b.name), 'ru');
+    });
+    if (subs.length === 0) {
+      html += '<div style="font-size:0.85rem;color:var(--text-muted);padding:4px 8px;">— нет подкатегорий —</div>';
+    }
+    // Add a "direct" option for items attached directly to the main cat
+    html += '<label style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:6px;cursor:pointer;font-size:0.9rem;">';
+    html += '<input type="checkbox" class="qr-cat-checkbox" value="' + mc.id + '" checked>';
+    html += '<span>↳ напрямую в «' + escapeHtml(mc.name) + '»</span>';
+    html += '</label>';
+    subs.forEach(function(sc) {
+      html += '<label style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:6px;cursor:pointer;font-size:0.9rem;">';
+      html += '<input type="checkbox" class="qr-cat-checkbox" value="' + sc.id + '" checked>';
+      html += '<span>' + escapeHtml(sc.name) + '</span>';
+      html += '</label>';
+    });
+  });
+  html += '</div>';
+  div.innerHTML = html;
+}
+
+// Select / deselect all category checkboxes
+function selectAllQrCategories(checked) {
+  document.querySelectorAll('.qr-cat-checkbox').forEach(function(cb) { cb.checked = checked; });
+}
+
+// Generate the QR code based on selected categories.
+// The QR encodes the URL to menu.html?cats=cat1,cat2,...
+function generateQrMenu() {
+  const selected = [];
+  document.querySelectorAll('.qr-cat-checkbox').forEach(function(cb) {
+    if (cb.checked) selected.push(cb.value);
+  });
+  if (selected.length === 0) {
+    showToast('Выберите хотя бы одну категорию', 'warning');
+    return;
+  }
+  // Build the URL to menu.html (same directory as admin.html)
+  const baseUrl = window.location.href.replace(/[^/]*$/, '');
+  const menuUrl = baseUrl + 'menu.html?cats=' + encodeURIComponent(selected.join(','));
+  // Generate QR code via qrserver API (free, no API key required)
+  // Size 400×400 for crisp display when scaled to 280×280
+  const qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(menuUrl);
+  const img = document.getElementById('qr-menu-image');
+  img.src = qrApiUrl;
+  img.onload = function() {
+    document.getElementById('qr-menu-result').style.display = 'block';
+    const link = document.getElementById('qr-menu-link');
+    link.href = menuUrl;
+    link.textContent = menuUrl;
+    showToast('QR-код сгенерирован', 'success');
+  };
+  img.onerror = function() {
+    showToast('Ошибка генерации QR-кода. Проверьте интернет-соединение.', 'error');
+  };
+  // Save the URL for later use (download/print)
+  window._qrMenuUrl = menuUrl;
+  window._qrMenuQrApiUrl = qrApiUrl;
+}
+
+// Download the QR code image as PNG
+function downloadQrMenuImage() {
+  if (!window._qrMenuQrApiUrl) return;
+  // Fetch the image as a blob and trigger download
+  fetch(window._qrMenuQrApiUrl)
+    .then(function(r) { return r.blob(); })
+    .then(function(blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'qr-menu.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    })
+    .catch(function() {
+      showToast('Не удалось скачать изображение', 'error');
+    });
+}
+
+// Open the visitor menu in a new tab (preview)
+function openVisitorMenuInNewTab() {
+  if (!window._qrMenuUrl) return;
+  window.open(window._qrMenuUrl, '_blank');
+}
+
+// Print the QR code (opens print dialog with just the QR image)
+function printQrMenu() {
+  if (!window._qrMenuQrApiUrl) return;
+  const w = window.open('', '_blank');
+  if (!w) {
+    showToast('Разрешите всплывающие окна для печати', 'warning');
+    return;
+  }
+  w.document.write(
+    '<html><head><title>Печать QR-кода меню</title></head><body style="text-align:center;padding:40px;">' +
+    '<h2>Меню ресторана</h2>' +
+    '<p>Наведите камеру телефона, чтобы открыть меню</p>' +
+    '<img src="' + window._qrMenuQrApiUrl + '" style="width:400px;height:400px;">' +
+    '<p style="margin-top:20px;font-size:0.85rem;color:#666;word-break:break-all;">' + window._qrMenuUrl + '</p>' +
+    '<script>window.onload=function(){window.print();};</scr' + 'ipt>' +
+    '</body></html>'
+  );
+  w.document.close();
 }
 
 /* ---------- ORDERS ---------- */

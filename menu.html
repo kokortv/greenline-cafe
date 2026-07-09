@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Меню — Ресторан</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { background: #fafafa; padding: 0; max-width: 800px; margin: 0 auto; }
+  .menu-header {
+    text-align: center;
+    padding: 24px 16px 16px;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 0 0 16px 16px;
+    margin-bottom: 16px;
+  }
+  .menu-header h1 { margin: 0 0 4px; font-size: 1.6rem; }
+  .menu-header .menu-subtitle { font-size: 0.9rem; opacity: 0.9; }
+
+  .menu-section { padding: 0 16px 80px; }
+  .main-cat-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin: 24px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--primary);
+  }
+  .subcat-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 16px 0 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+  }
+  .menu-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px dashed var(--border);
+    gap: 12px;
+  }
+  .menu-item:last-child { border-bottom: none; }
+  .mi-info { flex: 1; min-width: 0; }
+  .mi-name { font-weight: 600; font-size: 1.05rem; }
+  .mi-translation { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; font-style: italic; }
+  .mi-mods {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; }
+  .mi-price {
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 1.1rem;
+    white-space: nowrap;
+    flex: none;
+  }
+  .menu-footer {
+    text-align: center;
+    padding: 24px 16px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  .loading { text-align: center; padding: 40px 16px; color: var(--text-muted); }
+  .empty { text-align: center; padding: 40px 16px; color: var(--text-muted); }
+  .error { text-align: center; padding: 40px 16px; color: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="menu-header">
+  <h1 id="menu-restaurant-name">Меню</h1>
+  <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
+</div>
+
+<div id="menu-content" class="menu-section">
+  <div class="loading">Загрузка меню...</div>
+</div>
+
+<div class="menu-footer">
+  Приятного аппетита! 🍽
+</div>
+
+<script src="config.js"></script>
+<script src="supabase.min.js"></script>
+<script src="common.js"></script>
+<script>
+// Visitor menu page — shows menu with prices, no ordering capability.
+// URL parameter `cats` (comma-separated category IDs) filters which
+// subcategories to display. If absent, all subcategories are shown.
+
+(function() {
+  initSupabase();
+
+  // Parse the `cats` URL parameter
+  const params = new URLSearchParams(window.location.search);
+  const catsParam = params.get('cats'); // comma-separated subcategory IDs, or null
+  const selectedCatIds = catsParam
+    ? catsParam.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+    : null; // null = show all
+
+  async function render() {
+    const contentEl = document.getElementById('menu-content');
+    try {
+      await loadAppData();
+      // Restaurant name
+      const restaurantName = (APP_DATA.settings && APP_DATA.settings.restaurant_name) || 'Меню';
+      document.getElementById('menu-restaurant-name').textContent = restaurantName;
+      const subtitle = (APP_DATA.settings && APP_DATA.settings.translation_lang)
+        ? 'Restaurant menu'
+        : '';
+      document.getElementById('menu-restaurant-subtitle').textContent = subtitle;
+
+      const menu = APP_DATA.menu || [];
+      const categories = APP_DATA.categories || [];
+      if (menu.length === 0) {
+        contentEl.innerHTML = '<div class="empty">Меню пока пустое</div>';
+        return;
+      }
+
+      // Group items by subcategory
+      const itemsByCat = {};
+      menu.forEach(function(m) {
+        const cid = m.category_id || '';
+        if (!itemsByCat[cid]) itemsByCat[cid] = [];
+        itemsByCat[cid].push(m);
+      });
+
+      // Determine which subcategories to show
+      let visibleSubcats = categories.filter(function(c) { return c.parent_id; });
+      if (selectedCatIds) {
+        visibleSubcats = visibleSubcats.filter(function(c) {
+          return selectedCatIds.indexOf(c.id) >= 0;
+        });
+      }
+
+      // Group subcategories by their parent (main category)
+      const mainCats = categories.filter(function(c) { return !c.parent_id; });
+      // Sort main cats by sort then name
+      mainCats.sort(function(a, b) {
+        return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+               String(a.name).localeCompare(String(b.name), 'ru');
+      });
+
+      let html = '';
+      let totalShown = 0;
+      mainCats.forEach(function(mc) {
+        // Subcategories of this main cat that are visible
+        const subs = visibleSubcats.filter(function(c) { return c.parent_id === mc.id; });
+        // Also include items directly in the main category (no subcategory)
+        const directItems = itemsByCat[mc.id] || [];
+        if (subs.length === 0 && directItems.length === 0) return;
+
+        // Main category title
+        html += '<div class="main-cat-title">' + escapeHtml(mc.name) + '</div>';
+
+        // Sort subcategories
+        subs.sort(function(a, b) {
+          return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+                 String(a.name).localeCompare(String(b.name), 'ru');
+        });
+        subs.forEach(function(sc) {
+          const items = itemsByCat[sc.id] || [];
+          if (items.length === 0) return;
+          // Sort items by sort then name
+          items.sort(function(a, b) {
+            return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+                   String(a.name).localeCompare(String(b.name), 'ru');
+          });
+          html += '<div class="subcat-title">' + escapeHtml(sc.name) + '</div>';
+          items.forEach(function(item) {
+            html += renderItem(item);
+            totalShown++;
+          });
+        });
+
+        // Direct items in main category
+        if (directItems.length > 0) {
+          if (subs.length > 0) {
+            html += '<div class="subcat-title">Прочее</div>';
+          }
+          directItems.sort(function(a, b) {
+            return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
+                   String(a.name).localeCompare(String(b.name), 'ru');
+          });
+          directItems.forEach(function(item) {
+            html += renderItem(item);
+            totalShown++;
+          });
+        }
+      });
+
+      if (totalShown === 0) {
+        contentEl.innerHTML = '<div class="empty">К сожалению, в выбранной категории нет блюд.</div>';
+      } else {
+        contentEl.innerHTML = html;
+      }
+    } catch (err) {
+      console.error('Visitor menu error:', err);
+      contentEl.innerHTML = '<div class="error">Ошибка загрузки меню: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  // Render a single menu item with price (and modifications if present)
+  function renderItem(item) {
+    const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+    let priceHtml = '';
+    let modsHtml = '';
+    if (hasMods) {
+      // Find min price
+      const minPrice = item.modifications.reduce(function(min, m) {
+        return Math.min(min, Number(m.price) || 0);
+      }, Infinity);
+      priceHtml = '<div class="mi-price">от ' + escapeHtml(formatMoney(minPrice)) + '</div>';
+      // List each modification with its price
+      modsHtml = '<div class="mi-mods">';
+      item.modifications.forEach(function(mod) {
+        modsHtml += '<div class="mi-mod-row"><span>└ ' + escapeHtml(mod.name) + '</span><span>' + escapeHtml(formatMoney(Number(mod.price) || 0)) + '</span></div>';
+      });
+      modsHtml += '</div>';
+    } else {
+      priceHtml = '<div class="mi-price">' + escapeHtml(formatMoney(Number(item.price) || 0)) + '</div>';
+    }
+    let html = '<div class="menu-item">';
+    html += '<div class="mi-info">';
+    html += '<div class="mi-name">' + escapeHtml(item.name) + '</div>';
+    if (item.name_translation) {
+      html += '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>';
+    }
+    html += modsHtml;
+    html += '</div>';
+    html += priceHtml;
+    html += '</div>';
+    return html;
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
