@@ -137,6 +137,18 @@
   .menu-row .menu-cook-flag.no { background: #e0e0e0; color: var(--text-muted); }
   .menu-row .menu-actions { display: flex; gap: 6px; }
 
+  /* Menu table (new tabular layout) */
+  .menu-table { font-size: 0.95rem; }
+  .menu-table thead th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); font-weight: 600; }
+  .menu-table-row:hover { background: rgba(0,0,0,0.02); }
+  .menu-table-row.dragging { opacity: 0.4; }
+  .menu-table-row.drag-over { border-top: 3px solid var(--primary) !important; }
+
+  /* Replenish button — circular green with plus sign */
+  .replenish-btn:hover { background: #1b5e20 !important; transform: scale(1.05); }
+  .replenish-btn:active { transform: scale(0.95); }
+  .replenish-btn:disabled { background: var(--text-muted) !important; cursor: not-allowed; transform: none; }
+
   /* Mobile responsive for admin */
   @media (max-width: 768px) {
     .menu-row { flex-wrap: wrap; gap: 8px; }
@@ -320,6 +332,9 @@
     </div>
 
     <div id="menu-list"></div>
+    <p id="menu-list-footnote" style="display:none;font-size:0.85rem;color:var(--text-muted);margin-top:8px;">
+      ℹ Для изменения порядка товаров перетащите их за значок ⠿ (доступно только при выборе конкретной категории в фильтре выше).
+    </p>
   </div>
 
   <!-- CATEGORIES TAB -->
@@ -1162,6 +1177,7 @@ function populateCategoryFilter() {
 function renderMenuList() {
   const filter = document.getElementById('filter-menu-cat').value;
   const div = document.getElementById('menu-list');
+  const footnote = document.getElementById('menu-list-footnote');
   let items = APP_DATA.menu.slice();
   if (filter === '__none__') {
     items = items.filter(function(m) { return !m.category_id; });
@@ -1187,6 +1203,16 @@ function renderMenuList() {
     }, Infinity);
   }
 
+  // Helper: effective markup — 0 if cost == price, otherwise stored markup or (price - cost)
+  function effectiveMarkup(cost, price, storedMarkup) {
+    cost = Number(cost) || 0;
+    price = Number(price) || 0;
+    if (cost === price) return 0;
+    const m = Number(storedMarkup);
+    if (!isNaN(m) && m !== 0) return m;
+    return price - cost;
+  }
+
   // Sorting:
   // - When a specific category filter is selected (drag-and-drop mode):
   //   sort by `sort` field then by name (so manual ordering is respected)
@@ -1204,95 +1230,95 @@ function renderMenuList() {
     });
   }
 
+  // Show/hide footnote about drag-and-drop
+  if (footnote) footnote.style.display = filter === '' ? 'block' : 'none';
+
   if (items.length === 0) {
     div.innerHTML = '<div class="empty-state"><h3>Блюд нет</h3><p>Нажмите «Добавить блюдо»</p></div>';
     return;
   }
 
-  // Hint banner
+  // Build a table:
+  // Columns: [drag] | Название | Категория | Себестоимость | Наценка | Цена | Готовка | Изменить | Удалить
   let html = '';
   if (dragEnabled) {
-    html += '<div class="reorder-hint">⇅ Перетащите карточки, чтобы изменить порядок внутри выбранной категории</div>';
-  } else if (filter === '' ) {
-    html += '<div class="reorder-hint">ℹ Сортировка по алфавиту. Чтобы менять порядок товаров перетаскиванием — выберите конкретную категорию в фильтре выше</div>';
+    html += '<div class="reorder-hint">⇅ Перетащите строки за значок ⠿, чтобы изменить порядок внутри выбранной категории</div>';
   }
-  div.innerHTML = html;
+  html += '<table class="menu-table" style="width:100%;table-layout:fixed;border-collapse:collapse;">';
+  html += '<thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);">';
+  if (dragEnabled) html += '<th style="width:32px;padding:8px 4px;"></th>';
+  html += '<th style="width:24%;padding:8px;text-align:left;">Название</th>';
+  html += '<th style="width:18%;padding:8px;text-align:left;">Категория</th>';
+  html += '<th style="width:11%;padding:8px;text-align:right;">Себест.</th>';
+  html += '<th style="width:11%;padding:8px;text-align:right;">Наценка</th>';
+  html += '<th style="width:11%;padding:8px;text-align:right;">Цена</th>';
+  html += '<th style="width:11%;padding:8px;text-align:center;">Готовка</th>';
+  html += '<th style="width:42px;padding:8px;text-align:center;">✎</th>';
+  html += '<th style="width:42px;padding:8px;text-align:center;">✕</th>';
+  html += '</tr></thead><tbody>';
 
   items.forEach(function(item) {
     const needsCook = item.needs_cooking === true || item.needs_cooking === 'true';
     const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
-    const row = document.createElement('div');
-    row.className = 'menu-row';
-    row.style.flexWrap = 'wrap';
+    const itemCost = Number(item.cost) || 0;
+    const itemPrice = Number(item.price) || 0;
+    const itemMarkup = effectiveMarkup(itemCost, itemPrice, item.markup);
+
+    html += '<tr class="menu-table-row' + (dragEnabled ? ' draggable' : '') + '" ' +
+      (dragEnabled ? 'draggable="true" data-id="' + item.id + '"' : '') +
+      ' style="border-bottom:1px solid var(--border);vertical-align:top;">';
     if (dragEnabled) {
-      row.setAttribute('draggable', 'true');
-      row.dataset.id = item.id;
+      html += '<td style="padding:8px 4px;text-align:center;cursor:grab;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">⠿</td>';
     }
-    // Main row (name + actions)
-    let innerHtml =
-      (dragEnabled ? '<div class="drag-handle" title="Перетащите">⠿</div>' : '') +
-      '<div class="menu-name-block">' +
-        '<div class="menu-cat-badge">' + escapeHtml(catLabel(item)) + '</div>' +
-        '<div class="menu-name">' + escapeHtml(item.name) +
-          (item.name_translation ? '<div class="menu-name-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
-          (hasMods ?
-            '<div style="font-size:0.75rem;color:var(--primary);margin-top:2px;font-weight:600;">⚙ ' +
-              item.modifications.length + ' модификаций</div>' : ''
-          ) +
-        '</div>' +
-      '</div>' +
-      '<div class="menu-price">' + (hasMods ? 'от ' + formatMoney(minModPrice(item)) : formatMoney(item.price)) + '</div>' +
-      '<div class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '">' +
-        (needsCook ? 'готовка' : 'без готовки') +
-      '</div>' +
-      '<div class="menu-actions">' +
-        '<button class="btn btn-outline" onclick="openMenuModal(\'' + item.id + '\')">✎ Изменить</button>' +
-        '<button class="btn btn-danger" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
-      '</div>';
-
-    // Pricing details: always show cost/markup/price
-    // For items without modifications, show the main price breakdown.
-    // For items with modifications, show the list of all modifications.
-    innerHtml += '<div style="width:100%;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">';
-
+    // Name
+    html += '<td style="padding:8px;word-break:break-word;">';
+    html += '<div style="font-weight:600;font-size:1.05rem;">' + escapeHtml(item.name) + '</div>';
+    if (item.name_translation) {
+      html += '<div style="font-size:0.85rem;color:var(--text-muted);margin-top:2px;">' + escapeHtml(item.name_translation) + '</div>';
+    }
     if (hasMods) {
-      // Modifications list
-      innerHtml += '<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Модификации:</div>';
-      innerHtml += '<div style="display:flex;flex-direction:column;gap:4px;">';
+      html += '<div style="font-size:0.75rem;color:var(--primary);margin-top:4px;font-weight:600;">⚙ ' + item.modifications.length + ' модификаций</div>';
+      // Inline modifications list
+      html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">';
       item.modifications.forEach(function(mod) {
         const modCost = Number(mod.cost) || 0;
         const modPrice = Number(mod.price) || 0;
-        const modMarkup = Number(mod.markup);
-        const effectiveMarkup = (modCost === modPrice) ? 0 : (isNaN(modMarkup) ? (modPrice - modCost) : modMarkup);
-        innerHtml +=
-          '<div style="display:grid;grid-template-columns:1fr 80px 80px 80px;gap:6px;padding:4px 8px;background:#f7f7f7;border-radius:4px;font-size:0.85rem;align-items:center;">' +
-            '<div style="word-break:break-word;">' + escapeHtml(mod.name) + '</div>' +
-            '<div style="text-align:right;color:var(--text-muted);">себ ' + formatMoney(modCost) + '</div>' +
-            '<div style="text-align:right;color:var(--text-muted);">нац ' + formatMoney(effectiveMarkup) + '</div>' +
-            '<div style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(modPrice) + '</div>' +
-          '</div>';
+        const modMarkup = effectiveMarkup(modCost, modPrice, mod.markup);
+        html += '<div style="display:grid;grid-template-columns:1fr 60px 60px 60px;gap:4px;padding:3px 6px;background:#f7f7f7;border-radius:4px;font-size:0.78rem;align-items:center;">';
+        html += '<div style="word-break:break-word;">└ ' + escapeHtml(mod.name) + '</div>';
+        html += '<div style="text-align:right;color:var(--text-muted);">' + formatMoney(modCost) + '</div>';
+        html += '<div style="text-align:right;color:var(--text-muted);">' + formatMoney(modMarkup) + '</div>';
+        html += '<div style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(modPrice) + '</div>';
+        html += '</div>';
       });
-      innerHtml += '</div>';
-    } else {
-      // Single price breakdown
-      const itemCost = Number(item.cost) || 0;
-      const itemPrice = Number(item.price) || 0;
-      const itemMarkup = Number(item.markup);
-      const effectiveMarkup = (itemCost === itemPrice) ? 0 : (isNaN(itemMarkup) ? (itemPrice - itemCost) : itemMarkup);
-      innerHtml +=
-        '<div style="display:grid;grid-template-columns:1fr 80px 80px 80px;gap:6px;padding:4px 8px;background:#f7f7f7;border-radius:4px;font-size:0.85rem;align-items:center;">' +
-          '<div style="word-break:break-word;color:var(--text-muted);">Цена:</div>' +
-          '<div style="text-align:right;color:var(--text-muted);">себ ' + formatMoney(itemCost) + '</div>' +
-          '<div style="text-align:right;color:var(--text-muted);">нац ' + formatMoney(effectiveMarkup) + '</div>' +
-          '<div style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(itemPrice) + '</div>' +
-        '</div>';
+      html += '</div>';
     }
-
-    innerHtml += '</div>';
-
-    row.innerHTML = innerHtml;
-    div.appendChild(row);
+    html += '</td>';
+    // Category
+    html += '<td style="padding:8px;font-size:0.9rem;color:var(--text-muted);word-break:break-word;">' + escapeHtml(catLabel(item)) + '</td>';
+    // Cost
+    html += '<td style="padding:8px;text-align:right;color:var(--text-muted);">' + (hasMods ? '—' : formatMoney(itemCost)) + '</td>';
+    // Markup
+    html += '<td style="padding:8px;text-align:right;color:var(--text-muted);">' + (hasMods ? '—' : formatMoney(itemMarkup)) + '</td>';
+    // Price
+    html += '<td style="padding:8px;text-align:right;font-weight:700;color:var(--primary);">' +
+      (hasMods ? 'от ' + formatMoney(minModPrice(item)) : formatMoney(itemPrice)) + '</td>';
+    // Cook flag
+    html += '<td style="padding:8px;text-align:center;">' +
+      '<span class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '" style="display:inline-block;padding:3px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">' +
+      (needsCook ? 'готовка' : 'без готовки') +
+      '</span></td>';
+    // Edit (icon only)
+    html += '<td style="padding:8px;text-align:center;">' +
+      '<button class="btn btn-outline" style="padding:6px 10px;" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button></td>';
+    // Delete
+    html += '<td style="padding:8px;text-align:center;">' +
+      '<button class="btn btn-danger" style="padding:6px 10px;" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button></td>';
+    html += '</tr>';
   });
+  html += '</tbody></table>';
+
+  div.innerHTML = html;
 
   if (dragEnabled) {
     attachMenuDnD(div);
@@ -1302,7 +1328,7 @@ function renderMenuList() {
 /* Drag-and-drop for menu items */
 function attachMenuDnD(container) {
   let dragSrc = null;
-  const rows = container.querySelectorAll('.menu-row[draggable="true"]');
+  const rows = container.querySelectorAll('.menu-table-row.draggable');
 
   rows.forEach(function(row) {
     row.addEventListener('dragstart', function(e) {
@@ -1313,7 +1339,7 @@ function attachMenuDnD(container) {
     });
     row.addEventListener('dragend', function() {
       row.classList.remove('dragging');
-      container.querySelectorAll('.menu-row').forEach(function(r) {
+      container.querySelectorAll('.menu-table-row').forEach(function(r) {
         r.classList.remove('drag-over');
       });
       dragSrc = null;
@@ -1333,12 +1359,12 @@ function attachMenuDnD(container) {
       row.classList.remove('drag-over');
       if (!dragSrc || dragSrc === row) return;
       // Insert before the row we're dropping onto
-      container.insertBefore(dragSrc, row);
+      row.parentNode.insertBefore(dragSrc, row);
       saveMenuOrder(container);
     });
   });
 
-  // Allow dropping at the end (empty space)
+  // Allow dropping at the end (empty space below the table)
   container.addEventListener('dragover', function(e) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -1346,11 +1372,11 @@ function attachMenuDnD(container) {
   container.addEventListener('drop', function(e) {
     e.preventDefault();
     if (!dragSrc) return;
-    // If dropped outside any row, append to the end
-    const lastRow = container.querySelector('.menu-row:last-child');
-    if (e.target === container || (lastRow && e.target === container)) {
-      if (dragSrc !== lastRow) {
-        container.appendChild(dragSrc);
+    // If dropped outside any row (on the table or container), append to the end of tbody
+    const tbody = container.querySelector('.menu-table tbody');
+    if (tbody && (e.target === container || e.target === tbody || e.target.parentNode === tbody && e.target === tbody.lastElementChild)) {
+      if (dragSrc !== tbody.lastElementChild) {
+        tbody.appendChild(dragSrc);
         saveMenuOrder(container);
       }
     }
@@ -1358,7 +1384,7 @@ function attachMenuDnD(container) {
 }
 
 async function saveMenuOrder(container) {
-  const rows = container.querySelectorAll('.menu-row[draggable="true"]');
+  const rows = container.querySelectorAll('.menu-table-row.draggable');
   const items = [];
   rows.forEach(function(row, idx) {
     items.push({ id: row.dataset.id, sort: idx });
@@ -2004,12 +2030,12 @@ async function loadStockReport() {
       html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
     }
     html += '<table style="width:100%;table-layout:fixed;" id="stock-table"><thead><tr>';
-    html += '<th style="width:30%;">Блюдо</th>';
-    html += '<th style="width:12%;">Остаток</th>';
-    html += '<th style="width:12%;">За день</th>';
-    html += '<th style="width:12%;">За неделю</th>';
-    html += '<th style="width:12%;">За месяц</th>';
-    html += '<th style="width:10%;">Пополнить</th>';
+    html += '<th style="width:28%;">Блюдо</th>';
+    html += '<th style="width:11%;">Остаток</th>';
+    html += '<th style="width:11%;">За день</th>';
+    html += '<th style="width:11%;">За неделю</th>';
+    html += '<th style="width:11%;">За месяц</th>';
+    html += '<th style="width:28%;">Пополнить</th>';
     html += '</tr></thead><tbody>';
     items.forEach(function(it) {
       const lowClass = it.low_stock ? ' style="background:#ffebee;"' : '';
@@ -2022,8 +2048,15 @@ async function loadStockReport() {
       html += '<td>' + it.consumed_day + '</td>';
       html += '<td>' + it.consumed_week + '</td>';
       html += '<td>' + it.consumed_month + '</td>';
-      html += '<td><input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" style="width:60px;padding:4px;font-size:0.9rem;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();replenishFromInput(\'' + it.id + '\');}">' +
-        '<button class="btn btn-success btn-sm" style="margin-left:4px;padding:4px 8px;" onclick="replenishFromInput(\'' + it.id + '\')">✓</button></td>';
+      // Larger replenish field + circular green button with a plus sign
+      html += '<td style="padding:6px 8px;"><div style="display:flex;align-items:center;gap:8px;">' +
+        '<input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" ' +
+          'style="flex:1;min-width:0;padding:8px 10px;font-size:1rem;border:1px solid var(--border);border-radius:6px;" ' +
+          'onkeydown="if(event.key===\'Enter\'){event.preventDefault();replenishFromInput(\'' + it.id + '\');}">' +
+        '<button type="button" class="replenish-btn" title="Пополнить" ' +
+          'style="flex:none;width:44px;height:44px;border-radius:50%;border:none;background:var(--success);color:#fff;font-size:1.6rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.15);" ' +
+          'onclick="replenishFromInput(\'' + it.id + '\')">+</button>' +
+        '</div></td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
