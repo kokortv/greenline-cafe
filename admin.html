@@ -1229,6 +1229,11 @@ function renderMenuList() {
   if (!window._menuSortKey) window._menuSortKey = null;
   if (!window._menuSortDir) window._menuSortDir = 'asc';
 
+  // dragEnabled = a specific category is selected (excludes "All" and "Без категории").
+  // When true, rows can be dragged to reorder them — UNLESS the user has
+  // explicitly chosen a column sort (in which case drag is temporarily disabled).
+  const dragEnabled = !!filter && filter !== '__none__';
+
   if (window._menuSortKey) {
     // User has explicitly chosen a column — sort by it
     const key = window._menuSortKey;
