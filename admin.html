@@ -1270,62 +1270,86 @@ function renderMenuList() {
     if (dragEnabled) {
       html += '<td style="padding:12px 4px;text-align:center;cursor:grab;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">⠿</td>';
     }
-    // Name cell — name + translation + (for items with mods) a small badge with mod count
+
+    // Shared line style for modification rows so all columns stay aligned
+    const modLineHeight = '1.6em';
+    const modLineMargin = '2px 0';
+
+    // Name cell — name + translation + mod count badge + (for items with mods) the list of modification names
     html += '<td style="padding:12px;word-break:break-word;">';
     html += '<div style="font-weight:600;font-size:1.05rem;">' + escapeHtml(item.name) + '</div>';
     if (item.name_translation) {
       html += '<div style="font-size:0.85rem;color:var(--text-muted);margin-top:2px;">' + escapeHtml(item.name_translation) + '</div>';
     }
     if (hasMods) {
-      html += '<div style="font-size:0.75rem;color:var(--primary);margin-top:4px;font-weight:600;">⚙ ' + item.modifications.length + ' модификаций</div>';
+      html += '<div style="font-size:0.75rem;color:var(--primary);margin-top:4px;font-weight:600;margin-bottom:4px;">⚙ ' + item.modifications.length + ' модификаций</div>';
+      // Each modification name on its own line — these line up with the values
+      // in the Cost / Markup / Price columns (same line-height + margin).
+      item.modifications.forEach(function(mod) {
+        html += '<div style="font-size:0.85rem;line-height:' + modLineHeight + ';margin:' + modLineMargin + ';color:var(--text);">└ ' + escapeHtml(mod.name) + '</div>';
+      });
     }
     html += '</td>';
+
     // Category
     html += '<td style="padding:12px;font-size:0.9rem;color:var(--text-muted);word-break:break-word;">' + escapeHtml(catLabel(item)) + '</td>';
 
-    // Cost / Markup / Price — for items WITH modifications, render each modification
-    // as a separate line within its column so all values stay aligned by column.
+    // Cost / Markup / Price columns.
+    // For items WITH modifications: render one value per modification, each on
+    // its own line. The line-height and margin match those of the modification
+    // names in the Name column so values stay aligned with their names.
     if (hasMods) {
-      // Cost column — list each modification's cost on its own line
+      // Cost column — only the cost values (no names)
       html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">';
-      item.modifications.forEach(function(mod, i) {
-        if (i > 0) html += '<div style="height:6px;"></div>';
+      // Add a top spacer so the first value aligns with the first mod name
+      // (the Name column has the title + badge above the mod names, so we
+      // push the cost column content down to match).
+      html += '<div style="font-size:1.05rem;line-height:1.05rem;">&nbsp;</div>'; // matches name line
+      if (item.name_translation) html += '<div style="font-size:0.85rem;line-height:0.85rem;margin-top:2px;">&nbsp;</div>';
+      html += '<div style="font-size:0.75rem;line-height:0.75rem;margin-top:4px;margin-bottom:4px;">&nbsp;</div>'; // matches mod-count badge
+      item.modifications.forEach(function(mod) {
         const modCost = Number(mod.cost) || 0;
-        html += '<div style="font-size:0.85rem;">' + escapeHtml(mod.name) + ': ' + formatMoney(modCost) + '</div>';
+        html += '<div style="font-size:0.85rem;line-height:' + modLineHeight + ';margin:' + modLineMargin + ';">' + formatMoney(modCost) + '</div>';
       });
       html += '</td>';
-      // Markup column — list each modification's markup %
+
+      // Markup column — only the markup % values
       html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">';
-      item.modifications.forEach(function(mod, i) {
-        if (i > 0) html += '<div style="height:6px;"></div>';
+      html += '<div style="font-size:1.05rem;line-height:1.05rem;">&nbsp;</div>';
+      if (item.name_translation) html += '<div style="font-size:0.85rem;line-height:0.85rem;margin-top:2px;">&nbsp;</div>';
+      html += '<div style="font-size:0.75rem;line-height:0.75rem;margin-top:4px;margin-bottom:4px;">&nbsp;</div>';
+      item.modifications.forEach(function(mod) {
         const modCost = Number(mod.cost) || 0;
         const modPrice = Number(mod.price) || 0;
         const modMarkup = effectiveMarkup(modCost, modPrice, mod.markup);
-        html += '<div style="font-size:0.85rem;">' + formatPercent(modMarkup) + '</div>';
+        html += '<div style="font-size:0.85rem;line-height:' + modLineHeight + ';margin:' + modLineMargin + ';">' + formatPercent(modMarkup) + '</div>';
       });
       html += '</td>';
-      // Price column — list each modification's price (bold, primary color)
+
+      // Price column — only the price values (bold, primary color)
       html += '<td style="padding:12px;text-align:right;">';
-      item.modifications.forEach(function(mod, i) {
-        if (i > 0) html += '<div style="height:6px;"></div>';
+      html += '<div style="font-size:1.05rem;line-height:1.05rem;">&nbsp;</div>';
+      if (item.name_translation) html += '<div style="font-size:0.85rem;line-height:0.85rem;margin-top:2px;">&nbsp;</div>';
+      html += '<div style="font-size:0.75rem;line-height:0.75rem;margin-top:4px;margin-bottom:4px;">&nbsp;</div>';
+      item.modifications.forEach(function(mod) {
         const modPrice = Number(mod.price) || 0;
-        html += '<div style="font-size:0.85rem;font-weight:700;color:var(--primary);">' + formatMoney(modPrice) + '</div>';
+        html += '<div style="font-size:0.85rem;line-height:' + modLineHeight + ';margin:' + modLineMargin + ';font-weight:700;color:var(--primary);">' + formatMoney(modPrice) + '</div>';
       });
       html += '</td>';
     } else {
-      // Single price item — show one value per column
-      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">' + formatMoney(itemCost) + '</td>';
-      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">' + formatPercent(itemMarkup) + '</td>';
-      html += '<td style="padding:12px;text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(itemPrice) + '</td>';
+      // Single price item — show one value per column, vertically centered with the title
+      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);vertical-align:top;">' + formatMoney(itemCost) + '</td>';
+      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);vertical-align:top;">' + formatPercent(itemMarkup) + '</td>';
+      html += '<td style="padding:12px;text-align:right;font-weight:700;color:var(--primary);vertical-align:top;">' + formatMoney(itemPrice) + '</td>';
     }
 
     // Cook flag
-    html += '<td style="padding:12px;text-align:center;">' +
+    html += '<td style="padding:12px;text-align:center;vertical-align:top;">' +
       '<span class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '" style="display:inline-block;padding:3px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">' +
       (needsCook ? 'готовка' : 'без готовки') +
       '</span></td>';
     // Actions — both buttons in one cell, no header
-    html += '<td style="padding:12px;text-align:center;white-space:nowrap;">' +
+    html += '<td style="padding:12px;text-align:center;white-space:nowrap;vertical-align:top;">' +
       '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button> ' +
       '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
       '</td>';
