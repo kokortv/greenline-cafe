@@ -364,7 +364,11 @@
     color: var(--text);
   }
 
-  body.has-cart-panel { padding-bottom: 90px; }
+  /* Consistent bottom padding on all waiter screens so buttons never stick
+     to the bottom edge of the screen. When the cart panel is visible, add
+     extra space to accommodate it. */
+  body { padding-bottom: 32px; }
+  body.has-cart-panel { padding-bottom: 110px; }
 
   /* Mobile responsive tweaks for waiter page */
   @media (max-width: 768px) {
@@ -768,7 +772,7 @@
 </div>
 
 <script src="config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.min.js"></script>
 <script src="common.js"></script>
 <script>
 window.addEventListener('error', function(e) {
@@ -1537,8 +1541,10 @@ function minModPrice(item) {
 // Show a modal/bottom-sheet with the list of modifications for a menu item.
 // The picker stays open after a selection so the user can pick multiple
 // different modifications or pick the same one multiple times.
-// Close the picker by clicking the ✕ button or by clicking on the backdrop
-// (the dark overlay area outside the white sheet).
+// Each modification row also has a "−" button to remove a mistakenly
+// added item from the cart without closing the picker.
+// Close the picker by clicking the ✕ button, "Готово" button, or by
+// clicking on the backdrop (the dark overlay area outside the white sheet).
 function showModificationPicker(item) {
   // Remove any existing picker
   const existing = document.getElementById('mod-picker-overlay');
@@ -1556,22 +1562,27 @@ function showModificationPicker(item) {
   html += '<h3 style="margin:0;font-size:1.1rem;">' + escapeHtml(item.name) + '</h3>';
   html += '<button class="btn btn-outline" style="padding:4px 10px;font-size:1.1rem;" onclick="closeModificationPicker()">✕</button>';
   html += '</div>';
-  html += '<div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Нажмите на вариант, чтобы добавить. Можно выбрать несколько разных или один несколько раз.</div>';
+  html += '<div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Нажмите «+» чтобы добавить, «−» чтобы убрать. Можно выбрать несколько разных или один несколько раз.</div>';
   // Counter line (updated after each pick)
   html += '<div id="mod-picker-counter" style="font-size:0.9rem;color:var(--primary);font-weight:600;margin-bottom:8px;">Добавлено: 0</div>';
   html += '<div id="mod-picker-list" style="display:flex;flex-direction:column;gap:8px;">';
   item.modifications.forEach(function(mod) {
-    html += '<div class="mod-pick-row" data-mod-id="' + mod.id + '" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;" ' +
-      'onclick="pickModification(\'' + item.id + '\', \'' + mod.id + '\')">' +
-      '<div>' +
-        '<div style="font-size:1rem;font-weight:600;">' + escapeHtml(mod.name) + '</div>' +
-        '<div class="mod-pick-count" style="font-size:0.85rem;color:var(--primary);font-weight:700;margin-top:2px;display:none;">×0</div>' +
-      '</div>' +
-      '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<span style="font-weight:700;color:var(--primary);">' + formatMoney(mod.price) + '</span>' +
-        '<span style="color:var(--success);font-size:1.3rem;font-weight:700;">+</span>' +
-      '</div>' +
-    '</div>';
+    html += '<div class="mod-pick-row" data-mod-id="' + mod.id + '" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">';
+    html += '<div style="flex:1;min-width:0;">';
+    html += '<div style="font-size:1rem;font-weight:600;">' + escapeHtml(mod.name) + '</div>';
+    html += '<div class="mod-pick-count" style="font-size:0.85rem;color:var(--primary);font-weight:700;margin-top:2px;display:none;">×0</div>';
+    html += '</div>';
+    // Price + stepper (+ / −)
+    html += '<div style="display:flex;align-items:center;gap:8px;flex:none;">';
+    html += '<span style="font-weight:700;color:var(--primary);">' + formatMoney(mod.price) + '</span>';
+    html += '<button type="button" class="btn btn-outline mod-remove-btn" title="Убрать из корзины" ' +
+      'style="width:32px;height:32px;padding:0;border-radius:50%;font-size:1.2rem;font-weight:700;color:var(--danger);display:flex;align-items:center;justify-content:center;line-height:1;" ' +
+      'onclick="event.stopPropagation();removeModificationFromCart(\'' + item.id + '\', \'' + mod.id + '\')">−</button>';
+    html += '<button type="button" class="btn mod-add-btn" title="Добавить в корзину" ' +
+      'style="width:32px;height:32px;padding:0;border-radius:50%;border:none;background:var(--success);color:#fff;font-size:1.3rem;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;" ' +
+      'onclick="event.stopPropagation();pickModification(\'' + item.id + '\', \'' + mod.id + '\')">+</button>';
+    html += '</div>';
+    html += '</div>';
   });
   html += '</div>';
   // "Done" button at the bottom
@@ -1586,6 +1597,9 @@ function showModificationPicker(item) {
   // Prevent clicks inside the sheet from bubbling up to the overlay
   sheet.addEventListener('click', function(e) { e.stopPropagation(); });
   document.body.appendChild(overlay);
+
+  // Initialize counts based on current cart state (in case picker is reopened)
+  updateModificationPickerCounts(item.id);
 }
 
 // Close the modification picker
@@ -1594,7 +1608,7 @@ function closeModificationPicker() {
   if (overlay) overlay.remove();
 }
 
-// Find the menu item + modification by id, add to cart, and update the picker UI.
+// Add a modification to the cart (called from the picker's "+" button).
 // The picker stays open after each pick.
 function pickModification(itemId, modId) {
   const item = APP_DATA.menu.find(function(m) { return m.id === itemId; });
@@ -1604,26 +1618,77 @@ function pickModification(itemId, modId) {
   // Add to cart with modification (picker stays open)
   addToCart(item, mod);
 
-  // Update the picker UI: increment the count for this modification
+  // Brief green flash on the row
   const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + modId + '"]');
   if (row) {
-    const countEl = row.querySelector('.mod-pick-count');
-    const match = (countEl.textContent || '').match(/×(\d+)/);
-    let n = match ? parseInt(match[1], 10) : 0;
-    n += 1;
-    countEl.textContent = '×' + n;
-    countEl.style.display = 'block';
-    // Brief green flash on the row
     const prevBg = row.style.background;
     row.style.transition = 'background-color 0.3s';
     row.style.background = '#c8e6c9';
     setTimeout(function() { row.style.background = prevBg; }, 400);
   }
 
-  // Update the counter
+  // Refresh all counts and the total counter
+  updateModificationPickerCounts(itemId);
+}
+
+// Remove one unit of a modification from the cart (called from the picker's "−" button).
+// Only removes if such an item exists in the cart.
+function removeModificationFromCart(itemId, modId) {
+  // Find the cart entry for this item + modification
+  const idx = state.cart.findIndex(function(c) {
+    return c.menu_item_id === itemId && c.modification_id === modId;
+  });
+  if (idx < 0) return; // nothing to remove
+  // Decrement quantity; remove the entry if it reaches 0
+  const entry = state.cart[idx];
+  entry.quantity -= 1;
+  if (entry.quantity <= 0) {
+    state.cart.splice(idx, 1);
+  }
+  // Re-render the cart panel (bottom bar with total)
+  renderCartPanel();
+
+  // Brief red flash on the row
+  const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + modId + '"]');
+  if (row) {
+    const prevBg = row.style.background;
+    row.style.transition = 'background-color 0.3s';
+    row.style.background = '#ffcdd2';
+    setTimeout(function() { row.style.background = prevBg; }, 400);
+  }
+
+  // Refresh counts and the total counter
+  updateModificationPickerCounts(itemId);
+  // Beep to confirm removal (lower pitch than add)
+  beep(440, 60, 0.1);
+}
+
+// Refresh the per-modification counts and the total counter in the picker
+function updateModificationPickerCounts(itemId) {
+  // Update each row's count badge
+  const item = APP_DATA.menu.find(function(m) { return m.id === itemId; });
+  if (!item) return;
+  (item.modifications || []).forEach(function(mod) {
+    const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + mod.id + '"]');
+    if (!row) return;
+    const countEl = row.querySelector('.mod-pick-count');
+    const inCart = state.cart.reduce(function(s, c) {
+      return (c.menu_item_id === itemId && c.modification_id === mod.id) ? s + c.quantity : s;
+    }, 0);
+    if (inCart > 0) {
+      countEl.textContent = '×' + inCart;
+      countEl.style.display = 'block';
+    } else {
+      countEl.style.display = 'none';
+      countEl.textContent = '×0';
+    }
+    // Disable the "−" button if there's nothing to remove for this mod
+    const removeBtn = row.querySelector('.mod-remove-btn');
+    if (removeBtn) removeBtn.disabled = (inCart === 0);
+  });
+  // Update the total counter
   const counterEl = document.getElementById('mod-picker-counter');
   if (counterEl) {
-    // Count all modifications of this item currently in the cart
     const totalPicked = state.cart.reduce(function(s, c) {
       return c.menu_item_id === itemId && c.modification_id ? s + c.quantity : s;
     }, 0);
@@ -1780,8 +1845,9 @@ function setCartComment(idx, val) {
   if (state.cart[idx]) state.cart[idx].comment = val;
 }
 
-function clearCart() {
-  if (!confirm('Очистить корзину?')) return;
+async function clearCart() {
+  const ok = await confirmDialog('Очистить корзину?', 'Очистить корзину', 'Очистить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   state.cart = [];
   renderCartPanel();
   renderCartItems();
@@ -2146,7 +2212,14 @@ function renderHomeActiveOrders() {
 }
 
 async function pauseOrderById(orderId) {
-  if (!confirm('Поставить заказ на паузу? Он уйдёт с главного экрана, но будет виден в списке активных заказов (кнопка справа сверху).')) return;
+  const ok = await confirmDialog(
+    'Поставить заказ на паузу? Он уйдёт с главного экрана, но будет виден в списке активных заказов (кнопка справа сверху).',
+    'Пауза заказа',
+    'На паузу',
+    'Отмена',
+    'btn-primary'
+  );
+  if (!ok) return;
   try {
     await apiPost('pauseOrder', { order_id: orderId });
     showToast('Заказ на паузе — найдёте его в списке активных заказов', 'info');
@@ -2449,7 +2522,8 @@ async function changeOrderItemQty(itemId, delta) {
   const newQty = Number(item.quantity) + delta;
   if (newQty <= 0) {
     // Remove — this needs server confirmation
-    if (!confirm('Удалить позицию из заказа?')) return;
+    const ok = await confirmDialog('Удалить позицию из заказа?', 'Удаление позиции', 'Удалить', 'Отмена', 'btn-danger');
+    if (!ok) return;
     // Optimistic: remove from local state + DOM
     order.items = order.items.filter(function(i) { return i.id !== itemId; });
     const cardEl = document.querySelector('.cart-item[data-item-id="' + itemId + '"]');
@@ -2499,7 +2573,8 @@ function recalcOrderTotal() {
 }
 
 async function removeOrderItem(itemId) {
-  if (!confirm('Удалить позицию из заказа?')) return;
+  const ok = await confirmDialog('Удалить позицию из заказа?', 'Удаление позиции', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     const updatedOrder = await apiPost('removeItemFromOrder', { item_id: itemId });
     if (updatedOrder) {
@@ -2753,7 +2828,8 @@ async function confirmCompleteOrder() {
 }
 
 async function cancelOrder() {
-  if (!confirm('Отменить заказ полностью? Он будет удалён.')) return;
+  const ok = await confirmDialog('Отменить заказ полностью? Он будет удалён.', 'Отмена заказа', 'Отменить заказ', 'Оставить', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('deleteOrder', { order_id: state.currentOrderId });
     showToast('Заказ отменён', 'info');

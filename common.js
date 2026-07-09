@@ -41,7 +41,6 @@ async function dbSelect(table, filters) {
     console.error('dbSelect error:', table, error.message, error);
     throw new Error(error.message);
   }
-  console.log('dbSelect', table, '→', (data || []).length, 'rows');
   return data || [];
 }
 
@@ -167,8 +166,6 @@ async function loadAppData(force) {
     dbSelect('users'),
     dbSelect('menu_modifications')
   ]);
-
-  console.log('loadAppData: settings=', settings.length, 'categories=', categories.length, 'menu=', menu.length, 'users=', users.length, 'modifications=', modifications.length);
 
   // Filter active items on client side
   const activeCategories = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
@@ -803,9 +800,7 @@ async function getStockReport() {
 
 /* ---------- Auth (login) ---------- */
 async function loginWithPassword(userId, password) {
-  console.log('loginWithPassword: userId=', userId);
   const users = await dbSelect('users', { id: userId });
-  console.log('loginWithPassword: found users=', users.length, users);
   if (users.length === 0) throw new Error('Пользователь не найден');
   const user = users[0];
 
@@ -963,6 +958,82 @@ function openModal(id) {
 function closeModal(id) {
   const el = document.getElementById(id);
   if (el) el.classList.remove('open');
+}
+
+/* ---------- Custom confirm dialog ---------- */
+// Replaces window.confirm() with a styled in-app modal.
+// Usage:  const ok = await confirmDialog('Удалить?', 'Подтвердите удаление', 'Удалить', 'Отмена');
+//         if (ok) { ... }
+let _confirmDialogPromise = null;
+function confirmDialog(message, title, okText, cancelText, okClass) {
+  // If a confirm dialog is already open, reject the new one to avoid stacking
+  if (_confirmDialogPromise) return _confirmDialogPromise;
+
+  return new Promise(function(resolve) {
+    // Remove any existing dialog
+    const existing = document.getElementById('confirm-dialog-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-dialog-overlay';
+    overlay.style.cssText =
+      'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText =
+      'background:#fff;border-radius:12px;padding:24px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.25);';
+    let html = '';
+    if (title) {
+      html += '<h3 style="margin:0 0 8px;font-size:1.1rem;font-weight:700;color:var(--text);">' + escapeHtml(title) + '</h3>';
+    }
+    html += '<p style="margin:0 0 20px;font-size:1rem;color:var(--text);line-height:1.5;">' + escapeHtml(message) + '</p>';
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;">';
+    html += '<button type="button" class="btn btn-outline" id="confirm-dialog-cancel" style="min-width:96px;padding:10px 16px;">' + escapeHtml(cancelText || 'Отмена') + '</button>';
+    html += '<button type="button" class="btn ' + (okClass || 'btn-danger') + '" id="confirm-dialog-ok" style="min-width:96px;padding:10px 16px;">' + escapeHtml(okText || 'OK') + '</button>';
+    html += '</div>';
+    modal.innerHTML = html;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Animate in
+    modal.style.transform = 'scale(0.95)';
+    modal.style.opacity = '0';
+    modal.style.transition = 'transform 0.15s, opacity 0.15s';
+    requestAnimationFrame(function() {
+      modal.style.transform = 'scale(1)';
+      modal.style.opacity = '1';
+    });
+
+    function closeDialog(result) {
+      modal.style.transform = 'scale(0.95)';
+      modal.style.opacity = '0';
+      setTimeout(function() {
+        overlay.remove();
+        _confirmDialogPromise = null;
+        resolve(result);
+      }, 150);
+    }
+
+    document.getElementById('confirm-dialog-ok').onclick = function() { closeDialog(true); };
+    document.getElementById('confirm-dialog-cancel').onclick = function() { closeDialog(false); };
+    // Close on backdrop click
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeDialog(false);
+    });
+    // Close on Escape
+    const escHandler = function(e) {
+      if (e.key === 'Escape') {
+        closeDialog(false);
+        document.removeEventListener('keydown', escHandler);
+      } else if (e.key === 'Enter') {
+        closeDialog(true);
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+    // Focus the OK button after a tiny delay
+    setTimeout(function() { document.getElementById('confirm-dialog-ok').focus(); }, 100);
+  });
 }
 
 /* ---------- Format ---------- */

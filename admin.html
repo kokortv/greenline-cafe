@@ -692,7 +692,7 @@
 </div>
 
 <script src="config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase.min.js"></script>
 <script src="common.js"></script>
 <script>
 // Global error handler — shows errors as a visible banner so the user can
@@ -923,8 +923,10 @@ async function saveSettings() {
 }
 
 async function resetOrders() {
-  if (!confirm('Удалить ВСЕ заказы? Это действие необратимо.')) return;
-  if (!confirm('Точно? Все заказы (активные и завершённые) будут удалены безвозвратно.')) return;
+  const ok1 = await confirmDialog('Удалить ВСЕ заказы? Это действие необратимо.', 'Удаление всех заказов', 'Удалить все', 'Отмена', 'btn-danger');
+  if (!ok1) return;
+  const ok2 = await confirmDialog('Точно? Все заказы (активные и завершённые) будут удалены безвозвратно.', 'Точное подтверждение', 'Да, удалить всё', 'Отмена', 'btn-danger');
+  if (!ok2) return;
   try {
     // Fetch all orders and delete them one by one
     const data = await apiGet('getOrders', { status: 'all' });
@@ -1123,7 +1125,8 @@ async function viewOrder(orderId) {
 }
 
 async function completeOrderAdmin(orderId) {
-  if (!confirm('Завершить этот заказ?')) return;
+  const ok = await confirmDialog('Завершить этот заказ?', 'Завершение заказа', 'Завершить', 'Отмена', 'btn-primary');
+  if (!ok) return;
   try {
     await apiPost('updateOrderStatus', { order_id: orderId, status: 'completed' });
     showToast('Заказ завершён', 'success');
@@ -1134,7 +1137,8 @@ async function completeOrderAdmin(orderId) {
 }
 
 async function deleteOrderAdmin(orderId) {
-  if (!confirm('Удалить этот заказ безвозвратно?')) return;
+  const ok = await confirmDialog('Удалить этот заказ безвозвратно?', 'Удаление заказа', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('deleteOrder', { order_id: orderId });
     showToast('Заказ удалён', 'info');
@@ -1780,7 +1784,8 @@ async function saveMenuItem() {
 }
 
 async function deleteMenuItem(id) {
-  if (!confirm('Удалить блюдо из меню?')) return;
+  const ok = await confirmDialog('Удалить блюдо из меню?', 'Удаление блюда', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('deleteMenuItem', { id: id });
     showToast('Блюдо удалено', 'info');
@@ -2031,7 +2036,8 @@ async function deleteCategory(id) {
   let msg = 'Удалить категорию?';
   if (hasChildren) msg = 'У этой категории есть подкатегории. Удалить всё равно? (Подкатегории останутся, но потеряют родителя)';
   if (hasItems) msg = 'У этой категории есть блюда. Удалить всё равно? (Блюда останутся, но потеряют категорию)';
-  if (!confirm(msg)) return;
+  const ok = await confirmDialog(msg, 'Удаление категории', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('deleteCategory', { id: id });
     showToast('Категория удалена', 'info');
@@ -2266,7 +2272,8 @@ async function saveUserBtn() {
 }
 
 async function deleteUserBtn(id) {
-  if (!confirm('Удалить сотрудника?')) return;
+  const ok = await confirmDialog('Удалить сотрудника?', 'Удаление сотрудника', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('deleteUser', { id: id });
     showToast('Сотрудник удалён', 'info');
@@ -2340,7 +2347,8 @@ async function savePassword() {
 
 async function clearPassword() {
   const userId = document.getElementById('pwd-user-id').value;
-  if (!confirm('Удалить пароль? Сотрудник не сможет войти, пока не получит новый.')) return;
+  const ok = await confirmDialog('Удалить пароль? Сотрудник не сможет войти, пока не получит новый.', 'Удаление пароля', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('setPassword', {
       user_id: userId,
@@ -2401,7 +2409,8 @@ async function playSoundPreview(name) {
 }
 
 async function deleteSoundConfirm(name) {
-  if (!confirm('Удалить URL звука? Будет использоваться стандартный сигнал.')) return;
+  const ok = await confirmDialog('Удалить URL звука? Будет использоваться стандартный сигнал.', 'Удаление звука', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('deleteSound', { name: name });
     showToast('URL удалён', 'info');
