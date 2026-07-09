@@ -1220,25 +1220,28 @@ function renderMenuList() {
 
   items.forEach(function(item) {
     const needsCook = item.needs_cooking === true || item.needs_cooking === 'true';
+    const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
     const row = document.createElement('div');
     row.className = 'menu-row';
+    row.style.flexWrap = 'wrap';
     if (dragEnabled) {
       row.setAttribute('draggable', 'true');
       row.dataset.id = item.id;
     }
-    row.innerHTML =
+    // Main row (name + actions)
+    let innerHtml =
       (dragEnabled ? '<div class="drag-handle" title="Перетащите">⠿</div>' : '') +
       '<div class="menu-name-block">' +
         '<div class="menu-cat-badge">' + escapeHtml(catLabel(item)) + '</div>' +
         '<div class="menu-name">' + escapeHtml(item.name) +
           (item.name_translation ? '<div class="menu-name-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
-          (item.has_modifications ?
+          (hasMods ?
             '<div style="font-size:0.75rem;color:var(--primary);margin-top:2px;font-weight:600;">⚙ ' +
-              (item.modifications ? item.modifications.length : 0) + ' модификаций</div>' : ''
+              item.modifications.length + ' модификаций</div>' : ''
           ) +
         '</div>' +
       '</div>' +
-      '<div class="menu-price">' + (item.has_modifications ? 'от ' + formatMoney(minModPrice(item)) : formatMoney(item.price)) + '</div>' +
+      '<div class="menu-price">' + (hasMods ? 'от ' + formatMoney(minModPrice(item)) : formatMoney(item.price)) + '</div>' +
       '<div class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '">' +
         (needsCook ? 'готовка' : 'без готовки') +
       '</div>' +
@@ -1246,6 +1249,48 @@ function renderMenuList() {
         '<button class="btn btn-outline" onclick="openMenuModal(\'' + item.id + '\')">✎ Изменить</button>' +
         '<button class="btn btn-danger" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
       '</div>';
+
+    // Pricing details: always show cost/markup/price
+    // For items without modifications, show the main price breakdown.
+    // For items with modifications, show the list of all modifications.
+    innerHtml += '<div style="width:100%;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">';
+
+    if (hasMods) {
+      // Modifications list
+      innerHtml += '<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Модификации:</div>';
+      innerHtml += '<div style="display:flex;flex-direction:column;gap:4px;">';
+      item.modifications.forEach(function(mod) {
+        const modCost = Number(mod.cost) || 0;
+        const modPrice = Number(mod.price) || 0;
+        const modMarkup = Number(mod.markup);
+        const effectiveMarkup = (modCost === modPrice) ? 0 : (isNaN(modMarkup) ? (modPrice - modCost) : modMarkup);
+        innerHtml +=
+          '<div style="display:grid;grid-template-columns:1fr 80px 80px 80px;gap:6px;padding:4px 8px;background:#f7f7f7;border-radius:4px;font-size:0.85rem;align-items:center;">' +
+            '<div style="word-break:break-word;">' + escapeHtml(mod.name) + '</div>' +
+            '<div style="text-align:right;color:var(--text-muted);">себ ' + formatMoney(modCost) + '</div>' +
+            '<div style="text-align:right;color:var(--text-muted);">нац ' + formatMoney(effectiveMarkup) + '</div>' +
+            '<div style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(modPrice) + '</div>' +
+          '</div>';
+      });
+      innerHtml += '</div>';
+    } else {
+      // Single price breakdown
+      const itemCost = Number(item.cost) || 0;
+      const itemPrice = Number(item.price) || 0;
+      const itemMarkup = Number(item.markup);
+      const effectiveMarkup = (itemCost === itemPrice) ? 0 : (isNaN(itemMarkup) ? (itemPrice - itemCost) : itemMarkup);
+      innerHtml +=
+        '<div style="display:grid;grid-template-columns:1fr 80px 80px 80px;gap:6px;padding:4px 8px;background:#f7f7f7;border-radius:4px;font-size:0.85rem;align-items:center;">' +
+          '<div style="word-break:break-word;color:var(--text-muted);">Цена:</div>' +
+          '<div style="text-align:right;color:var(--text-muted);">себ ' + formatMoney(itemCost) + '</div>' +
+          '<div style="text-align:right;color:var(--text-muted);">нац ' + formatMoney(effectiveMarkup) + '</div>' +
+          '<div style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(itemPrice) + '</div>' +
+        '</div>';
+    }
+
+    innerHtml += '</div>';
+
+    row.innerHTML = innerHtml;
     div.appendChild(row);
   });
 
@@ -1580,12 +1625,20 @@ function collectModifications() {
   rows.forEach(function(row) {
     const name = (row.querySelector('.mod-name').value || '').trim();
     if (!name) return; // skip empty rows
+    const cost = parseFloat(row.querySelector('.mod-cost').value) || 0;
+    const price = parseFloat(row.querySelector('.mod-price').value) || 0;
+    // If cost == price, markup is implicitly 0. Otherwise use the entered markup
+    // or derive it as price - cost.
+    let markup = parseFloat(row.querySelector('.mod-markup').value);
+    if (isNaN(markup)) markup = 0;
+    if (cost === price) markup = 0;
+    else if (markup === 0 && price !== cost) markup = price - cost;
     mods.push({
       id: row.dataset.modId || '',
       name: name,
-      cost: parseFloat(row.querySelector('.mod-cost').value) || 0,
-      markup: parseFloat(row.querySelector('.mod-markup').value) || 0,
-      price: parseFloat(row.querySelector('.mod-price').value) || 0,
+      cost: cost,
+      markup: markup,
+      price: price,
       is_active: true
     });
   });
@@ -1620,14 +1673,22 @@ async function saveMenuItem() {
       }
     }
   }
+  // Normalize cost/markup/price for the main item:
+  // If cost == price, set markup = 0. Otherwise derive markup if it's 0 but price != cost.
+  let itemCost = Number(document.getElementById('menu-cost').value) || 0;
+  let itemPrice = Number(document.getElementById('menu-price').value) || 0;
+  let itemMarkup = Number(document.getElementById('menu-markup').value) || 0;
+  if (itemCost === itemPrice) itemMarkup = 0;
+  else if (itemMarkup === 0 && itemPrice !== itemCost) itemMarkup = itemPrice - itemCost;
+
   const payload = {
     id: id || undefined,
     name: document.getElementById('menu-name').value.trim(),
     name_translation: document.getElementById('menu-name-translation').value.trim(),
     category_id: document.getElementById('menu-category').value || '', // can be empty
-    cost: Number(document.getElementById('menu-cost').value) || 0,
-    markup: Number(document.getElementById('menu-markup').value) || 0,
-    price: Number(document.getElementById('menu-price').value) || 0,
+    cost: itemCost,
+    markup: itemMarkup,
+    price: itemPrice,
     needs_cooking: document.getElementById('menu-cook').checked,
     stock: Number(document.getElementById('menu-stock').value) || 0,
     is_active: true,
