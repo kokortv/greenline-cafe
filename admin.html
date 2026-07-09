@@ -670,15 +670,15 @@
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;">
           <div>
             <label style="font-size:0.85rem;color:var(--text-muted);">Себестоимость</label>
-            <input type="number" id="menu-cost" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('cost')">
+            <input type="number" id="menu-cost" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('cost')" onchange="recalcSinglePrice('cost')" onkeyup="recalcSinglePrice('cost')">
           </div>
           <div>
             <label style="font-size:0.85rem;color:var(--text-muted);">Наценка, %</label>
-            <input type="number" id="menu-markup" min="0" step="0.1" placeholder="0" oninput="recalcSinglePrice('markup')">
+            <input type="number" id="menu-markup" min="0" step="1" placeholder="0" oninput="recalcSinglePrice('markup')" onchange="recalcSinglePrice('markup')" onkeyup="recalcSinglePrice('markup')">
           </div>
           <div>
             <label style="font-size:0.85rem;color:var(--text-muted);">Итого (цена)</label>
-            <input type="number" id="menu-price" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('price')" style="font-weight:700;">
+            <input type="number" id="menu-price" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('price')" onchange="recalcSinglePrice('price')" onkeyup="recalcSinglePrice('price')" style="font-weight:700;">
           </div>
         </div>
         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
@@ -2099,12 +2099,10 @@ function isPricingModeMods() {
   return document.getElementById('modifications-block').style.display !== 'none';
 }
 
-// Recalculate single price fields. Markup is a PERCENTAGE.
+// Recalculate single price fields. Markup is a PERCENTAGE (integer, no decimals).
 // Logic (per user spec):
 //   - User edits COST: do NOT change price or markup automatically.
-//     (Cost is just a base value — the other fields decide what to recompute.)
-//   - User edits PRICE: if cost is set, recompute markup = (price - cost) / cost * 100.
-//     If cost is empty, leave markup alone.
+//   - User edits PRICE: if cost is set, recompute markup = round((price - cost) / cost * 100).
 //   - User edits MARKUP: if cost is set, recompute price = cost × (1 + markup/100).
 //     If cost is empty but price is set, recompute cost = price / (1 + markup/100).
 function recalcSinglePrice(changedField) {
@@ -2114,7 +2112,6 @@ function recalcSinglePrice(changedField) {
 
   if (changedField === 'cost') {
     // Don't auto-change anything — the user is just setting the base.
-    // (If both markup and price are already set, that's the user's choice.)
     return;
   }
 
@@ -2125,27 +2122,42 @@ function recalcSinglePrice(changedField) {
       const price = parseFloat(priceEl.value) || 0;
       if (cost > 0) {
         const markup = ((price - cost) / cost) * 100;
-        markupEl.value = markup.toFixed(1);
+        // Round to integer — no decimals in markup
+        markupEl.value = Math.round(markup);
+        // Trigger a visual update — sometimes mobile browsers don't re-render
+        // the field until the next animation frame.
+        triggerVisualUpdate(markupEl);
       }
     }
-    // If cost is empty — leave markup alone (user might enter markup next).
     return;
   }
 
   if (changedField === 'markup' && markupEl.value !== '') {
-    // Markup was just edited.
     const markup = parseFloat(markupEl.value) || 0;
     if (costEl.value !== '') {
       // Cost is set → recompute price = cost × (1 + markup/100)
       const cost = parseFloat(costEl.value) || 0;
       priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
+      triggerVisualUpdate(priceEl);
     } else if (priceEl.value !== '') {
       // No cost, but price is set → derive cost = price / (1 + markup/100)
       const price = parseFloat(priceEl.value) || 0;
       costEl.value = (price / (1 + markup / 100)).toFixed(2);
+      triggerVisualUpdate(costEl);
     }
     return;
   }
+}
+
+// Force the browser to re-render the field's value immediately.
+// On some mobile keyboards, the input event doesn't trigger a re-paint of
+// other fields until the next frame. This nudges the browser to refresh.
+function triggerVisualUpdate(el) {
+  if (!el) return;
+  // Force a reflow by reading offsetWidth (a well-known hack)
+  el.style.display = 'none';
+  el.offsetHeight; // eslint-disable-line no-unused-expressions
+  el.style.display = '';
 }
 
 // Render modification rows from an array of modification objects
@@ -2172,9 +2184,9 @@ function addModificationRow(mod) {
   row.innerHTML =
     '<div class="mod-handle" style="cursor:grab;text-align:center;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">☰</div>' +
     '<input type="text" class="mod-name" placeholder="Напр. С сыром" value="' + escapeHtmlAttr((mod && mod.name) || '') + '">' +
-    '<input type="number" class="mod-cost" min="0" step="0.01" placeholder="Себест." value="' + ((mod && mod.cost) || '') + '" title="Себестоимость" oninput="recalcModPrice(this)">' +
-    '<input type="number" class="mod-markup" min="0" step="0.1" placeholder="Нац.%" value="' + ((mod && mod.markup) || '') + '" title="Наценка, %" oninput="recalcModPrice(this)">' +
-    '<input type="number" class="mod-price" min="0" step="0.01" placeholder="Итого" value="' + ((mod && mod.price) || '') + '" title="Итоговая цена" style="font-weight:700;" oninput="recalcModPrice(this)">' +
+    '<input type="number" class="mod-cost" min="0" step="0.01" placeholder="Себест." value="' + ((mod && mod.cost) || '') + '" title="Себестоимость" oninput="recalcModPrice(this)" onchange="recalcModPrice(this)" onkeyup="recalcModPrice(this)">' +
+    '<input type="number" class="mod-markup" min="0" step="1" placeholder="Нац.%" value="' + ((mod && mod.markup) || '') + '" title="Наценка, %" oninput="recalcModPrice(this)" onchange="recalcModPrice(this)" onkeyup="recalcModPrice(this)">' +
+    '<input type="number" class="mod-price" min="0" step="0.01" placeholder="Итого" value="' + ((mod && mod.price) || '') + '" title="Итоговая цена" style="font-weight:700;" oninput="recalcModPrice(this)" onchange="recalcModPrice(this)" onkeyup="recalcModPrice(this)">' +
     '<button type="button" class="btn btn-outline" style="padding:4px 8px;color:var(--danger);" onclick="this.parentElement.remove()" title="Удалить модификацию">✕</button>';
   // Drag-and-drop handlers
   row.addEventListener('dragstart', function(e) {
@@ -2203,9 +2215,9 @@ function addModificationRow(mod) {
 }
 
 // Recalculate cost/markup/price for a modification row
-// Markup is a PERCENTAGE — same logic as recalcSinglePrice:
+// Markup is a PERCENTAGE (integer, no decimals) — same logic as recalcSinglePrice:
 //   - COST edited:  don't change anything (cost is just the base)
-//   - PRICE edited: if cost set, recompute markup = (price - cost) / cost * 100
+//   - PRICE edited: if cost set, recompute markup = round((price - cost) / cost * 100)
 //   - MARKUP edited: if cost set, recompute price = cost × (1 + markup/100);
 //     else if price set, recompute cost = price / (1 + markup/100)
 function recalcModPrice(input) {
@@ -2228,7 +2240,9 @@ function recalcModPrice(input) {
       const price = parseFloat(priceEl.value) || 0;
       if (cost > 0) {
         const markup = ((price - cost) / cost) * 100;
-        markupEl.value = markup.toFixed(1);
+        // Round to integer — no decimals in markup
+        markupEl.value = Math.round(markup);
+        triggerVisualUpdate(markupEl);
       }
     }
     return;
@@ -2239,9 +2253,11 @@ function recalcModPrice(input) {
     if (costEl.value !== '') {
       const cost = parseFloat(costEl.value) || 0;
       priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
+      triggerVisualUpdate(priceEl);
     } else if (priceEl.value !== '') {
       const price = parseFloat(priceEl.value) || 0;
       costEl.value = (price / (1 + markup / 100)).toFixed(2);
+      triggerVisualUpdate(costEl);
     }
   }
 }
@@ -2255,17 +2271,20 @@ function collectModifications() {
     if (!name) return; // skip empty rows
     const cost = parseFloat(row.querySelector('.mod-cost').value) || 0;
     const price = parseFloat(row.querySelector('.mod-price').value) || 0;
-    // Markup is stored as a PERCENTAGE. If cost == price (or cost == 0), markup = 0.
+    // Markup is stored as a PERCENTAGE (integer, no decimals).
+    // If cost == price (or cost == 0), markup = 0.
     // Otherwise use the entered markup; if it's 0 but price != cost, derive it.
     let markup = parseFloat(row.querySelector('.mod-markup').value);
     if (isNaN(markup)) markup = 0;
     if (cost === 0 || cost === price) markup = 0;
     else if (markup === 0 && price !== cost) markup = ((price - cost) / cost) * 100;
+    // Round to integer — no decimals in markup
+    markup = Math.round(markup);
     mods.push({
       id: row.dataset.modId || '',
       name: name,
       cost: cost,
-      markup: markup,  // percentage
+      markup: markup,  // percentage (integer)
       price: price,
       is_active: true
     });
@@ -2301,7 +2320,7 @@ async function saveMenuItem() {
       }
     }
   }
-  // Normalize cost/markup/price for the main item (markup is a PERCENTAGE):
+  // Normalize cost/markup/price for the main item (markup is a PERCENTAGE, integer):
   // If cost == price (or cost == 0), markup = 0. Otherwise use entered markup;
   // if it's 0 but price != cost, derive markup% = (price - cost) / cost * 100.
   let itemCost = Number(document.getElementById('menu-cost').value) || 0;
@@ -2309,6 +2328,8 @@ async function saveMenuItem() {
   let itemMarkup = Number(document.getElementById('menu-markup').value) || 0;
   if (itemCost === 0 || itemCost === itemPrice) itemMarkup = 0;
   else if (itemMarkup === 0 && itemPrice !== itemCost) itemMarkup = ((itemPrice - itemCost) / itemCost) * 100;
+  // Round to integer — no decimals in markup
+  itemMarkup = Math.round(itemMarkup);
 
   const payload = {
     id: id || undefined,
