@@ -1149,11 +1149,20 @@ function formatItemLabel(item) {
 }
 
 function renderHome() {
-  // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other
-  const tableCount = Number(APP_DATA.settings.table_count) || 20;
+  // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other.
+  // Tables are now sourced from APP_DATA.tables.numbered (each may have an optional
+  // custom label). Fall back to settings.table_count for backward compatibility.
+  const numberedTables = (APP_DATA.tables && APP_DATA.tables.numbered) || [];
+  const tableCount = numberedTables.length > 0
+    ? numberedTables.length
+    : (Number(APP_DATA.settings.table_count) || 0);
   const tableGrid = document.getElementById('table-grid');
   tableGrid.innerHTML = '';
   for (let i = 1; i <= tableCount; i++) {
+    // Look up the custom label for this table number (if any)
+    const tableInfo = numberedTables.find(function(t) { return t.number === i; });
+    const customLabel = tableInfo && tableInfo.label ? tableInfo.label : '';
+    const displayName = customLabel || String(i);
     const hasOrder = state.activeOrders.some(function(o) {
       return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered');
     });
@@ -1168,11 +1177,11 @@ function renderHome() {
     if (lockedByOther) { cls += ' locked-by-other'; label = ts.waiter_name ? '⨉ ' + ts.waiter_name : '⨉ занят'; }
     if (isSelected) { cls += ' selected'; label = '✓ выбран'; }
     btn.className = cls;
-    btn.innerHTML = i + '<span class="table-label">' + label + '</span>';
+    btn.innerHTML = escapeHtml(displayName) + '<span class="table-label">' + label + '</span>';
     if (lockedByOther) {
       btn.disabled = true;
       btn.onclick = function() {
-        showToast('Столик №' + i + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
+        showToast('Столик ' + escapeHtml(displayName) + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
       };
     } else {
       btn.onclick = function(e) { selectTable(i, 'numbered', e); };
@@ -1184,7 +1193,13 @@ function renderHome() {
   // exclusive sense. Each click opens a NEW virtual order, so multiple can
   // be open in parallel. We just show a small badge with the count of active
   // orders for each, so the waiter has situational awareness.
-  const virtualNames = (APP_DATA.settings.virtual_tables || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  // Sourced from APP_DATA.tables.virtual, with fallback to settings.virtual_tables.
+  let virtualNames = [];
+  if (APP_DATA.tables && APP_DATA.tables.virtual && APP_DATA.tables.virtual.length > 0) {
+    virtualNames = APP_DATA.tables.virtual.map(function(t) { return t.label; }).filter(Boolean);
+  } else {
+    virtualNames = (APP_DATA.settings.virtual_tables || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  }
   const virtualSection = document.getElementById('virtual-tables-section');
   const virtualGrid = document.getElementById('virtual-table-grid');
   if (virtualNames.length > 0) {

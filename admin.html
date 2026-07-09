@@ -296,6 +296,7 @@
     <button class="tab" data-tab="staff" onclick="switchTab('staff')">Сотрудники</button>
     <button class="tab" data-tab="sounds" onclick="switchTab('sounds')">Звуки</button>
     <button class="tab" data-tab="stock" onclick="switchTab('stock')">Склад</button>
+    <button class="tab" data-tab="tables" onclick="switchTab('tables')">Столы</button>
     <button class="tab" data-tab="settings" onclick="switchTab('settings')">Настройки</button>
   </div>
 
@@ -369,10 +370,6 @@
         <input type="text" id="set-currency" placeholder="₽, $, €, грн, сум..." value="₽">
       </div>
       <div class="form-group">
-        <label>Количество столиков</label>
-        <input type="number" id="set-table-count" min="1" max="200" value="20">
-      </div>
-      <div class="form-group">
         <label>Язык перевода для повара</label>
         <input type="text" id="set-translation-lang" placeholder="Например: English, ქართული, Türkçe, Қазақша">
         <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
@@ -391,15 +388,6 @@
         <input type="number" id="set-poll-cook" min="5" max="120" step="1" value="10">
         <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
           Как часто повар видит новые заказы. Рекомендуется 10-15 сек. Слишком частое обновление расходует лимит Google Apps Script.
-        </p>
-      </div>
-      <div class="form-group">
-        <label>Виртуальный столик (название)</label>
-        <input type="text" id="set-virtual-table" placeholder="Например: Бар" value="Бар">
-        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
-          Название виртуального столика, который появится у официантов на главной.
-          Можно указать несколько через запятую (например: «Бар, Терраса»), но
-          обычно нужен один.
         </p>
       </div>
       <div class="form-group checkbox-field">
@@ -512,6 +500,17 @@
       <button class="btn btn-primary" onclick="loadStockReport()">↻ Обновить</button>
     </div>
     <div id="stock-report"></div>
+  </div>
+
+  <!-- TABLES TAB -->
+  <div class="tab-content" id="tab-tables" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 class="section-title" style="margin:0;">Столы</h2>
+      <button class="btn btn-primary" onclick="loadTablesConfig()">↻ Обновить</button>
+    </div>
+    <div id="tables-config-container">
+      <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
+    </div>
   </div>
 </main>
 
@@ -832,6 +831,7 @@ function switchTab(name) {
   if (name === 'staff') renderStaffList();
   if (name === 'sounds') updateSoundStatuses();
   if (name === 'stock') loadStockReport();
+  if (name === 'tables') loadTablesConfig();
 }
 
 /* ---------- Orders auto-polling ---------- */
@@ -858,11 +858,9 @@ function stopOrdersPolling() {
 function populateSettingsForm() {
   document.getElementById('set-restaurant-name').value = APP_DATA.settings.restaurant_name || '';
   document.getElementById('set-currency').value = APP_DATA.settings.currency || '₽';
-  document.getElementById('set-table-count').value = APP_DATA.settings.table_count || 20;
   document.getElementById('set-translation-lang').value = APP_DATA.settings.translation_lang || '';
   document.getElementById('set-poll-waiter').value = APP_DATA.settings.poll_interval_waiter || 20;
   document.getElementById('set-poll-cook').value = APP_DATA.settings.poll_interval_cook || 10;
-  document.getElementById('set-virtual-table').value = APP_DATA.settings.virtual_tables || 'Бар';
   document.getElementById('set-cook-enabled').checked = String(APP_DATA.settings.cook_enabled) !== 'false';
   document.getElementById('set-cash-register').value = APP_DATA.settings.cash_register || 0;
   document.getElementById('set-stock-tracking').checked = String(APP_DATA.settings.stock_tracking) === 'true';
@@ -892,11 +890,9 @@ async function saveSettings() {
   const settings = {
     restaurant_name: document.getElementById('set-restaurant-name').value,
     currency: document.getElementById('set-currency').value,
-    table_count: document.getElementById('set-table-count').value,
     translation_lang: document.getElementById('set-translation-lang').value,
     poll_interval_waiter: String(pollWaiter),
     poll_interval_cook: String(pollCook),
-    virtual_tables: document.getElementById('set-virtual-table').value,
     cook_enabled: document.getElementById('set-cook-enabled').checked ? 'true' : 'false',
     cash_register: document.getElementById('set-cash-register').value,
     stock_tracking: document.getElementById('set-stock-tracking').checked ? 'true' : 'false',
@@ -2319,6 +2315,222 @@ function updateStockRow(itemId, newStock) {
     const prevBg = cell.style.backgroundColor;
     cell.style.backgroundColor = '#c8e6c9';
     setTimeout(function() { cell.style.backgroundColor = prevBg; }, 600);
+  }
+}
+
+/* ---------- TABLES CONFIG ---------- */
+// Load tables config from the server and render the management UI.
+// If any shift is open, the UI is read-only with a warning banner.
+let _tablesConfigState = null; // { numbered: int, numberedLabels: [...], virtual: [...] }
+
+async function loadTablesConfig() {
+  const container = document.getElementById('tables-config-container');
+  if (!container) return;
+  container.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    const data = await apiGet('getTablesConfig', {});
+    renderTablesConfig(data);
+  } catch (err) {
+    container.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+function renderTablesConfig(data) {
+  const container = document.getElementById('tables-config-container');
+  if (!container) return;
+  const openShifts = data.open_shifts === true;
+  const numberedCount = (data.numbered || []).length;
+  const numberedLabels = {};
+  (data.numbered || []).forEach(function(t) {
+    numberedLabels[t.number] = t.label || '';
+  });
+  const virtual = (data.virtual || []).map(function(t) { return { label: t.label }; });
+
+  // Save state for the save handler
+  _tablesConfigState = {
+    numbered: numberedCount,
+    numberedLabels: numberedLabels,
+    virtual: virtual,
+    openShifts: openShifts
+  };
+
+  let html = '';
+
+  // Open-shifts warning banner
+  if (openShifts) {
+    html += '<div class="card" style="padding:12px;background:#ffebee;margin-bottom:16px;border-left:4px solid var(--danger);">' +
+      '⚠ <b>Есть открытые смены.</b> Изменение столов заблокировано до закрытия всех смен. ' +
+      'Это необходимо, чтобы не сломать текущие заказы и отчёты.' +
+      '</div>';
+  }
+
+  // Numbered tables section
+  html += '<div class="card" style="padding:16px;margin-bottom:16px;">';
+  html += '<h3 style="margin:0 0 12px;font-size:1.1rem;">Обычные столики</h3>';
+  html += '<div class="form-group" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
+  html += '<label style="margin:0;flex:none;">Количество столиков:</label>';
+  html += '<input type="number" id="tables-numbered-count" min="0" max="500" step="1" value="' + numberedCount + '" ' +
+    'style="width:100px;padding:8px;font-size:1rem;" ' +
+    (openShifts ? 'disabled' : '') +
+    ' onchange="regenerateNumberedTableList()">';
+  html += '<span style="font-size:0.85rem;color:var(--text-muted);">' +
+    'По умолчанию столы нумеруются 1, 2, 3... Можно задать кастомное название каждому.' +
+    '</span>';
+  html += '</div>';
+  html += '<div id="tables-numbered-list" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:8px;"></div>';
+  html += '</div>';
+
+  // Virtual tables section
+  html += '<div class="card" style="padding:16px;margin-bottom:16px;">';
+  html += '<h3 style="margin:0 0 12px;font-size:1.1rem;">Виртуальные столики</h3>';
+  html += '<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">' +
+    'Виртуальные столы — это зоны без конкретного номера (Бар, Терраса, С собой). ' +
+    'Каждый клик официанта по виртуальному столу открывает новый заказ — их может быть несколько параллельно.' +
+    '</p>';
+  html += '<div id="tables-virtual-list" style="display:flex;flex-direction:column;gap:8px;"></div>';
+  if (!openShifts) {
+    html += '<button type="button" class="btn btn-outline" style="margin-top:8px;width:100%;" onclick="addVirtualTableRow()">+ Добавить виртуальный столик</button>';
+  }
+  html += '</div>';
+
+  // Save button
+  if (!openShifts) {
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;">';
+    html += '<button class="btn btn-primary" onclick="withLoading(this, \'Сохраняем...\', function() { return saveTablesConfigUI(); })">Сохранить</button>';
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+
+  // Render the numbered list (with custom name fields)
+  renderNumberedTableList();
+  // Render the virtual list
+  renderVirtualTableList();
+}
+
+// Render the list of numbered tables with name inputs.
+// Reads from _tablesConfigState to know how many + their current labels.
+function renderNumberedTableList() {
+  if (!_tablesConfigState) return;
+  const listEl = document.getElementById('tables-numbered-list');
+  if (!listEl) return;
+  const count = parseInt(document.getElementById('tables-numbered-count').value, 10) || 0;
+  const openShifts = _tablesConfigState.openShifts;
+  let html = '';
+  for (let i = 1; i <= count; i++) {
+    const label = _tablesConfigState.numberedLabels[i] || '';
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:6px;">';
+    html += '<span style="flex:none;width:32px;font-weight:700;color:var(--text-muted);">' + i + '.</span>';
+    html += '<input type="text" class="tables-numbered-label" data-number="' + i + '" value="' + escapeHtmlAttr(label) + '" ' +
+      'placeholder="Стол ' + i + '" style="flex:1;min-width:0;padding:6px 8px;font-size:0.95rem;" ' +
+      (openShifts ? 'disabled' : '') + '>';
+    html += '</div>';
+  }
+  if (count === 0) {
+    html = '<p style="font-size:0.9rem;color:var(--text-muted);grid-column:1/-1;">Нет столиков. Укажите количество выше.</p>';
+  }
+  listEl.innerHTML = html;
+}
+
+// Called when the "Количество столиков" input changes — updates state and re-renders the list.
+function regenerateNumberedTableList() {
+  if (!_tablesConfigState) return;
+  const newCount = parseInt(document.getElementById('tables-numbered-count').value, 10) || 0;
+  // Preserve existing labels, add empty for new numbers
+  const newLabels = {};
+  for (let i = 1; i <= newCount; i++) {
+    newLabels[i] = _tablesConfigState.numberedLabels[i] || '';
+  }
+  _tablesConfigState.numberedLabels = newLabels;
+  _tablesConfigState.numbered = newCount;
+  renderNumberedTableList();
+}
+
+function renderVirtualTableList() {
+  if (!_tablesConfigState) return;
+  const listEl = document.getElementById('tables-virtual-list');
+  if (!listEl) return;
+  const openShifts = _tablesConfigState.openShifts;
+  let html = '';
+  _tablesConfigState.virtual.forEach(function(v, idx) {
+    html += '<div class="virtual-table-row" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg);border-radius:6px;">';
+    html += '<input type="text" class="virtual-table-label" value="' + escapeHtmlAttr(v.label) + '" ' +
+      'placeholder="Например: Бар" style="flex:1;min-width:0;padding:8px;font-size:1rem;" ' +
+      (openShifts ? 'disabled' : '') + '>';
+    if (!openShifts) {
+      html += '<button type="button" class="btn btn-danger" style="padding:6px 10px;" title="Удалить" onclick="removeVirtualTableRow(this)">✕</button>';
+    }
+    html += '</div>';
+  });
+  if (_tablesConfigState.virtual.length === 0) {
+    html = '<p style="font-size:0.9rem;color:var(--text-muted);">Нет виртуальных столов. Нажмите «+ Добавить» ниже.</p>';
+  }
+  listEl.innerHTML = html;
+}
+
+function addVirtualTableRow() {
+  if (!_tablesConfigState) return;
+  _tablesConfigState.virtual.push({ label: '' });
+  renderVirtualTableList();
+}
+
+function removeVirtualTableRow(btn) {
+  if (!_tablesConfigState) return;
+  const row = btn.closest('.virtual-table-row');
+  if (!row) return;
+  const rows = Array.from(document.querySelectorAll('.virtual-table-row'));
+  const idx = rows.indexOf(row);
+  if (idx >= 0) {
+    _tablesConfigState.virtual.splice(idx, 1);
+    renderVirtualTableList();
+  }
+}
+
+// Collect labels from inputs back into state, then call the API
+async function saveTablesConfigUI() {
+  if (!_tablesConfigState) return;
+  if (_tablesConfigState.openShifts) {
+    showToast('Есть открытые смены — изменение столов заблокировано', 'error');
+    return;
+  }
+  // Collect numbered labels
+  const numberedCount = parseInt(document.getElementById('tables-numbered-count').value, 10) || 0;
+  const numberedLabels = {};
+  document.querySelectorAll('.tables-numbered-label').forEach(function(input) {
+    const n = parseInt(input.dataset.number, 10);
+    if (!isNaN(n)) numberedLabels[n] = input.value.trim();
+  });
+  // Collect virtual labels
+  const virtual = [];
+  document.querySelectorAll('.virtual-table-label').forEach(function(input) {
+    const label = input.value.trim();
+    if (label) virtual.push({ label: label });
+  });
+  // Validate: at least 1 numbered table OR 1 virtual table
+  if (numberedCount === 0 && virtual.length === 0) {
+    showToast('Должен быть хотя бы один столик (обычный или виртуальный)', 'warning');
+    return;
+  }
+  // Validate: virtual labels must be unique
+  const vLabels = virtual.map(function(v) { return v.label.toLowerCase(); });
+  const uniqueLabels = new Set(vLabels);
+  if (uniqueLabels.size !== vLabels.length) {
+    showToast('Названия виртуальных столов должны быть уникальными', 'warning');
+    return;
+  }
+
+  const payload = {
+    numbered_count: numberedCount,
+    numbered_labels: numberedLabels,
+    virtual: virtual
+  };
+  try {
+    await apiPost('saveTablesConfig', payload);
+    showToast('Столы сохранены', 'success');
+    await loadAppDataForce();
+    await loadTablesConfig();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
   }
 }
 

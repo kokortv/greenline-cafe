@@ -159,12 +159,13 @@ async function loadAppData(force) {
   if (APP_DATA && !force) return APP_DATA;
 
   // Load all reference data in parallel (no is_active filter — filter on client)
-  const [settings, categories, menu, users, modifications] = await Promise.all([
+  const [settings, categories, menu, users, modifications, tables] = await Promise.all([
     dbSelect('settings'),
     dbSelect('categories'),
     dbSelect('menu'),
     dbSelect('users'),
-    dbSelect('menu_modifications')
+    dbSelect('menu_modifications'),
+    dbSelect('tables')
   ]);
 
   // Filter active items on client side
@@ -172,6 +173,7 @@ async function loadAppData(force) {
   const activeMenu = menu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
   const activeUsers = users.filter(function(u) { return u.is_active === true || u.is_active === 'true'; });
   const activeModifications = modifications.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
+  const activeTables = tables.filter(function(t) { return t.is_active === true || t.is_active === 'true'; });
 
   const settingsObj = {};
   settings.forEach(function(s) { settingsObj[s.key] = s.value; });
@@ -206,11 +208,38 @@ async function loadAppData(force) {
     });
   });
 
+  // Normalize tables: split into numbered and virtual, sorted by `sort` then number/name
+  const normalizedTables = activeTables.map(function(t) {
+    return {
+      id: t.id,
+      type: t.type,
+      number: t.number !== null && t.number !== undefined ? Number(t.number) : null,
+      label: t.label || '',
+      sort: Number(t.sort) || 0
+    };
+  });
+  const numberedTables = normalizedTables
+    .filter(function(t) { return t.type === 'numbered'; })
+    .sort(function(a, b) { return (a.number || 0) - (b.number || 0); });
+  const virtualTables = normalizedTables
+    .filter(function(t) { return t.type === 'virtual'; })
+    .sort(function(a, b) { return a.sort - b.sort; });
+
+  // For backward compatibility: keep table_count and virtual_tables in settings
+  // (some legacy code may still reference them), but the canonical source is APP_DATA.tables
+  settingsObj.table_count = String(numberedTables.length);
+  settingsObj.virtual_tables = virtualTables.map(function(t) { return t.label; }).join(',');
+
   APP_DATA = {
     settings: settingsObj,
     categories: activeCategories,
     menu: menuWithMods,
     modifications: activeModifications,
+    tables: {
+      all: normalizedTables,
+      numbered: numberedTables,
+      virtual: virtualTables
+    },
     users: activeUsers.map(function(u) {
       return {
         id: u.id,
@@ -661,6 +690,135 @@ async function getActiveShift(waiterId) {
   const currentCash = Number(await getSetting('cash_register')) || 0;
   const cookEnabled = String(await getSetting('cook_enabled')) !== 'false';
   return { shift: shift, current_cash: currentCash, cook_enabled: cookEnabled };
+}
+
+/* ---------- Tables ---------- */
+// Check if there are any open shifts across all waiters.
+// Table configuration changes are blocked while at least one shift is open,
+// to prevent breaking in-flight orders / shift reports.
+async function hasOpenShifts() {
+  const shifts = await dbSelect('shifts', { status: 'open' });
+  return shifts.length > 0;
+}
+
+// Get the current tables configuration (numbered + virtual).
+// Returns: { numbered: [...], virtual: [...], open_shifts: bool }
+async function getTablesConfig() {
+  const allTables = await dbSelect('tables');
+  const active = allTables.filter(function(t) { return t.is_active === true || t.is_active === 'true'; });
+  const numbered = active
+    .filter(function(t) { return t.type === 'numbered'; })
+    .map(function(t) {
+      return {
+        id: t.id,
+        type: 'numbered',
+        number: t.number !== null && t.number !== undefined ? Number(t.number) : null,
+        label: t.label || '',
+        sort: Number(t.sort) || 0
+      };
+    })
+    .sort(function(a, b) { return (a.number || 0) - (b.number || 0); });
+  const virtual = active
+    .filter(function(t) { return t.type === 'virtual'; })
+    .map(function(t) {
+      return {
+        id: t.id,
+        type: 'virtual',
+        number: null,
+        label: t.label || '',
+        sort: Number(t.sort) || 0
+      };
+    })
+    .sort(function(a, b) { return a.sort - b.sort; });
+  const openShifts = await hasOpenShifts();
+  return { numbered: numbered, virtual: virtual, open_shifts: openShifts };
+}
+
+// Save the tables configuration. Blocked if any shift is open.
+// Inputs:
+//   numberedCount: int — how many numbered tables (1..N)
+//   numberedLabels: { [number]: string } — custom labels per number (optional)
+//   virtual: [{ label: string }] — virtual tables (id assigned automatically)
+async function saveTablesConfig(config) {
+  // SAFETY: never allow table changes while any shift is open
+  if (await hasOpenShifts()) {
+    throw new Error('Невозможно изменить столы: есть открытые смены. Сначала закройте все смены.');
+  }
+
+  // Validate input
+  const numberedCount = parseInt(config.numbered_count, 10) || 0;
+  if (numberedCount < 0 || numberedCount > 500) {
+    throw new Error('Количество столиков должно быть от 0 до 500');
+  }
+  const virtualList = Array.isArray(config.virtual) ? config.virtual : [];
+  for (const v of virtualList) {
+    if (!v.label || !String(v.label).trim()) {
+      throw new Error('У виртуального столика должно быть название');
+    }
+  }
+
+  // Get existing tables so we can preserve ids where possible
+  const existing = await dbSelect('tables');
+  const existingNumbered = existing.filter(function(t) { return t.type === 'numbered'; });
+  const existingVirtual = existing.filter(function(t) { return t.type === 'virtual'; });
+
+  // Mark all existing tables as inactive first (we'll re-activate the ones we want)
+  // This preserves history — old orders still reference table_number/table_type
+  // directly, and we don't lose the table rows in case we want to re-activate.
+  for (const t of existing) {
+    if (t.is_active === true || t.is_active === 'true') {
+      try {
+        await dbUpdate('tables', t.id, { is_active: false });
+      } catch (e) {
+        console.warn('Failed to deactivate table', t.id, e.message);
+      }
+    }
+  }
+
+  // Re-activate / create numbered tables 1..N
+  const numberedLabels = config.numbered_labels || {};
+  for (let i = 1; i <= numberedCount; i++) {
+    const id = 'tbl_num_' + i;
+    const label = String(numberedLabels[i] || '').trim();
+    // Try to find an existing row with this id (could be active or inactive)
+    const existingRow = existingNumbered.find(function(t) { return t.id === id; });
+    if (existingRow) {
+      await dbUpdate('tables', id, { is_active: true, number: i, label: label, sort: i, type: 'numbered' });
+    } else {
+      await dbInsert('tables', {
+        id: id,
+        type: 'numbered',
+        number: i,
+        label: label,
+        is_active: true,
+        sort: i,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  // Re-activate / create virtual tables
+  for (let i = 0; i < virtualList.length; i++) {
+    const v = virtualList[i];
+    const id = 'tbl_vir_' + (i + 1);
+    const label = String(v.label).trim();
+    const existingRow = existingVirtual.find(function(t) { return t.id === id; });
+    if (existingRow) {
+      await dbUpdate('tables', id, { is_active: true, label: label, sort: i + 1, type: 'virtual', number: null });
+    } else {
+      await dbInsert('tables', {
+        id: id,
+        type: 'virtual',
+        number: null,
+        label: label,
+        is_active: true,
+        sort: i + 1,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  return { ok: true, numbered: numberedCount, virtual: virtualList.length };
 }
 
 /* ---------- Menu modifications ---------- */
@@ -1293,6 +1451,8 @@ async function apiGet(action, params) {
       return await getActiveShift(params.waiter_id);
     case 'getStockReport':
       return await getStockReport();
+    case 'getTablesConfig':
+      return await getTablesConfig();
     case 'getTabs': {
       let tabs = await dbSelect('tabs');
       if (params.status && params.status !== 'all') {
@@ -1466,6 +1626,8 @@ async function apiPost(action, body) {
       return await setPassword(body.user_id, body.new_password, body.plaintext);
     case 'replenishStock':
       return await replenishStock(body.menu_item_id, body.quantity);
+    case 'saveTablesConfig':
+      return await saveTablesConfig(body);
     case 'reorderMenu': {
       const items = body.items || [];
       for (const it of items) {
