@@ -6,8 +6,13 @@
 <title>Меню — Ресторан</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
-<style>
+<style id="dynamic-menu-styles">
+  /* Default values — overridden at runtime from APP_DATA.settings */
   body { background: #fafafa; padding: 0; max-width: 800px; margin: 0 auto; }
+  .mi-price { color: #d32f2f; }
+  .main-cat-title { color: #d32f2f; border-bottom-color: #d32f2f; }
+</style>
+<style>
   .menu-header {
     text-align: center;
     padding: 24px 16px 16px;
@@ -17,16 +22,15 @@
     margin-bottom: 16px;
   }
   .menu-header h1 { margin: 0 0 4px; font-size: 1.6rem; }
-  .menu-header .menu-subtitle { font-size: 0.9rem; opacity: 0.9; }
+  .menu-header .menu-subtitle { font-size: 0.9rem; opacity: 0.9; white-space: pre-wrap; }
 
-  .menu-section { padding: 0 16px 80px; }
+  .menu-section { padding: 0 16px 24px; }
   .main-cat-title {
     font-size: 1.4rem;
     font-weight: 700;
-    color: var(--primary);
     margin: 24px 0 12px;
     padding-bottom: 6px;
-    border-bottom: 2px solid var(--primary);
+    border-bottom: 2px solid;
   }
   .subcat-title {
     font-size: 1.05rem;
@@ -58,9 +62,9 @@
     color: var(--text-muted);
   }
   .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; }
+  .mi-mod-row .mi-mod-price { font-weight: 700; }
   .mi-price {
     font-weight: 700;
-    color: var(--primary);
     font-size: 1.1rem;
     white-space: nowrap;
     flex: none;
@@ -69,7 +73,11 @@
     text-align: center;
     padding: 24px 16px;
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    line-height: 1.5;
+    border-top: 1px dashed var(--border);
+    margin-top: 24px;
   }
   .loading { text-align: center; padding: 40px 16px; color: var(--text-muted); }
   .empty { text-align: center; padding: 40px 16px; color: var(--text-muted); }
@@ -87,9 +95,7 @@
   <div class="loading">Загрузка меню...</div>
 </div>
 
-<div class="menu-footer">
-  Приятного аппетита! 🍽
-</div>
+<div class="menu-footer" id="menu-footer" style="display:none;"></div>
 
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
@@ -98,6 +104,7 @@
 // Visitor menu page — shows menu with prices, no ordering capability.
 // URL parameter `cats` (comma-separated category IDs) filters which
 // subcategories to display. If absent, all subcategories are shown.
+// Reads appearance settings (subtitle, footer, colors) from APP_DATA.settings.
 
 (function() {
   initSupabase();
@@ -109,17 +116,42 @@
     ? catsParam.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
     : null; // null = show all
 
+  // Apply appearance settings to the page (colors, etc.)
+  function applyAppearance() {
+    const s = APP_DATA.settings || {};
+    const priceColor = s.qr_menu_color_price || '#d32f2f';
+    const bgColor = s.qr_menu_color_bg || '#fafafa';
+    const headerColor = s.qr_menu_color_header || '#d32f2f';
+    // Inject CSS overrides
+    const styleEl = document.getElementById('dynamic-menu-styles');
+    styleEl.textContent =
+      'body { background: ' + bgColor + '; padding: 0; max-width: 800px; margin: 0 auto; } ' +
+      '.mi-price { color: ' + priceColor + '; } ' +
+      '.mi-mod-row .mi-mod-price { color: ' + priceColor + '; } ' +
+      '.main-cat-title { color: ' + headerColor + '; border-bottom-color: ' + headerColor + '; }';
+    // Subtitle
+    const subtitle = s.qr_menu_subtitle || '';
+    document.getElementById('menu-restaurant-subtitle').textContent = subtitle;
+    // Footer
+    const footer = s.qr_menu_footer || '';
+    const footerEl = document.getElementById('menu-footer');
+    if (footer) {
+      footerEl.textContent = footer;
+      footerEl.style.display = 'block';
+    } else {
+      footerEl.style.display = 'none';
+    }
+  }
+
   async function render() {
     const contentEl = document.getElementById('menu-content');
     try {
       await loadAppData();
+      applyAppearance();
+
       // Restaurant name
       const restaurantName = (APP_DATA.settings && APP_DATA.settings.restaurant_name) || 'Меню';
       document.getElementById('menu-restaurant-name').textContent = restaurantName;
-      const subtitle = (APP_DATA.settings && APP_DATA.settings.translation_lang)
-        ? 'Restaurant menu'
-        : '';
-      document.getElementById('menu-restaurant-subtitle').textContent = subtitle;
 
       const menu = APP_DATA.menu || [];
       const categories = APP_DATA.categories || [];
@@ -211,37 +243,49 @@
     }
   }
 
-  // Render a single menu item with price (and modifications if present)
+  // Render a single menu item.
+  // For items WITHOUT modifications: show the price on the right.
+  // For items WITH modifications: do NOT show "от X" — instead show
+  // each modification with its name on the left and price on the right
+  // (the modification list itself shows the prices, so no separate "от" is needed).
   function renderItem(item) {
     const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
     let priceHtml = '';
     let modsHtml = '';
     if (hasMods) {
-      // Find min price
-      const minPrice = item.modifications.reduce(function(min, m) {
-        return Math.min(min, Number(m.price) || 0);
-      }, Infinity);
-      priceHtml = '<div class="mi-price">от ' + escapeHtml(formatMoney(minPrice)) + '</div>';
-      // List each modification with its price
+      // No "от X" — just list each modification with its price
       modsHtml = '<div class="mi-mods">';
       item.modifications.forEach(function(mod) {
-        modsHtml += '<div class="mi-mod-row"><span>└ ' + escapeHtml(mod.name) + '</span><span>' + escapeHtml(formatMoney(Number(mod.price) || 0)) + '</span></div>';
+        modsHtml += '<div class="mi-mod-row">' +
+          '<span>└ ' + escapeHtml(mod.name) + '</span>' +
+          '<span class="mi-mod-price">' + escapeHtml(formatMoney(Number(mod.price) || 0)) + '</span>' +
+        '</div>';
       });
       modsHtml += '</div>';
+      // No standalone price on the right — the name takes the full width
+      let html = '<div class="menu-item">';
+      html += '<div class="mi-info">';
+      html += '<div class="mi-name">' + escapeHtml(item.name) + '</div>';
+      if (item.name_translation) {
+        html += '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>';
+      }
+      html += modsHtml;
+      html += '</div>';
+      html += '</div>';
+      return html;
     } else {
       priceHtml = '<div class="mi-price">' + escapeHtml(formatMoney(Number(item.price) || 0)) + '</div>';
+      let html = '<div class="menu-item">';
+      html += '<div class="mi-info">';
+      html += '<div class="mi-name">' + escapeHtml(item.name) + '</div>';
+      if (item.name_translation) {
+        html += '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>';
+      }
+      html += '</div>';
+      html += priceHtml;
+      html += '</div>';
+      return html;
     }
-    let html = '<div class="menu-item">';
-    html += '<div class="mi-info">';
-    html += '<div class="mi-name">' + escapeHtml(item.name) + '</div>';
-    if (item.name_translation) {
-      html += '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>';
-    }
-    html += modsHtml;
-    html += '</div>';
-    html += priceHtml;
-    html += '</div>';
-    return html;
   }
 
   render();

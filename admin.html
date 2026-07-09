@@ -434,11 +434,62 @@
         Сгенерируйте QR-код для публичного меню. Посетитель наведёт камеру телефона и увидит меню с ценами —
         без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
       </p>
-      <div id="qr-menu-categories" style="margin-bottom:16px;"></div>
+
+      <!-- Оформление меню -->
+      <h3 style="margin:16px 0 8px;font-size:1rem;">Оформление меню</h3>
+      <div class="form-group">
+        <label>Текст под названием ресторана (подзаголовок)</label>
+        <input type="text" id="qr-menu-subtitle" placeholder="Например: Добро пожаловать! или телефон для брони">
+      </div>
+      <div class="form-group">
+        <label>Текст внизу меню (подвал)</label>
+        <textarea id="qr-menu-footer" rows="3" placeholder="Например: Спасибо за визит! Адрес: г. Тбилиси, ул. ... Тел: +995 ... Часы работы: 10:00 — 23:00"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>Цвет цен</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-price').value = this.value;">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Цвет фона</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="color" id="qr-menu-color-bg" value="#fafafa" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="text" id="qr-menu-color-bg-text" value="#fafafa" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-bg').value = this.value;">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Цвет заголовков категорий</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-header').value = this.value;">
+          </div>
+        </div>
+      </div>
+      <!-- Sync color picker ↔ text input both ways -->
+      <script>
+        (function() {
+          const pairs = [
+            ['qr-menu-color-price', 'qr-menu-color-price-text'],
+            ['qr-menu-color-bg', 'qr-menu-color-bg-text'],
+            ['qr-menu-color-header', 'qr-menu-color-header-text']
+          ];
+          pairs.forEach(function(p) {
+            const picker = document.getElementById(p[0]);
+            const text = document.getElementById(p[1]);
+            if (!picker || !text) return;
+            picker.addEventListener('input', function() { text.value = picker.value; });
+          });
+        })();
+      </script>
+
+      <div id="qr-menu-categories" style="margin-top:16px;margin-bottom:16px;"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:10px;background:var(--bg);border-radius:8px;">
         <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(true)" style="font-size:0.9rem;">☑ Выбрать все</button>
         <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(false)" style="font-size:0.9rem;">☐ Снять все</button>
-        <button class="btn btn-primary" type="button" onclick="generateQrMenu()" style="margin-left:auto;">✓ Сгенерировать QR-код</button>
+        <button class="btn btn-primary" type="button" onclick="saveAndGenerateQrMenu()" style="margin-left:auto;">💾 Сохранить и сгенерировать QR-код</button>
       </div>
       <div id="qr-menu-result" style="display:none;">
         <div style="background:#fff;padding:16px;border-radius:8px;display:inline-block;border:1px solid var(--border);">
@@ -1196,10 +1247,51 @@ async function cleanupSessionsBtn() {
 }
 
 /* ---------- QR MENU FOR VISITORS ---------- */
+// Load the QR-menu appearance settings (subtitle, footer, colors) from APP_DATA
+// into the form fields. Called when the Settings tab is opened.
+function loadQrMenuAppearance() {
+  const s = APP_DATA.settings || {};
+  document.getElementById('qr-menu-subtitle').value = s.qr_menu_subtitle || '';
+  document.getElementById('qr-menu-footer').value = s.qr_menu_footer || '';
+  // Colors — default to brand colors if not set
+  const priceColor = s.qr_menu_color_price || '#d32f2f';
+  const bgColor = s.qr_menu_color_bg || '#fafafa';
+  const headerColor = s.qr_menu_color_header || '#d32f2f';
+  document.getElementById('qr-menu-color-price').value = priceColor;
+  document.getElementById('qr-menu-color-price-text').value = priceColor;
+  document.getElementById('qr-menu-color-bg').value = bgColor;
+  document.getElementById('qr-menu-color-bg-text').value = bgColor;
+  document.getElementById('qr-menu-color-header').value = headerColor;
+  document.getElementById('qr-menu-color-header-text').value = headerColor;
+}
+
+// Save the QR-menu appearance settings to Supabase, then generate the QR code.
+async function saveAndGenerateQrMenu() {
+  const settings = {
+    qr_menu_subtitle: document.getElementById('qr-menu-subtitle').value,
+    qr_menu_footer: document.getElementById('qr-menu-footer').value,
+    qr_menu_color_price: document.getElementById('qr-menu-color-price').value,
+    qr_menu_color_bg: document.getElementById('qr-menu-color-bg').value,
+    qr_menu_color_header: document.getElementById('qr-menu-color-header').value
+  };
+  try {
+    await apiPost('saveSettings', { settings: settings });
+    // Update local APP_DATA.settings so menu.html (when opened) sees the new values
+    if (APP_DATA && APP_DATA.settings) {
+      Object.keys(settings).forEach(function(k) { APP_DATA.settings[k] = settings[k]; });
+    }
+    showToast('Оформление меню сохранено', 'success');
+    generateQrMenu();
+  } catch (err) {
+    showToast('Ошибка сохранения: ' + err.message, 'error');
+  }
+}
+
 // Render the list of subcategories with checkboxes so the admin can choose
 // which categories to include in the visitor menu QR code.
 // Design: name on the LEFT (single line), checkbox on the RIGHT.
 function renderQrMenuCategories() {
+  loadQrMenuAppearance();
   const div = document.getElementById('qr-menu-categories');
   if (!div) return;
   const categories = APP_DATA.categories || [];
