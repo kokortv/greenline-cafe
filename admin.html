@@ -143,6 +143,10 @@
   .menu-table-row.dragging { opacity: 0.4; }
   .menu-table-row.drag-over { border-top: 3px solid var(--primary) !important; }
 
+  /* Sort arrows in column headers */
+  .sort-arrow { font-size: 0.75rem; opacity: 0.7; margin-left: 4px; }
+  th[onclick]:hover .sort-arrow { opacity: 1; }
+
   /* Replenish button — circular green with plus sign */
   .replenish-btn:hover { background: #1b5e20 !important; transform: scale(1.05); }
   .replenish-btn:active { transform: scale(0.95); }
@@ -325,7 +329,7 @@
 
     <div class="filter-bar">
       <label>Категория:</label>
-      <select id="filter-menu-cat" onchange="renderMenuList()">
+      <select id="filter-menu-cat" onchange="resetMenuSort();renderMenuList()">
         <option value="">Все</option>
       </select>
     </div>
@@ -1218,13 +1222,49 @@ function renderMenuList() {
     return ((price - cost) / cost) * 100;
   }
 
-  // Sorting:
-  // - When a specific category filter is selected (drag-and-drop mode):
-  //   sort by `sort` field then by name (so manual ordering is respected)
-  // - When no filter (showing all items): sort alphabetically by name
-  // - When "Без категории" filter: also alphabetical
-  const dragEnabled = !!filter && filter !== '__none__';
-  if (dragEnabled) {
+  // Sorting state lives on window so it persists across re-renders.
+  // If user hasn't clicked any column yet, use the default behavior:
+  //   - drag-mode (specific category) → sort by `sort` field then by name
+  //   - otherwise → alphabetical by name
+  if (!window._menuSortKey) window._menuSortKey = null;
+  if (!window._menuSortDir) window._menuSortDir = 'asc';
+
+  if (window._menuSortKey) {
+    // User has explicitly chosen a column — sort by it
+    const key = window._menuSortKey;
+    const dir = window._menuSortDir === 'desc' ? -1 : 1;
+    items.sort(function(a, b) {
+      let av, bv;
+      switch (key) {
+        case 'name':
+          av = String(a.name || '').toLowerCase();
+          bv = String(b.name || '').toLowerCase();
+          return av.localeCompare(bv, 'ru') * dir;
+        case 'category':
+          av = String(catLabel(a) || '').toLowerCase();
+          bv = String(catLabel(b) || '').toLowerCase();
+          return av.localeCompare(bv, 'ru') * dir;
+        case 'cost':
+          av = Number(a.cost) || 0;
+          bv = Number(b.cost) || 0;
+          return (av - bv) * dir;
+        case 'markup':
+          av = effectiveMarkup(Number(a.cost) || 0, Number(a.price) || 0, a.markup);
+          bv = effectiveMarkup(Number(b.cost) || 0, Number(b.price) || 0, b.markup);
+          return (av - bv) * dir;
+        case 'price':
+          av = Number(a.price) || 0;
+          bv = Number(b.price) || 0;
+          return (av - bv) * dir;
+        case 'needs_cooking':
+          av = (a.needs_cooking === true || a.needs_cooking === 'true') ? 1 : 0;
+          bv = (b.needs_cooking === true || b.needs_cooking === 'true') ? 1 : 0;
+          return (av - bv) * dir;
+        default:
+          return 0;
+      }
+    });
+  } else if (dragEnabled) {
     items.sort(function(a, b) {
       return (Number(a.sort) || 0) - (Number(b.sort) || 0) ||
              String(a.name).localeCompare(String(b.name), 'ru');
@@ -1246,18 +1286,20 @@ function renderMenuList() {
   // Build a table:
   // Columns: [drag] | Название | Категория | Себестоимость | Наценка | Цена | Готовка | Действия
   let html = '';
-  if (dragEnabled) {
-    html += '<div class="reorder-hint">⇅ Перетащите строки за значок ⠿, чтобы изменить порядок внутри выбранной категории</div>';
+  if (dragEnabled && !window._menuSortKey) {
+    html += '<div class="reorder-hint">⇅ Перетащите строки за значок ⠿, чтобы изменить порядок внутри выбранной категории. Или нажмите на заголовок для сортировки.</div>';
+  } else if (dragEnabled) {
+    html += '<div class="reorder-hint">ℹ Сортировка включена — перетаскивание отключено. Сбросьте сортировку (повторный клик по активной колонке) чтобы вернуть перетаскивание.</div>';
   }
   html += '<table class="menu-table" style="width:100%;table-layout:fixed;border-collapse:collapse;">';
   html += '<thead><tr>';
-  if (dragEnabled) html += '<th style="width:32px;padding:12px 4px;"></th>';
-  html += '<th style="width:24%;padding:12px;text-align:left;">Название</th>';
-  html += '<th style="width:16%;padding:12px;text-align:left;">Категория</th>';
-  html += '<th style="width:12%;padding:12px;text-align:right;">Себестоимость</th>';
-  html += '<th style="width:10%;padding:12px;text-align:right;">Наценка</th>';
-  html += '<th style="width:11%;padding:12px;text-align:right;">Цена</th>';
-  html += '<th style="width:11%;padding:12px;text-align:center;">Готовка</th>';
+  if (dragEnabled && !window._menuSortKey) html += '<th style="width:32px;padding:12px 4px;"></th>';
+  html += '<th style="width:24%;padding:12px;text-align:left;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'name\')">Название <span class="sort-arrow" id="menu-sort-arrow-name"></span></th>';
+  html += '<th style="width:16%;padding:12px;text-align:left;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'category\')">Категория <span class="sort-arrow" id="menu-sort-arrow-category"></span></th>';
+  html += '<th style="width:12%;padding:12px;text-align:right;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'cost\')">Себестоимость <span class="sort-arrow" id="menu-sort-arrow-cost"></span></th>';
+  html += '<th style="width:10%;padding:12px;text-align:right;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'markup\')">Наценка <span class="sort-arrow" id="menu-sort-arrow-markup"></span></th>';
+  html += '<th style="width:11%;padding:12px;text-align:right;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'price\')">Цена <span class="sort-arrow" id="menu-sort-arrow-price"></span></th>';
+  html += '<th style="width:11%;padding:12px;text-align:center;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'needs_cooking\')">Готовка <span class="sort-arrow" id="menu-sort-arrow-needs_cooking"></span></th>';
   html += '<th style="width:76px;padding:12px;text-align:center;"></th>';
   html += '</tr></thead><tbody>';
 
@@ -1268,10 +1310,10 @@ function renderMenuList() {
     const itemPrice = Number(item.price) || 0;
     const itemMarkup = effectiveMarkup(itemCost, itemPrice, item.markup);
 
-    html += '<tr class="menu-table-row' + (dragEnabled ? ' draggable' : '') + '" ' +
-      (dragEnabled ? 'draggable="true" data-id="' + item.id + '"' : '') +
+    html += '<tr class="menu-table-row' + ((dragEnabled && !window._menuSortKey) ? ' draggable' : '') + '" ' +
+      ((dragEnabled && !window._menuSortKey) ? 'draggable="true" data-id="' + item.id + '"' : '') +
       ' style="border-bottom:1px solid var(--border);vertical-align:top;">';
-    if (dragEnabled) {
+    if (dragEnabled && !window._menuSortKey) {
       html += '<td style="padding:12px 4px;text-align:center;cursor:grab;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">⠿</td>';
     }
 
@@ -1363,9 +1405,42 @@ function renderMenuList() {
 
   div.innerHTML = html;
 
-  if (dragEnabled) {
+  // Render sort arrows if a sort is active
+  if (window._menuSortKey) {
+    document.querySelectorAll('.sort-arrow').forEach(function(el) { el.textContent = ''; });
+    const arrowEl = document.getElementById('menu-sort-arrow-' + window._menuSortKey);
+    if (arrowEl) arrowEl.textContent = (window._menuSortDir === 'asc') ? '▲' : '▼';
+  }
+
+  if (dragEnabled && !window._menuSortKey) {
     attachMenuDnD(div);
   }
+}
+
+// Sort the menu table by a given column. First click = ascending, second = descending.
+// Clicking the active column again toggles direction. Clicking a different column
+// resets to ascending. Re-renders the table.
+function sortMenuBy(key) {
+  if (window._menuSortKey === key) {
+    // Toggle direction
+    if (window._menuSortDir === 'asc') {
+      window._menuSortDir = 'desc';
+    } else {
+      // Third click on the same column = reset to default (clear sort)
+      window._menuSortKey = null;
+      window._menuSortDir = 'asc';
+    }
+  } else {
+    window._menuSortKey = key;
+    window._menuSortDir = 'asc';
+  }
+  renderMenuList();
+}
+
+// Reset the menu sort state (called when the category filter changes)
+function resetMenuSort() {
+  window._menuSortKey = null;
+  window._menuSortDir = 'asc';
 }
 
 /* Drag-and-drop for menu items */
@@ -2076,40 +2151,88 @@ async function loadStockReport() {
       html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
     }
     html += '<table style="width:100%;table-layout:fixed;" id="stock-table"><thead><tr>';
-    html += '<th style="width:30%;">Блюдо</th>';
-    html += '<th style="width:12%;">Остаток</th>';
-    html += '<th style="width:12%;">За день</th>';
-    html += '<th style="width:12%;">За неделю</th>';
-    html += '<th style="width:12%;">За месяц</th>';
-    html += '<th style="width:22%;">Пополнить</th>';
+    html += '<th style="width:32%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'name\')">Название <span class="sort-arrow" id="sort-arrow-name"></span></th>';
+    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остаток <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
+    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'consumed_day\')">За день <span class="sort-arrow" id="sort-arrow-consumed_day"></span></th>';
+    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'consumed_week\')">За неделю <span class="sort-arrow" id="sort-arrow-consumed_week"></span></th>';
+    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'consumed_month\')">За месяц <span class="sort-arrow" id="sort-arrow-consumed_month"></span></th>';
+    html += '<th style="width:11%;">Пополнить</th>';
     html += '</tr></thead><tbody>';
+    // Keep a reference to the items so sortStockBy() can re-render the body
+    window._stockItems = items;
+    window._stockSortKey = null;
+    window._stockSortDir = 'asc';
     items.forEach(function(it) {
-      const lowClass = it.low_stock ? ' style="background:#ffebee;"' : '';
-      const stockColor = it.low_stock ? 'color:var(--danger);font-weight:700;' : '';
-      // Always show the actual stock value, even when tracking is off.
-      // tracking only controls automatic deduction on order placement.
-      html += '<tr' + lowClass + ' id="stock-row-' + it.id + '" data-stock="' + it.stock + '">';
-      html += '<td style="word-break:break-word;">' + escapeHtml(it.name) + '</td>';
-      html += '<td class="stock-cell" style="' + stockColor + '">' + it.stock + '</td>';
-      html += '<td>' + it.consumed_day + '</td>';
-      html += '<td>' + it.consumed_week + '</td>';
-      html += '<td>' + it.consumed_month + '</td>';
-      // Slightly larger input + circular green button with a plus sign
-      html += '<td style="padding:6px 8px;"><div style="display:flex;align-items:center;gap:6px;">' +
-        '<input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" ' +
-          'style="flex:1;min-width:0;padding:6px 8px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;" ' +
-          'onkeydown="if(event.key===\'Enter\'){event.preventDefault();replenishFromInput(\'' + it.id + '\');}">' +
-        '<button type="button" class="replenish-btn" title="Пополнить" ' +
-          'style="flex:none;width:36px;height:36px;border-radius:50%;border:none;background:var(--success);color:#fff;font-size:1.3rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.15);" ' +
-          'onclick="replenishFromInput(\'' + it.id + '\')">+</button>' +
-        '</div></td>';
-      html += '</tr>';
+      html += renderStockRow(it, tracking);
     });
     html += '</tbody></table>';
     div.innerHTML = html;
   } catch (err) {
     div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
   }
+}
+
+// Render a single stock table row as an HTML string
+function renderStockRow(it, tracking) {
+  const lowClass = it.low_stock ? ' style="background:#ffebee;"' : '';
+  const stockColor = it.low_stock ? 'color:var(--danger);font-weight:700;' : '';
+  let row = '<tr' + lowClass + ' id="stock-row-' + it.id + '" data-stock="' + it.stock + '">';
+  row += '<td style="word-break:break-word;">' + escapeHtml(it.name) + '</td>';
+  row += '<td class="stock-cell" style="' + stockColor + '">' + it.stock + '</td>';
+  row += '<td>' + it.consumed_day + '</td>';
+  row += '<td>' + it.consumed_week + '</td>';
+  row += '<td>' + it.consumed_month + '</td>';
+  // Narrower replenish cell (column is 11% wide now) — input + small + button.
+  // Input is slightly taller than before (8px vertical padding) so tapping is easy.
+  row += '<td style="padding:5px 4px;"><div style="display:flex;align-items:center;gap:4px;">' +
+    '<input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" ' +
+      'style="flex:1;min-width:0;padding:8px 4px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;text-align:center;" ' +
+      'onkeydown="if(event.key===\'Enter\'){event.preventDefault();replenishFromInput(\'' + it.id + '\');}">' +
+    '<button type="button" class="replenish-btn" title="Пополнить" ' +
+      'style="flex:none;width:32px;height:32px;border-radius:6px;border:none;background:var(--success);color:#fff;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.15);" ' +
+      'onclick="replenishFromInput(\'' + it.id + '\')">+</button>' +
+    '</div></td>';
+  row += '</tr>';
+  return row;
+}
+
+// Sort the stock table by a given column. First click = ascending, second = descending, etc.
+function sortStockBy(key) {
+  const items = window._stockItems;
+  if (!items) return;
+  // Toggle direction if same key, otherwise start ascending
+  if (window._stockSortKey === key) {
+    window._stockSortDir = (window._stockSortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    window._stockSortKey = key;
+    window._stockSortDir = 'asc';
+  }
+  const dir = window._stockSortDir === 'desc' ? -1 : 1;
+  items.sort(function(a, b) {
+    let av = a[key];
+    let bv = b[key];
+    // Numeric columns
+    if (typeof av === 'number' || typeof bv === 'number' || key === 'stock' ||
+        key === 'consumed_day' || key === 'consumed_week' || key === 'consumed_month') {
+      av = Number(av) || 0;
+      bv = Number(bv) || 0;
+      return (av - bv) * dir;
+    }
+    // String columns — case-insensitive locale compare
+    av = String(av == null ? '' : av).toLowerCase();
+    bv = String(bv == null ? '' : bv).toLowerCase();
+    return av.localeCompare(bv, 'ru') * dir;
+  });
+  // Re-render the table body
+  const tbody = document.querySelector('#stock-table tbody');
+  if (tbody) {
+    const tracking = window._stockTracking;
+    tbody.innerHTML = items.map(function(it) { return renderStockRow(it, tracking); }).join('');
+  }
+  // Update sort arrows
+  document.querySelectorAll('.sort-arrow').forEach(function(el) { el.textContent = ''; });
+  const arrowEl = document.getElementById('sort-arrow-' + key);
+  if (arrowEl) arrowEl.textContent = (window._stockSortDir === 'asc') ? '▲' : '▼';
 }
 
 function replenishFromInput(itemId) {
