@@ -499,7 +499,7 @@
 
 <!-- Menu item modal -->
 <div class="modal-backdrop" id="modal-menu">
-  <div class="modal">
+  <div class="modal" style="max-width:680px;">
     <h2 id="modal-menu-title">Новое блюдо</h2>
     <input type="hidden" id="menu-id">
     <div class="form-group">
@@ -517,10 +517,53 @@
       <label>Подкатегория</label>
       <select id="menu-category"></select>
     </div>
-    <div class="form-group">
-      <label>Цена</label>
-      <input type="number" id="menu-price" min="0" step="0.01" placeholder="0">
+
+    <!-- Pricing section — single price OR modifications -->
+    <div class="form-group" id="menu-pricing-section">
+      <label style="display:block;margin-bottom:8px;">Ценообразование</label>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button type="button" class="btn btn-outline pricing-toggle-btn" id="pricing-single-btn" onclick="setPricingMode(false)" style="flex:1;">
+          ✓ Без модификаций (один вид)
+        </button>
+        <button type="button" class="btn btn-outline pricing-toggle-btn" id="pricing-mods-btn" onclick="setPricingMode(true)" style="flex:1;">
+          С модификациями (несколько видов)
+        </button>
+      </div>
+
+      <!-- Single price block -->
+      <div id="single-price-block">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;">
+          <div>
+            <label style="font-size:0.85rem;color:var(--text-muted);">Себестоимость</label>
+            <input type="number" id="menu-cost" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('cost')">
+          </div>
+          <div>
+            <label style="font-size:0.85rem;color:var(--text-muted);">Наценка</label>
+            <input type="number" id="menu-markup" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('markup')">
+          </div>
+          <div>
+            <label style="font-size:0.85rem;color:var(--text-muted);">Итого (цена)</label>
+            <input type="number" id="menu-price" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('price')" style="font-weight:700;">
+          </div>
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+          Введите значения в любые два поля — третье рассчитается автоматически.
+        </p>
+      </div>
+
+      <!-- Modifications block -->
+      <div id="modifications-block" style="display:none;">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">
+          Добавьте несколько вариантов товара (напр. "Сухарики: с сыром / с беконом / с солью").
+          Каждый вариант имеет свою цену. Перетаскивайте за значок ☰ для изменения порядка.
+        </p>
+        <div id="modifications-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button type="button" class="btn btn-outline" style="margin-top:8px;width:100%;" onclick="addModificationRow()">
+          + Добавить модификацию
+        </button>
+      </div>
     </div>
+
     <div class="form-group">
       <label>Остаток на складе</label>
       <input type="number" id="menu-stock" min="0" step="1" placeholder="0">
@@ -1022,8 +1065,10 @@ async function viewOrder(orderId) {
         '<th style="width:16%;">Комментарий</th>' +
         '</tr></thead><tbody>';
       order.items.forEach(function(it) {
+        var nameCell = escapeHtml(it.name) +
+          (it.modification_name ? '<div style="font-size:0.8rem;color:var(--primary);font-weight:600;margin-top:2px;">⚙ ' + escapeHtml(it.modification_name) + '</div>' : '');
         itemsHtml += '<tr>' +
-          '<td style="word-break:break-word;overflow-wrap:anywhere;">' + escapeHtml(it.name) + '</td>' +
+          '<td style="word-break:break-word;overflow-wrap:anywhere;">' + nameCell + '</td>' +
           '<td>' + it.quantity + '</td>' +
           '<td>' + formatMoney(it.price) + '</td>' +
           '<td>' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>' +
@@ -1134,6 +1179,14 @@ function renderMenuList() {
     return parent ? parent.name + ' → ' + cat.name : cat.name;
   }
 
+  // Helper: minimum modification price for display "от X ₽"
+  function minModPrice(item) {
+    if (!item.modifications || item.modifications.length === 0) return item.price || 0;
+    return item.modifications.reduce(function(min, m) {
+      return Math.min(min, Number(m.price) || 0);
+    }, Infinity);
+  }
+
   // Sorting:
   // - When a specific category filter is selected (drag-and-drop mode):
   //   sort by `sort` field then by name (so manual ordering is respected)
@@ -1179,9 +1232,13 @@ function renderMenuList() {
         '<div class="menu-cat-badge">' + escapeHtml(catLabel(item)) + '</div>' +
         '<div class="menu-name">' + escapeHtml(item.name) +
           (item.name_translation ? '<div class="menu-name-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
+          (item.has_modifications ?
+            '<div style="font-size:0.75rem;color:var(--primary);margin-top:2px;font-weight:600;">⚙ ' +
+              (item.modifications ? item.modifications.length : 0) + ' модификаций</div>' : ''
+          ) +
         '</div>' +
       '</div>' +
-      '<div class="menu-price">' + formatMoney(item.price) + '</div>' +
+      '<div class="menu-price">' + (item.has_modifications ? 'от ' + formatMoney(minModPrice(item)) : formatMoney(item.price)) + '</div>' +
       '<div class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '">' +
         (needsCook ? 'готовка' : 'без готовки') +
       '</div>' +
@@ -1325,35 +1382,240 @@ function openMenuModal(id) {
     document.getElementById('menu-name').value = item.name;
     document.getElementById('menu-name-translation').value = item.name_translation || '';
     document.getElementById('menu-category').value = item.category_id;
+    document.getElementById('menu-cost').value = item.cost || 0;
+    document.getElementById('menu-markup').value = item.markup || 0;
     document.getElementById('menu-price').value = item.price;
     document.getElementById('menu-stock').value = item.stock || 0;
     document.getElementById('menu-cook').checked = item.needs_cooking === true || item.needs_cooking === 'true';
-    // sort field removed — ordering is done via drag & drop in the list
+    // Set pricing mode and modifications
+    setPricingMode(item.has_modifications === true);
+    renderModificationRows(item.modifications || []);
   } else {
     title.textContent = 'Новое блюдо';
     document.getElementById('menu-id').value = '';
     document.getElementById('menu-name').value = '';
     document.getElementById('menu-name-translation').value = '';
+    document.getElementById('menu-cost').value = '';
+    document.getElementById('menu-markup').value = '';
     document.getElementById('menu-price').value = '';
     document.getElementById('menu-stock').value = '';
     document.getElementById('menu-cook').checked = true;
+    setPricingMode(false);
+    renderModificationRows([]);
   }
   openModal('modal-menu');
 }
 
+// Pricing mode toggle: false = single price, true = modifications
+function setPricingMode(hasMods) {
+  const singleBlock = document.getElementById('single-price-block');
+  const modsBlock = document.getElementById('modifications-block');
+  const singleBtn = document.getElementById('pricing-single-btn');
+  const modsBtn = document.getElementById('pricing-mods-btn');
+  if (hasMods) {
+    singleBlock.style.display = 'none';
+    modsBlock.style.display = 'block';
+    singleBtn.classList.remove('btn-primary');
+    singleBtn.classList.add('btn-outline');
+    singleBtn.textContent = 'Без модификаций (один вид)';
+    modsBtn.classList.remove('btn-outline');
+    modsBtn.classList.add('btn-primary');
+    modsBtn.textContent = '✓ С модификациями (несколько видов)';
+    // Ensure at least one modification row exists
+    const list = document.getElementById('modifications-list');
+    if (list.children.length === 0) addModificationRow();
+  } else {
+    singleBlock.style.display = 'block';
+    modsBlock.style.display = 'none';
+    singleBtn.classList.remove('btn-outline');
+    singleBtn.classList.add('btn-primary');
+    singleBtn.textContent = '✓ Без модификаций (один вид)';
+    modsBtn.classList.remove('btn-primary');
+    modsBtn.classList.add('btn-outline');
+    modsBtn.textContent = 'С модификациями (несколько видов)';
+  }
+}
+
+function isPricingModeMods() {
+  return document.getElementById('modifications-block').style.display !== 'none';
+}
+
+// Recalculate single price fields: cost + markup = price
+// changedField tells us which field was just edited (so we keep it and
+// one of the others, and recompute the third).
+function recalcSinglePrice(changedField) {
+  const costEl = document.getElementById('menu-cost');
+  const markupEl = document.getElementById('menu-markup');
+  const priceEl = document.getElementById('menu-price');
+  const cost = parseFloat(costEl.value) || 0;
+  const markup = parseFloat(markupEl.value) || 0;
+  const price = parseFloat(priceEl.value) || 0;
+
+  if (changedField === 'cost' && costEl.value !== '') {
+    // If markup is set, recompute price. Otherwise, if price is set, recompute markup.
+    if (markupEl.value !== '') {
+      priceEl.value = (cost + markup).toFixed(2);
+    } else if (priceEl.value !== '') {
+      markupEl.value = (price - cost).toFixed(2);
+    }
+  } else if (changedField === 'markup' && markupEl.value !== '') {
+    if (costEl.value !== '') {
+      priceEl.value = (cost + markup).toFixed(2);
+    } else if (priceEl.value !== '') {
+      costEl.value = (price - markup).toFixed(2);
+    }
+  } else if (changedField === 'price' && priceEl.value !== '') {
+    if (costEl.value !== '') {
+      markupEl.value = (price - cost).toFixed(2);
+    } else if (markupEl.value !== '') {
+      costEl.value = (price - markup).toFixed(2);
+    }
+  }
+}
+
+// Render modification rows from an array of modification objects
+function renderModificationRows(modifications) {
+  const list = document.getElementById('modifications-list');
+  list.innerHTML = '';
+  if (modifications.length === 0) {
+    addModificationRow();
+    return;
+  }
+  modifications.forEach(function(mod) {
+    addModificationRow(mod);
+  });
+}
+
+function addModificationRow(mod) {
+  const list = document.getElementById('modifications-list');
+  const row = document.createElement('div');
+  row.className = 'modification-row';
+  row.draggable = true;
+  row.style.cssText = 'display:grid;grid-template-columns:24px 1fr 70px 70px 70px 28px;gap:6px;align-items:center;padding:6px;background:#f7f7f7;border-radius:6px;';
+  const modId = (mod && mod.id) || '';
+  row.dataset.modId = modId;
+  row.innerHTML =
+    '<div class="mod-handle" style="cursor:grab;text-align:center;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">☰</div>' +
+    '<input type="text" class="mod-name" placeholder="Напр. С сыром" value="' + escapeHtmlAttr((mod && mod.name) || '') + '">' +
+    '<input type="number" class="mod-cost" min="0" step="0.01" placeholder="Себест." value="' + ((mod && mod.cost) || '') + '" title="Себестоимость" oninput="recalcModPrice(this)">' +
+    '<input type="number" class="mod-markup" min="0" step="0.01" placeholder="Наценка" value="' + ((mod && mod.markup) || '') + '" title="Наценка" oninput="recalcModPrice(this)">' +
+    '<input type="number" class="mod-price" min="0" step="0.01" placeholder="Итого" value="' + ((mod && mod.price) || '') + '" title="Итоговая цена" style="font-weight:700;" oninput="recalcModPrice(this)">' +
+    '<button type="button" class="btn btn-outline" style="padding:4px 8px;color:var(--danger);" onclick="this.parentElement.remove()" title="Удалить модификацию">✕</button>';
+  // Drag-and-drop handlers
+  row.addEventListener('dragstart', function(e) {
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  });
+  row.addEventListener('dragend', function() {
+    row.classList.remove('dragging');
+    list.querySelectorAll('.modification-row').forEach(function(r) { r.style.opacity = ''; });
+  });
+  row.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    const dragging = list.querySelector('.modification-row.dragging');
+    if (!dragging || dragging === row) return;
+    const rect = row.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    row.style.opacity = '0.5';
+    if (after) {
+      row.parentNode.insertBefore(dragging, row.nextSibling);
+    } else {
+      row.parentNode.insertBefore(dragging, row);
+    }
+  });
+  list.appendChild(row);
+}
+
+// Recalculate cost/markup/price for a modification row
+function recalcModPrice(input) {
+  const row = input.closest('.modification-row');
+  if (!row) return;
+  const costEl = row.querySelector('.mod-cost');
+  const markupEl = row.querySelector('.mod-markup');
+  const priceEl = row.querySelector('.mod-price');
+  const cost = parseFloat(costEl.value) || 0;
+  const markup = parseFloat(markupEl.value) || 0;
+  const price = parseFloat(priceEl.value) || 0;
+  const cls = input.className;
+  if (cls.indexOf('mod-cost') >= 0 && costEl.value !== '') {
+    if (markupEl.value !== '') priceEl.value = (cost + markup).toFixed(2);
+    else if (priceEl.value !== '') markupEl.value = (price - cost).toFixed(2);
+  } else if (cls.indexOf('mod-markup') >= 0 && markupEl.value !== '') {
+    if (costEl.value !== '') priceEl.value = (cost + markup).toFixed(2);
+    else if (priceEl.value !== '') costEl.value = (price - markup).toFixed(2);
+  } else if (cls.indexOf('mod-price') >= 0 && priceEl.value !== '') {
+    if (costEl.value !== '') markupEl.value = (price - cost).toFixed(2);
+    else if (markupEl.value !== '') costEl.value = (price - markup).toFixed(2);
+  }
+}
+
+// Collect modifications from the UI
+function collectModifications() {
+  const rows = document.querySelectorAll('#modifications-list .modification-row');
+  const mods = [];
+  rows.forEach(function(row) {
+    const name = (row.querySelector('.mod-name').value || '').trim();
+    if (!name) return; // skip empty rows
+    mods.push({
+      id: row.dataset.modId || '',
+      name: name,
+      cost: parseFloat(row.querySelector('.mod-cost').value) || 0,
+      markup: parseFloat(row.querySelector('.mod-markup').value) || 0,
+      price: parseFloat(row.querySelector('.mod-price').value) || 0,
+      is_active: true
+    });
+  });
+  return mods;
+}
+
+// Escape attribute values for HTML injection
+function escapeHtmlAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 async function saveMenuItem() {
   const id = document.getElementById('menu-id').value;
+  const hasMods = isPricingModeMods();
+  // Validate modifications if mode is on
+  let modifications = [];
+  if (hasMods) {
+    modifications = collectModifications();
+    if (modifications.length === 0) {
+      showToast('Добавьте хотя бы одну модификацию или переключите на "Без модификаций"', 'warning');
+      return;
+    }
+    for (const m of modifications) {
+      if (!m.price || m.price <= 0) {
+        showToast('У модификации "' + m.name + '" не указана итоговая цена', 'warning');
+        return;
+      }
+    }
+  }
   const payload = {
     id: id || undefined,
     name: document.getElementById('menu-name').value.trim(),
     name_translation: document.getElementById('menu-name-translation').value.trim(),
     category_id: document.getElementById('menu-category').value || '', // can be empty
+    cost: Number(document.getElementById('menu-cost').value) || 0,
+    markup: Number(document.getElementById('menu-markup').value) || 0,
     price: Number(document.getElementById('menu-price').value) || 0,
     needs_cooking: document.getElementById('menu-cook').checked,
     stock: Number(document.getElementById('menu-stock').value) || 0,
-    is_active: true
+    is_active: true,
+    has_modifications: hasMods,
+    modifications: modifications
   };
   if (!payload.name) { showToast('Введите название', 'warning'); return; }
+  if (!hasMods && (!payload.price || payload.price <= 0)) {
+    showToast('Укажите итоговую цену или переключите на "С модификациями"', 'warning');
+    return;
+  }
   // category_id is optional — items without subcategory appear directly in their main category
   try {
     await apiPost('saveMenuItem', payload);

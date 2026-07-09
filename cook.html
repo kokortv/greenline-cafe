@@ -701,7 +701,9 @@ function renderOrder() {
                 (categoryNameTranslation ? ' <span class="ci-cat-translation">/ ' + escapeHtml(categoryNameTranslation) + '</span>' : '') +
               '</div>' : ''
             ) +
-            '<div class="ci-name">' + escapeHtml(item.name) + '</div>' +
+            '<div class="ci-name">' + escapeHtml(item.name) +
+              (item.modification_name ? ' <span style="color:var(--primary);font-weight:600;">· ' + escapeHtml(item.modification_name) + '</span>' : '') +
+            '</div>' +
             (item.name_translation ?
               '<div class="ci-translation">' + escapeHtml(item.name_translation) + '</div>' : ''
             ) +

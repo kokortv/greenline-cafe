@@ -26,11 +26,29 @@ create table if not exists public.menu (
   name text not null,
   name_translation text default '',
   price numeric default 0,
+  cost numeric default 0,             -- себестоимость (для отчётов)
+  markup numeric default 0,           -- наценка (для отчётов)
   needs_cooking boolean default true,
   sort int default 0,
   is_active boolean default true,
-  stock int default 0
+  stock int default 0,
+  has_modifications boolean default false  -- если true — у товара есть модификации
 );
+
+-- 3a. MENU MODIFICATIONS — варианты одного блюда (напр. "Сухарики: сыр/бекон/соль")
+create table if not exists public.menu_modifications (
+  id text primary key,
+  menu_id text not null,              -- FK → menu.id
+  name text not null,                 -- напр. "С сыром"
+  name_translation text default '',
+  price numeric default 0,            -- итоговая цена (то, что видит клиент)
+  cost numeric default 0,             -- себестоимость
+  markup numeric default 0,           -- наценка
+  sort int default 0,
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+create index if not exists idx_menu_modifications_menu_id on public.menu_modifications(menu_id);
 
 -- 4. USERS (staff)
 create table if not exists public.users (
@@ -73,6 +91,8 @@ create table if not exists public.order_items (
   name_translation text default '',
   category_name text default '',
   category_name_translation text default '',
+  modification_id text default '',     -- ID модификации (если выбрана)
+  modification_name text default '',   -- Название модификации для отображения
   price numeric default 0,
   quantity int default 1,
   comment text default '',
@@ -210,6 +230,7 @@ create index if not exists idx_tabs_status on public.tabs(status);
 alter table public.settings disable row level security;
 alter table public.categories disable row level security;
 alter table public.menu disable row level security;
+alter table public.menu_modifications disable row level security;
 alter table public.users disable row level security;
 alter table public.orders disable row level security;
 alter table public.order_items disable row level security;
@@ -218,14 +239,60 @@ alter table public.shifts disable row level security;
 
 -- =========================================================================
 -- REALTIME — enable for tables that need instant updates
+-- Wrapped in DO blocks so re-running the schema doesn't fail with
+-- "relation is already member of publication" errors.
 -- =========================================================================
-alter publication supabase_realtime add table public.orders;
-alter publication supabase_realtime add table public.order_items;
-alter publication supabase_realtime add table public.shifts;
-alter publication supabase_realtime add table public.settings;
-alter publication supabase_realtime add table public.menu;
-alter publication supabase_realtime add table public.categories;
-alter publication supabase_realtime add table public.users;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'orders'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'order_items'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'shifts'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.shifts;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'settings'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.settings;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'menu'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.menu;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'categories'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'users'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'menu_modifications'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.menu_modifications;
+  END IF;
+END $$;
 
 -- =========================================================================
 -- RPC FUNCTIONS — atomic stock operations (bypass RLS for table writes)
@@ -269,4 +336,13 @@ grant execute on function public.replenish_stock(text, int) to anon, authenticat
 --    SUPABASE_ANON_KEY: 'eyJhbGciOi...'
 -- 3. Download supabase-js from: https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 --    Save as supabase.js and include it before common.js
+--
+-- ⚠ IMPORTANT: in Supabase SQL Editor use the plain "Run" button.
+--   Do NOT use "Run and enable RLS" — it would re-enable RLS that we
+--   explicitly disabled above, and writes to `menu` would silently fail.
 -- =========================================================================
+
+-- Quick sanity check (run this in a separate query to verify):
+-- select proname from pg_proc where proname = 'replenish_stock';
+-- Should return 1 row.
+

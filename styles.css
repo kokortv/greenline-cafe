@@ -372,6 +372,10 @@ tbody tr:hover { background: #fafafa; }
 @keyframes slide-out {
   to { transform: translateX(120%); opacity: 0; }
 }
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
 
 /* Empty state */
 .empty-state {

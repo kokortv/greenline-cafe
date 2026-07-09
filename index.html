@@ -1131,10 +1131,17 @@ function formatItemLabel(item) {
       if (cat && cat.parent_id) categoryName = cat.name || '';
     }
   }
+  let label = '';
   if (categoryName) {
-    return '<span class="ci-cat-badge">' + escapeHtml(categoryName) + '</span> ' + escapeHtml(item.name);
+    label = '<span class="ci-cat-badge">' + escapeHtml(categoryName) + '</span> ' + escapeHtml(item.name);
+  } else {
+    label = escapeHtml(item.name);
   }
-  return escapeHtml(item.name);
+  // Append modification if present
+  if (item.modification_name) {
+    label += ' <span style="color:var(--primary);font-weight:600;">· ' + escapeHtml(item.modification_name) + '</span>';
+  }
+  return label;
 }
 
 function renderHome() {
@@ -1497,18 +1504,91 @@ function renderMenu() {
   items.forEach(function(item) {
     const card = document.createElement('div');
     card.className = 'menu-item-card';
+    const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+    const priceLabel = hasMods
+      ? 'от ' + formatMoney(minModPrice(item))
+      : formatMoney(item.price);
     card.innerHTML =
-      '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
-      '<div class="item-price">' + formatMoney(item.price) + '</div>' +
-      '<button class="item-add-btn">+ Добавить</button>';
-    card.querySelector('.item-add-btn').onclick = function() { addToCart(item); };
+      '<div class="item-name">' + escapeHtml(item.name) +
+        (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
+      '</div>' +
+      '<div class="item-price">' + priceLabel + '</div>' +
+      '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
+    card.querySelector('.item-add-btn').onclick = function() {
+      if (hasMods) {
+        showModificationPicker(item);
+      } else {
+        addToCart(item);
+      }
+    };
     itemsDiv.appendChild(card);
   });
 
   renderCartPanel();
 }
 
-function addToCart(item) {
+function minModPrice(item) {
+  if (!item.modifications || item.modifications.length === 0) return item.price || 0;
+  return item.modifications.reduce(function(min, m) {
+    return Math.min(min, Number(m.price) || 0);
+  }, Infinity);
+}
+
+// Show a modal/bottom-sheet with the list of modifications for a menu item.
+// When the user clicks one, the modification is added to the cart.
+function showModificationPicker(item) {
+  // Remove any existing picker
+  const existing = document.getElementById('mod-picker-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'mod-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:0;';
+
+  const sheet = document.createElement('div');
+  sheet.style.cssText = 'background:#fff;width:100%;max-width:600px;border-radius:16px 16px 0 0;padding:16px;max-height:80vh;overflow-y:auto;animation:slideUp 0.2s ease-out;';
+  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  html += '<h3 style="margin:0;font-size:1.1rem;">' + escapeHtml(item.name) + ' — выберите вариант</h3>';
+  html += '<button class="btn btn-outline" style="padding:4px 10px;" onclick="document.getElementById(\'mod-picker-overlay\').remove()">✕</button>';
+  html += '</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+  item.modifications.forEach(function(mod) {
+    html += '<button class="btn btn-outline mod-pick-btn" style="display:flex;justify-content:space-between;align-items:center;padding:12px;text-align:left;font-size:1rem;" ' +
+      'onclick="pickModification(\'' + item.id + '\', \'' + mod.id + '\')">' +
+      '<span>' + escapeHtml(mod.name) + '</span>' +
+      '<span style="font-weight:700;color:var(--primary);">' + formatMoney(mod.price) + '</span>' +
+    '</button>';
+  });
+  html += '</div>';
+  sheet.innerHTML = html;
+  overlay.appendChild(sheet);
+  // Close on backdrop click
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+// Find the menu item + modification by id and add to cart
+function pickModification(itemId, modId) {
+  const item = APP_DATA.menu.find(function(m) { return m.id === itemId; });
+  if (!item) return;
+  const mod = (item.modifications || []).find(function(m) { return m.id === modId; });
+  if (!mod) return;
+  // Close the picker
+  const overlay = document.getElementById('mod-picker-overlay');
+  if (overlay) overlay.remove();
+  // Add to cart with modification
+  addToCart(item, mod);
+}
+
+function addToCart(item, modification) {
+  // If a modification is provided, the cart item is uniquely identified by
+  // (menu_item_id + modification_id). Otherwise, by menu_item_id alone.
+  const modId = modification ? modification.id : '';
+  const modName = modification ? modification.name : '';
+  const unitPrice = modification ? Number(modification.price) : Number(item.price);
+
   // Check stock if tracking is enabled
   if (APP_DATA.settings.stock_tracking === 'true' || APP_DATA.settings.stock_tracking === true) {
     const stock = Number(item.stock) || 0;
@@ -1516,7 +1596,7 @@ function addToCart(item) {
       return c.menu_item_id === item.id ? s + c.quantity : s;
     }, 0);
     if (stock <= inCart) {
-      showToast('Нет в наличии: ' + item.name + ' (осталось ' + stock + ' шт.)', 'error');
+      showToast('Нет в наличии: ' + item.name + (modName ? ' (' + modName + ')' : '') + ' (осталось ' + stock + ' шт.)', 'error');
       return;
     }
     const threshold = Number(APP_DATA.settings.stock_threshold) || 5;
@@ -1524,31 +1604,37 @@ function addToCart(item) {
       showToast('Внимание: ' + item.name + ' — осталось ' + (stock - inCart) + ' шт.', 'warning');
     }
   }
-  const existing = state.cart.find(function(c) { return c.menu_item_id === item.id; });
+
+  // Find the subcategory for this item. We only care about REAL subcategories
+  // (those with a parent_id). If the item is attached directly to a main
+  // category (e.g. "Breakfast" with no subcategory) or has no category at all,
+  // we leave category_name empty — the cook will just see the dish name.
+  let categoryName = '';
+  let categoryNameTranslation = '';
+  if (item.category_id) {
+    const cat = APP_DATA.categories.find(function(c) { return c.id === item.category_id; });
+    if (cat && cat.parent_id) {
+      categoryName = cat.name || '';
+      categoryNameTranslation = cat.name_translation || '';
+    }
+  }
+
+  // Look for an existing cart entry with the same modification
+  const existing = state.cart.find(function(c) {
+    return c.menu_item_id === item.id && (c.modification_id || '') === modId;
+  });
   if (existing) {
     existing.quantity += 1;
   } else {
-    // Find the subcategory for this item. We only care about REAL subcategories
-    // (those with a parent_id). If the item is attached directly to a main
-    // category (e.g. "Breakfast" with no subcategory) or has no category at all,
-    // we leave category_name empty — the cook will just see the dish name.
-    let categoryName = '';
-    let categoryNameTranslation = '';
-    if (item.category_id) {
-      const cat = APP_DATA.categories.find(function(c) { return c.id === item.category_id; });
-      if (cat && cat.parent_id) {
-        // It's a real subcategory — include its name + translation
-        categoryName = cat.name || '';
-        categoryNameTranslation = cat.name_translation || '';
-      }
-    }
     state.cart.push({
       menu_item_id: item.id,
       name: item.name,
       name_translation: item.name_translation || '',
       category_name: categoryName,
       category_name_translation: categoryNameTranslation,
-      price: Number(item.price),
+      modification_id: modId,
+      modification_name: modName,
+      price: unitPrice,
       quantity: 1,
       comment: '',
       needs_cooking: item.needs_cooking === true || item.needs_cooking === 'true' ||
@@ -1615,6 +1701,10 @@ function renderCartItems() {
       nameLine = '<span class="ci-cat-badge">' + escapeHtml(item.category_name) + '</span> ' + escapeHtml(item.name);
     } else {
       nameLine = escapeHtml(item.name);
+    }
+    // Append modification name if present
+    if (item.modification_name) {
+      nameLine += '<div style="font-size:0.85rem;color:var(--primary);font-weight:600;margin-top:2px;">⚙ ' + escapeHtml(item.modification_name) + '</div>';
     }
     const card = document.createElement('div');
     card.className = 'cart-item';
@@ -2451,6 +2541,8 @@ async function addToExistingOrder() {
         name_translation: item.name_translation || '',
         category_name: item.category_name || '',
         category_name_translation: item.category_name_translation || '',
+        modification_id: item.modification_id || '',
+        modification_name: item.modification_name || '',
         price: item.price,
         quantity: item.quantity,
         comment: item.comment,

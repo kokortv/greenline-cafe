@@ -151,27 +151,60 @@ async function loadAppData(force) {
   if (APP_DATA && !force) return APP_DATA;
 
   // Load all reference data in parallel (no is_active filter — filter on client)
-  const [settings, categories, menu, users] = await Promise.all([
+  const [settings, categories, menu, users, modifications] = await Promise.all([
     dbSelect('settings'),
     dbSelect('categories'),
     dbSelect('menu'),
-    dbSelect('users')
+    dbSelect('users'),
+    dbSelect('menu_modifications')
   ]);
 
-  console.log('loadAppData: settings=', settings.length, 'categories=', categories.length, 'menu=', menu.length, 'users=', users.length);
+  console.log('loadAppData: settings=', settings.length, 'categories=', categories.length, 'menu=', menu.length, 'users=', users.length, 'modifications=', modifications.length);
 
   // Filter active items on client side
   const activeCategories = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
   const activeMenu = menu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
   const activeUsers = users.filter(function(u) { return u.is_active === true || u.is_active === 'true'; });
+  const activeModifications = modifications.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
 
   const settingsObj = {};
   settings.forEach(function(s) { settingsObj[s.key] = s.value; });
 
+  // Group modifications by menu_id for easy access
+  const modsByMenu = {};
+  activeModifications.forEach(function(mod) {
+    if (!modsByMenu[mod.menu_id]) modsByMenu[mod.menu_id] = [];
+    modsByMenu[mod.menu_id].push({
+      id: mod.id,
+      menu_id: mod.menu_id,
+      name: mod.name,
+      name_translation: mod.name_translation || '',
+      price: Number(mod.price) || 0,
+      cost: Number(mod.cost) || 0,
+      markup: Number(mod.markup) || 0,
+      sort: Number(mod.sort) || 0
+    });
+  });
+  // Sort each menu's modifications by sort
+  Object.keys(modsByMenu).forEach(function(mid) {
+    modsByMenu[mid].sort(function(a, b) { return a.sort - b.sort; });
+  });
+
+  // Attach modifications to their menu items
+  const menuWithMods = activeMenu.map(function(m) {
+    return Object.assign({}, m, {
+      cost: Number(m.cost) || 0,
+      markup: Number(m.markup) || 0,
+      has_modifications: m.has_modifications === true || m.has_modifications === 'true',
+      modifications: modsByMenu[m.id] || []
+    });
+  });
+
   APP_DATA = {
     settings: settingsObj,
     categories: activeCategories,
-    menu: activeMenu,
+    menu: menuWithMods,
+    modifications: activeModifications,
     users: activeUsers.map(function(u) {
       return {
         id: u.id,
@@ -351,6 +384,8 @@ async function createOrder(orderData) {
       name_translation: it.name_translation || '',
       category_name: it.category_name || '',
       category_name_translation: it.category_name_translation || '',
+      modification_id: it.modification_id || '',
+      modification_name: it.modification_name || '',
       price: Number(it.price) || 0,
       quantity: Number(it.quantity) || 1,
       comment: it.comment || '',
@@ -391,6 +426,8 @@ async function addItemToOrder(itemData) {
     name_translation: itemData.name_translation || '',
     category_name: itemData.category_name || '',
     category_name_translation: itemData.category_name_translation || '',
+    modification_id: itemData.modification_id || '',
+    modification_name: itemData.modification_name || '',
     price: Number(itemData.price) || 0,
     quantity: Number(itemData.quantity) || 1,
     comment: itemData.comment || '',
@@ -618,6 +655,60 @@ async function getActiveShift(waiterId) {
   const currentCash = Number(await getSetting('cash_register')) || 0;
   const cookEnabled = String(await getSetting('cook_enabled')) !== 'false';
   return { shift: shift, current_cash: currentCash, cook_enabled: cookEnabled };
+}
+
+/* ---------- Menu modifications ---------- */
+// Syncs the modifications list for a menu item:
+//  - inserts/updates the ones passed in
+//  - deletes the ones NOT in the list (i.e. removed in the UI)
+async function saveMenuModifications(menuId, modifications) {
+  if (!_sb) throw new Error('Supabase not initialized');
+  // Get current modifications for this menu item
+  const existing = await dbSelect('menu_modifications', { menu_id: menuId });
+  const existingIds = existing.map(function(m) { return m.id; });
+  const passedIds = modifications.map(function(m) { return m.id; }).filter(Boolean);
+
+  // Delete modifications that are no longer in the list
+  const toDelete = existingIds.filter(function(id) { return passedIds.indexOf(id) === -1; });
+  for (const id of toDelete) {
+    try { await dbDelete('menu_modifications', id); } catch (e) {
+      console.warn('Failed to delete modification', id, e.message);
+    }
+  }
+
+  // Insert / update each passed modification
+  for (let i = 0; i < modifications.length; i++) {
+    const m = modifications[i];
+    const mId = m.id || 'mod_' + Date.now().toString(36) + '_' + i + '_' + Math.random().toString(36).substr(2, 4);
+    const record = {
+      menu_id: menuId,
+      name: (m.name || '').trim(),
+      name_translation: m.name_translation || '',
+      price: Number(m.price) || 0,
+      cost: Number(m.cost) || 0,
+      markup: Number(m.markup) || 0,
+      sort: i,
+      is_active: m.is_active !== false
+    };
+    if (!record.name) continue; // skip empty
+    if (existingIds.indexOf(mId) >= 0) {
+      try {
+        await dbUpdate('menu_modifications', mId, record);
+      } catch (e) {
+        // If update failed because row doesn't actually exist (stale id), insert instead
+        if (e.message && e.message.indexOf('no rows matched') >= 0) {
+          record.id = mId;
+          await dbInsert('menu_modifications', record);
+        } else {
+          throw e;
+        }
+      }
+    } else {
+      record.id = mId;
+      await dbInsert('menu_modifications', record);
+    }
+  }
+  return { ok: true, count: modifications.length };
 }
 
 /* ---------- Stock ---------- */
@@ -1219,25 +1310,42 @@ async function apiPost(action, body) {
     case 'saveMenuItem': {
       const mId = body.id || 'm_' + Date.now().toString(36);
       const existing = await dbSelect('menu', { id: mId });
+      const hasMods = body.has_modifications === true;
       const record = {
         category_id: body.category_id || '',
         name: body.name,
         name_translation: body.name_translation || '',
         price: Number(body.price) || 0,
+        cost: Number(body.cost) || 0,
+        markup: Number(body.markup) || 0,
         needs_cooking: body.needs_cooking === true,
         sort: body.sort || 0,
         is_active: body.is_active !== false,
-        stock: body.stock !== undefined ? Number(body.stock) : 0
+        stock: body.stock !== undefined ? Number(body.stock) : 0,
+        has_modifications: hasMods
       };
+      let result;
       if (existing.length > 0) {
-        return await dbUpdate('menu', mId, record);
+        result = await dbUpdate('menu', mId, record);
       } else {
         record.id = mId;
-        return await dbInsert('menu', record);
+        result = await dbInsert('menu', record);
       }
+      // Save modifications if provided (only when has_modifications=true,
+      // but we still process the list either way to allow cleanup)
+      if (Array.isArray(body.modifications)) {
+        await saveMenuModifications(mId, body.modifications);
+      }
+      return result;
     }
-    case 'deleteMenuItem':
+    case 'deleteMenuItem': {
+      // First delete all modifications of this menu item
+      const mods = await dbSelect('menu_modifications', { menu_id: body.id });
+      for (const m of mods) {
+        try { await dbDelete('menu_modifications', m.id); } catch (e) {}
+      }
       return await dbDelete('menu', body.id);
+    }
     case 'saveUser': {
       const uId = body.id || 'u_' + Date.now().toString(36);
       const existing = await dbSelect('users', { id: uId });
