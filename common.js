@@ -47,15 +47,21 @@ async function dbSelect(table, filters) {
 
 async function dbInsert(table, record) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { error } = await _sb.from(table).insert(record);
-  if (error) throw new Error(error.message);
-  return record;
+  const { data, error } = await _sb.from(table).insert(record).select();
+  if (error) {
+    console.error('dbInsert error:', table, error.message, error.details, error.hint, record);
+    throw new Error(error.message + (error.hint ? ' (подсказка: ' + error.hint + ')' : ''));
+  }
+  return data && data.length > 0 ? data[0] : record;
 }
 
 async function dbInsertBatch(table, records) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { error } = await _sb.from(table).insert(records);
-  if (error) throw new Error(error.message);
+  const { data, error } = await _sb.from(table).insert(records);
+  if (error) {
+    console.error('dbInsertBatch error:', table, error.message, error.details, error.hint, records);
+    throw new Error(error.message + (error.hint ? ' (подсказка: ' + error.hint + ')' : ''));
+  }
   return records;
 }
 
@@ -69,7 +75,10 @@ async function dbUpdate(table, id, updates) {
     .update(updates)
     .eq('id', id)
     .select();
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('dbUpdate error:', table, id, error.message, error.details, error.hint, updates);
+    throw new Error(error.message + (error.hint ? ' (подсказка: ' + error.hint + ')' : ''));
+  }
   if (!data || data.length === 0) {
     throw new Error('Update failed: no rows matched id=' + id + ' (check RLS policies for table "' + table + '")');
   }

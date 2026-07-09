@@ -1441,35 +1441,45 @@ function isPricingModeMods() {
 }
 
 // Recalculate single price fields: cost + markup = price
-// changedField tells us which field was just edited (so we keep it and
-// one of the others, and recompute the third).
+// Logic (per user spec):
+//   - User edits COST:  copy cost → price, set markup = 0
+//   - User edits PRICE: copy price → cost, set markup = 0
+//   - User edits MARKUP: price = cost + markup (only if cost is already set)
+//     If price < cost after this, markup stays as price - cost (could be negative).
+//
+// We track which field triggered the input via the `changedField` argument.
 function recalcSinglePrice(changedField) {
   const costEl = document.getElementById('menu-cost');
   const markupEl = document.getElementById('menu-markup');
   const priceEl = document.getElementById('menu-price');
-  const cost = parseFloat(costEl.value) || 0;
-  const markup = parseFloat(markupEl.value) || 0;
-  const price = parseFloat(priceEl.value) || 0;
 
   if (changedField === 'cost' && costEl.value !== '') {
-    // If markup is set, recompute price. Otherwise, if price is set, recompute markup.
-    if (markupEl.value !== '') {
+    // Cost was just edited: copy cost → price, set markup = 0
+    priceEl.value = parseFloat(costEl.value).toFixed(2);
+    markupEl.value = '0';
+    return;
+  }
+
+  if (changedField === 'price' && priceEl.value !== '') {
+    // Price was just edited: copy price → cost, set markup = 0
+    costEl.value = parseFloat(priceEl.value).toFixed(2);
+    markupEl.value = '0';
+    return;
+  }
+
+  if (changedField === 'markup' && markupEl.value !== '') {
+    // Markup was just edited: price = cost + markup (if cost is set)
+    if (costEl.value !== '') {
+      const cost = parseFloat(costEl.value) || 0;
+      const markup = parseFloat(markupEl.value) || 0;
       priceEl.value = (cost + markup).toFixed(2);
     } else if (priceEl.value !== '') {
-      markupEl.value = (price - cost).toFixed(2);
-    }
-  } else if (changedField === 'markup' && markupEl.value !== '') {
-    if (costEl.value !== '') {
-      priceEl.value = (cost + markup).toFixed(2);
-    } else if (priceEl.value !== '') {
+      // No cost yet but price is set: derive cost = price - markup
+      const price = parseFloat(priceEl.value) || 0;
+      const markup = parseFloat(markupEl.value) || 0;
       costEl.value = (price - markup).toFixed(2);
     }
-  } else if (changedField === 'price' && priceEl.value !== '') {
-    if (costEl.value !== '') {
-      markupEl.value = (price - cost).toFixed(2);
-    } else if (markupEl.value !== '') {
-      costEl.value = (price - markup).toFixed(2);
-    }
+    return;
   }
 }
 
@@ -1528,25 +1538,38 @@ function addModificationRow(mod) {
 }
 
 // Recalculate cost/markup/price for a modification row
+// Same logic as recalcSinglePrice:
+//   - COST edited:  price = cost, markup = 0
+//   - PRICE edited: cost = price, markup = 0
+//   - MARKUP edited: price = cost + markup (if cost set); else cost = price - markup
 function recalcModPrice(input) {
   const row = input.closest('.modification-row');
   if (!row) return;
   const costEl = row.querySelector('.mod-cost');
   const markupEl = row.querySelector('.mod-markup');
   const priceEl = row.querySelector('.mod-price');
-  const cost = parseFloat(costEl.value) || 0;
-  const markup = parseFloat(markupEl.value) || 0;
-  const price = parseFloat(priceEl.value) || 0;
   const cls = input.className;
+
   if (cls.indexOf('mod-cost') >= 0 && costEl.value !== '') {
-    if (markupEl.value !== '') priceEl.value = (cost + markup).toFixed(2);
-    else if (priceEl.value !== '') markupEl.value = (price - cost).toFixed(2);
-  } else if (cls.indexOf('mod-markup') >= 0 && markupEl.value !== '') {
-    if (costEl.value !== '') priceEl.value = (cost + markup).toFixed(2);
-    else if (priceEl.value !== '') costEl.value = (price - markup).toFixed(2);
-  } else if (cls.indexOf('mod-price') >= 0 && priceEl.value !== '') {
-    if (costEl.value !== '') markupEl.value = (price - cost).toFixed(2);
-    else if (markupEl.value !== '') costEl.value = (price - markup).toFixed(2);
+    priceEl.value = parseFloat(costEl.value).toFixed(2);
+    markupEl.value = '0';
+    return;
+  }
+  if (cls.indexOf('mod-price') >= 0 && priceEl.value !== '') {
+    costEl.value = parseFloat(priceEl.value).toFixed(2);
+    markupEl.value = '0';
+    return;
+  }
+  if (cls.indexOf('mod-markup') >= 0 && markupEl.value !== '') {
+    if (costEl.value !== '') {
+      const cost = parseFloat(costEl.value) || 0;
+      const markup = parseFloat(markupEl.value) || 0;
+      priceEl.value = (cost + markup).toFixed(2);
+    } else if (priceEl.value !== '') {
+      const price = parseFloat(priceEl.value) || 0;
+      const markup = parseFloat(markupEl.value) || 0;
+      costEl.value = (price - markup).toFixed(2);
+    }
   }
 }
 
