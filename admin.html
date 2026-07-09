@@ -445,20 +445,16 @@
         <label>Текст внизу меню (подвал)</label>
         <textarea id="qr-menu-footer" rows="3" placeholder="Например: Спасибо за визит! Адрес: г. Тбилиси, ул. ... Тел: +995 ... Часы работы: 10:00 — 23:00"></textarea>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div class="form-group">
-          <label>Цвет цен</label>
+          <label>Цвет цен, заголовков и фона шапки</label>
           <div style="display:flex;align-items:center;gap:8px;">
             <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
             <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-price').value = this.value;">
           </div>
-        </div>
-        <div class="form-group">
-          <label>Цвет фона</label>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="qr-menu-color-bg" value="#fafafa" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-            <input type="text" id="qr-menu-color-bg-text" value="#fafafa" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-bg').value = this.value;">
-          </div>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+            Этот цвет используется для: цен, заголовков категорий и фона шапки вверху меню.
+          </p>
         </div>
         <div class="form-group">
           <label>Цвет заголовков категорий</label>
@@ -466,6 +462,9 @@
             <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
             <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-header').value = this.value;">
           </div>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+            Цвет заголовков главных категорий (и линии под ними). По умолчанию такой же, как у цен.
+          </p>
         </div>
       </div>
       <!-- Sync color picker ↔ text input both ways -->
@@ -473,7 +472,6 @@
         (function() {
           const pairs = [
             ['qr-menu-color-price', 'qr-menu-color-price-text'],
-            ['qr-menu-color-bg', 'qr-menu-color-bg-text'],
             ['qr-menu-color-header', 'qr-menu-color-header-text']
           ];
           pairs.forEach(function(p) {
@@ -1253,14 +1251,11 @@ function loadQrMenuAppearance() {
   const s = APP_DATA.settings || {};
   document.getElementById('qr-menu-subtitle').value = s.qr_menu_subtitle || '';
   document.getElementById('qr-menu-footer').value = s.qr_menu_footer || '';
-  // Colors — default to brand colors if not set
+  // Colors — default to brand red if not set
   const priceColor = s.qr_menu_color_price || '#d32f2f';
-  const bgColor = s.qr_menu_color_bg || '#fafafa';
   const headerColor = s.qr_menu_color_header || '#d32f2f';
   document.getElementById('qr-menu-color-price').value = priceColor;
   document.getElementById('qr-menu-color-price-text').value = priceColor;
-  document.getElementById('qr-menu-color-bg').value = bgColor;
-  document.getElementById('qr-menu-color-bg-text').value = bgColor;
   document.getElementById('qr-menu-color-header').value = headerColor;
   document.getElementById('qr-menu-color-header-text').value = headerColor;
 }
@@ -1271,7 +1266,6 @@ async function saveAndGenerateQrMenu() {
     qr_menu_subtitle: document.getElementById('qr-menu-subtitle').value,
     qr_menu_footer: document.getElementById('qr-menu-footer').value,
     qr_menu_color_price: document.getElementById('qr-menu-color-price').value,
-    qr_menu_color_bg: document.getElementById('qr-menu-color-bg').value,
     qr_menu_color_header: document.getElementById('qr-menu-color-header').value
   };
   try {

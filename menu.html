@@ -7,16 +7,17 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 <style id="dynamic-menu-styles">
-  /* Default values — overridden at runtime from APP_DATA.settings */
+  /* Default values — overridden at runtime from APP_DATA.settings.
+     A single color is used for: prices, category titles, and the header background. */
   body { background: #fafafa; padding: 0; max-width: 800px; margin: 0 auto; }
-  .mi-price { color: #d32f2f; }
+  .menu-header { background: #d32f2f; }
+  .mi-price, .mi-mod-price { color: #d32f2f; }
   .main-cat-title { color: #d32f2f; border-bottom-color: #d32f2f; }
 </style>
 <style>
   .menu-header {
     text-align: center;
     padding: 24px 16px 16px;
-    background: var(--primary);
     color: #fff;
     border-radius: 0 0 16px 16px;
     margin-bottom: 16px;
@@ -58,14 +59,16 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    font-size: 0.85rem;
-    color: var(--text-muted);
+    font-size: 0.95rem;
+    color: var(--text);
   }
-  .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; }
-  .mi-mod-row .mi-mod-price { font-weight: 700; }
-  .mi-price {
+  .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .mi-mod-row .mi-mod-price { font-weight: 700; white-space: nowrap; }
+  /* All prices — whether for a plain item or a modification — share the same
+     size so they line up vertically across the menu. */
+  .mi-price, .mi-mod-price {
+    font-size: 1.05rem;
     font-weight: 700;
-    font-size: 1.1rem;
     white-space: nowrap;
     flex: none;
   }
@@ -116,18 +119,22 @@
     ? catsParam.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
     : null; // null = show all
 
-  // Apply appearance settings to the page (colors, etc.)
+  // Apply appearance settings to the page.
+  // A single color (qr_menu_color_price) is used for:
+  //   - prices (plain items + modifications)
+  //   - main category titles + their underline
+  //   - the header background at the top of the page
+  // The qr_menu_color_header (if set) overrides ONLY the category titles.
   function applyAppearance() {
     const s = APP_DATA.settings || {};
     const priceColor = s.qr_menu_color_price || '#d32f2f';
-    const bgColor = s.qr_menu_color_bg || '#fafafa';
-    const headerColor = s.qr_menu_color_header || '#d32f2f';
+    const headerColor = s.qr_menu_color_header || priceColor;
     // Inject CSS overrides
     const styleEl = document.getElementById('dynamic-menu-styles');
     styleEl.textContent =
-      'body { background: ' + bgColor + '; padding: 0; max-width: 800px; margin: 0 auto; } ' +
-      '.mi-price { color: ' + priceColor + '; } ' +
-      '.mi-mod-row .mi-mod-price { color: ' + priceColor + '; } ' +
+      'body { background: #fafafa; padding: 0; max-width: 800px; margin: 0 auto; } ' +
+      '.menu-header { background: ' + priceColor + '; } ' +
+      '.mi-price, .mi-mod-price { color: ' + priceColor + '; } ' +
       '.main-cat-title { color: ' + headerColor + '; border-bottom-color: ' + headerColor + '; }';
     // Subtitle
     const subtitle = s.qr_menu_subtitle || '';
