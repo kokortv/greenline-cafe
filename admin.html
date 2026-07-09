@@ -493,13 +493,48 @@
       </div>
     </div>
   </div>
-  <!-- STOCK TAB -->
+  <!-- STOCK TAB — main "Склад" with sub-tabs (Товары, Поставки, Поставщики, Счета, Склады) -->
   <div class="tab-content" id="tab-stock" style="display:none;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 class="section-title" style="margin:0;">Склад и отчёты</h2>
-      <button class="btn btn-primary" onclick="loadStockReport()">↻ Обновить</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h2 class="section-title" style="margin:0;">Склад</h2>
+      <button class="btn btn-primary" id="stock-refresh-btn" onclick="refreshStockSubTab()">↻ Обновить</button>
     </div>
-    <div id="stock-report"></div>
+    <!-- Sub-tabs inside the Stock section -->
+    <div class="tabs" style="margin-bottom:16px;overflow-x:auto;white-space:nowrap;">
+      <button class="tab active" data-stocksub="items" onclick="switchStockSub('items')">Товары</button>
+      <button class="tab" data-stocksub="deliveries" onclick="switchStockSub('deliveries')">Поставки</button>
+      <button class="tab" data-stocksub="suppliers" onclick="switchStockSub('suppliers')">Поставщики</button>
+      <button class="tab" data-stocksub="warehouses" onclick="switchStockSub('warehouses')">Склады</button>
+      <button class="tab" data-stocksub="accounts" onclick="switchStockSub('accounts')">Счета</button>
+    </div>
+    <!-- Sub-tab contents -->
+    <div id="stocksub-items" class="stocksub-content">
+      <div id="stock-report"></div>
+    </div>
+    <div id="stocksub-deliveries" class="stocksub-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="openDeliveryModal()">+ Добавить поставку</button>
+      </div>
+      <div id="deliveries-list"></div>
+    </div>
+    <div id="stocksub-suppliers" class="stocksub-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="openSupplierModal()">+ Добавить поставщика</button>
+      </div>
+      <div id="suppliers-list"></div>
+    </div>
+    <div id="stocksub-warehouses" class="stocksub-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="openWarehouseModal()">+ Добавить склад</button>
+      </div>
+      <div id="warehouses-list"></div>
+    </div>
+    <div id="stocksub-accounts" class="stocksub-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="openAccountModal()">+ Добавить счёт</button>
+      </div>
+      <div id="accounts-list"></div>
+    </div>
   </div>
 
   <!-- TABLES TAB -->
@@ -694,6 +729,160 @@
   </div>
 </div>
 
+<!-- Supplier modal -->
+<div class="modal-backdrop" id="modal-supplier">
+  <div class="modal">
+    <h2 id="modal-supplier-title">Новый поставщик</h2>
+    <input type="hidden" id="supplier-id">
+    <div class="form-group">
+      <label>Имя поставщика *</label>
+      <input type="text" id="supplier-name" placeholder="Например: ООО «Мясной двор»">
+    </div>
+    <div class="form-group">
+      <label>Телефон</label>
+      <input type="text" id="supplier-phone" placeholder="+7 ...">
+    </div>
+    <div class="form-group">
+      <label>Адрес</label>
+      <input type="text" id="supplier-address" placeholder="г. Москва, ул. ...">
+    </div>
+    <div class="form-group">
+      <label>Комментарий</label>
+      <textarea id="supplier-comment" rows="2" placeholder="Любые заметки о поставщике"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-supplier')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveSupplierUI(); })">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Warehouse modal -->
+<div class="modal-backdrop" id="modal-warehouse">
+  <div class="modal">
+    <h2 id="modal-warehouse-title">Новый склад</h2>
+    <input type="hidden" id="warehouse-id">
+    <div class="form-group">
+      <label>Название склада *</label>
+      <input type="text" id="warehouse-name" placeholder="Например: Кухня, Бар, Склад алкоголя">
+    </div>
+    <div class="form-group">
+      <label>Комментарий</label>
+      <textarea id="warehouse-comment" rows="2" placeholder="Где находится, что хранится"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-warehouse')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveWarehouseUI(); })">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account modal -->
+<div class="modal-backdrop" id="modal-account">
+  <div class="modal">
+    <h2 id="modal-account-title">Новый счёт</h2>
+    <input type="hidden" id="account-id">
+    <div class="form-group">
+      <label>Название счёта *</label>
+      <input type="text" id="account-name" placeholder="Например: Касса, Карта Сбербанк, Расчётный счёт">
+    </div>
+    <div class="form-group">
+      <label>Валюта</label>
+      <input type="text" id="account-currency" placeholder="₽" value="₽">
+    </div>
+    <div class="form-group">
+      <label>Тип счёта</label>
+      <select id="account-type">
+        <option value="cash">Наличный</option>
+        <option value="card">Карта</option>
+        <option value="bank">Безналичный (расчётный счёт)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Начальный баланс</label>
+      <input type="number" id="account-initial-balance" min="0" step="0.01" placeholder="0" value="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-account')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveAccountUI(); })">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delivery modal (large form) -->
+<div class="modal-backdrop" id="modal-delivery">
+  <div class="modal" style="max-width:900px;">
+    <h2 id="modal-delivery-title">Новая поставка</h2>
+    <input type="hidden" id="delivery-id">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label>Дата и время *</label>
+        <input type="datetime-local" id="delivery-date">
+      </div>
+      <div class="form-group">
+        <label>Поставщик *</label>
+        <div style="display:flex;gap:6px;">
+          <select id="delivery-supplier" style="flex:1;"></select>
+          <button type="button" class="btn btn-outline" style="padding:8px 10px;" onclick="openSupplierModal(null, true)" title="Добавить нового поставщика">+</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Склад *</label>
+        <div style="display:flex;gap:6px;">
+          <select id="delivery-warehouse" style="flex:1;"></select>
+          <button type="button" class="btn btn-outline" style="padding:8px 10px;" onclick="openWarehouseModal(null, true)" title="Добавить новый склад">+</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Счёт (с чего платили)</label>
+        <div style="display:flex;gap:6px;">
+          <select id="delivery-account" style="flex:1;"></select>
+          <button type="button" class="btn btn-outline" style="padding:8px 10px;" onclick="openAccountModal(null, true)" title="Добавить новый счёт">+</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Оплаченная сумма</label>
+        <input type="number" id="delivery-paid-amount" min="0" step="0.01" placeholder="0" value="0" oninput="updateDeliveryPaidStatus()">
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;" id="delivery-paid-status">Не оплачено</p>
+      </div>
+      <div class="form-group">
+        <label>Комментарий</label>
+        <input type="text" id="delivery-comment" placeholder="Заметки к поставке">
+      </div>
+    </div>
+
+    <h3 style="margin:16px 0 8px;font-size:1rem;">Товары в поставке</h3>
+    <div id="delivery-items-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <button type="button" class="btn btn-outline" style="margin-top:8px;width:100%;" onclick="addDeliveryItemRow()">+ Добавить ещё товар</button>
+
+    <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:1.05rem;font-weight:600;">Общая сумма:</span>
+      <span id="delivery-total" style="font-size:1.4rem;font-weight:700;color:var(--primary);">0 ₽</span>
+    </div>
+
+    <div class="form-group checkbox-field" style="margin-top:12px;">
+      <input type="checkbox" id="delivery-apply-to-stock">
+      <label for="delivery-apply-to-stock" style="margin:0;">Применить к складу (увеличить остатки товаров на указанное количество)</label>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-delivery')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveDeliveryUI(); })">Сохранить поставку</button>
+    </div>
+  </div>
+</div>
+
+<!-- Item deliveries modal — shown when clicking "Поставки" on a stock row -->
+<div class="modal-backdrop" id="modal-item-deliveries">
+  <div class="modal" style="max-width:700px;">
+    <h2>Поставки: <span id="item-deliveries-name"></span></h2>
+    <div id="item-deliveries-content" style="margin:12px 0;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-item-deliveries')">Закрыть</button>
+    </div>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
 <script src="common.js"></script>
@@ -830,7 +1019,11 @@ function switchTab(name) {
   if (name === 'categories') renderCategoryList();
   if (name === 'staff') renderStaffList();
   if (name === 'sounds') updateSoundStatuses();
-  if (name === 'stock') loadStockReport();
+  if (name === 'stock') {
+    // Default to "items" sub-tab when opening the Stock section
+    if (!window._currentStockSub) window._currentStockSub = 'items';
+    switchStockSub(window._currentStockSub);
+  }
   if (name === 'tables') loadTablesConfig();
 }
 
@@ -2131,6 +2324,31 @@ async function deleteCategory(id) {
 
 
 /* ---------- STOCK ---------- */
+// Switch between sub-tabs within the Stock section.
+// Sub-tab keys: items | deliveries | suppliers | warehouses | accounts
+function switchStockSub(sub) {
+  window._currentStockSub = sub;
+  // Toggle active state on the sub-tab buttons
+  document.querySelectorAll('[data-stocksub]').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.stocksub === sub);
+  });
+  // Show only the matching sub-tab content
+  document.querySelectorAll('.stocksub-content').forEach(function(c) { c.style.display = 'none'; });
+  const target = document.getElementById('stocksub-' + sub);
+  if (target) target.style.display = 'block';
+  // Load data for the sub-tab
+  if (sub === 'items') loadStockReport();
+  if (sub === 'deliveries') loadDeliveriesList();
+  if (sub === 'suppliers') loadSuppliersList();
+  if (sub === 'warehouses') loadWarehousesList();
+  if (sub === 'accounts') loadAccountsList();
+}
+
+// Refresh the currently-visible sub-tab (called from the "↻ Обновить" button)
+function refreshStockSubTab() {
+  if (window._currentStockSub) switchStockSub(window._currentStockSub);
+}
+
 async function loadStockReport() {
   const div = document.getElementById('stock-report');
   if (!div) return;
@@ -2152,11 +2370,12 @@ async function loadStockReport() {
       html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
     }
     html += '<table style="width:100%;table-layout:fixed;" id="stock-table"><thead><tr>';
-    html += '<th style="width:32%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'name\')">Название <span class="sort-arrow" id="sort-arrow-name"></span></th>';
-    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остаток <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
-    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'consumed_day\')">За день <span class="sort-arrow" id="sort-arrow-consumed_day"></span></th>';
-    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'consumed_week\')">За неделю <span class="sort-arrow" id="sort-arrow-consumed_week"></span></th>';
-    html += '<th style="width:13%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'consumed_month\')">За месяц <span class="sort-arrow" id="sort-arrow-consumed_month"></span></th>';
+    html += '<th style="width:22%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'name\')">Название <span class="sort-arrow" id="sort-arrow-name"></span></th>';
+    html += '<th style="width:18%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'category_name\')">Категория <span class="sort-arrow" id="sort-arrow-category_name"></span></th>';
+    html += '<th style="width:9%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остатки <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
+    html += '<th style="width:11%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
+    html += '<th style="width:11%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
+    html += '<th style="width:10%;text-align:center;">Поставки</th>';
     html += '<th style="width:11%;">Пополнить</th>';
     html += '</tr></thead><tbody>';
     // Keep a reference to the items so sortStockBy() can re-render the body
@@ -2177,14 +2396,31 @@ async function loadStockReport() {
 function renderStockRow(it, tracking) {
   const lowClass = it.low_stock ? ' style="background:#ffebee;"' : '';
   const stockColor = it.low_stock ? 'color:var(--danger);font-weight:700;' : '';
+  const cost = Number(it.cost) || 0;
+  const stockValue = Number(it.stock_value) || 0;
+  const deliveriesCount = Number(it.deliveries_count) || 0;
+  const hasDeliveries = deliveriesCount > 0;
   let row = '<tr' + lowClass + ' id="stock-row-' + it.id + '" data-stock="' + it.stock + '">';
+  // Название
   row += '<td style="word-break:break-word;">' + escapeHtml(it.name) + '</td>';
+  // Категория
+  row += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(it.category_name || '—') + '</td>';
+  // Остатки
   row += '<td class="stock-cell" style="' + stockColor + '">' + it.stock + '</td>';
-  row += '<td>' + it.consumed_day + '</td>';
-  row += '<td>' + it.consumed_week + '</td>';
-  row += '<td>' + it.consumed_month + '</td>';
-  // Narrower replenish cell (column is 11% wide now) — input + small + button.
-  // Input is slightly taller than before (8px vertical padding) so tapping is easy.
+  // Себестоимость
+  row += '<td style="text-align:right;color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
+  // Сумма = остаток × себестоимость
+  row += '<td style="text-align:right;font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
+  // Поставки — кликабельная ссылка если есть, серый текст если нет
+  if (hasDeliveries) {
+    row += '<td style="text-align:center;">' +
+      '<a href="#" style="color:var(--primary);font-weight:600;text-decoration:underline;" ' +
+      'onclick="event.preventDefault();showDeliveriesForMenuItem(\'' + it.id + '\', ' + JSON.stringify(escapeHtml(it.name)) + ')">' +
+      deliveriesCount + ' пост.</a></td>';
+  } else {
+    row += '<td style="text-align:center;color:var(--text-muted);">—</td>';
+  }
+  // Пополнить
   row += '<td style="padding:5px 4px;"><div style="display:flex;align-items:center;gap:4px;">' +
     '<input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" ' +
       'style="flex:1;min-width:0;padding:8px 4px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;text-align:center;" ' +
@@ -2213,8 +2449,9 @@ function sortStockBy(key) {
     let av = a[key];
     let bv = b[key];
     // Numeric columns
-    if (typeof av === 'number' || typeof bv === 'number' || key === 'stock' ||
-        key === 'consumed_day' || key === 'consumed_week' || key === 'consumed_month') {
+    if (key === 'stock' || key === 'cost' || key === 'stock_value' ||
+        key === 'consumed_day' || key === 'consumed_week' || key === 'consumed_month' ||
+        key === 'deliveries_count' || key === 'deliveries_total' || key === 'consumed_total') {
       av = Number(av) || 0;
       bv = Number(bv) || 0;
       return (av - bv) * dir;
@@ -2531,6 +2768,652 @@ async function saveTablesConfigUI() {
     await loadTablesConfig();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- SUPPLIERS ---------- */
+async function loadSuppliersList() {
+  const div = document.getElementById('suppliers-list');
+  if (!div) return;
+  div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    // Get all suppliers + deliveries to compute stats per supplier
+    const suppliers = (APP_DATA.suppliers || []).slice();
+    const deliveries = APP_DATA.deliveries || [];
+    const stats = {};
+    deliveries.forEach(function(d) {
+      if (!d.supplier_id) return;
+      if (!stats[d.supplier_id]) stats[d.supplier_id] = { count: 0, total: 0, debt: 0 };
+      stats[d.supplier_id].count += 1;
+      stats[d.supplier_id].total += Number(d.total_amount) || 0;
+      const paid = Number(d.paid_amount) || 0;
+      const total = Number(d.total_amount) || 0;
+      if (paid < total) stats[d.supplier_id].debt += (total - paid);
+    });
+    if (suppliers.length === 0) {
+      div.innerHTML = '<div class="empty-state"><h3>Нет поставщиков</h3><p>Нажмите «+ Добавить поставщика»</p></div>';
+      return;
+    }
+    suppliers.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
+    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    html += '<th style="width:22%;">Имя поставщика</th>';
+    html += '<th style="width:15%;">Телефон</th>';
+    html += '<th style="width:25%;">Комментарий</th>';
+    html += '<th style="width:10%;text-align:right;">Поставок</th>';
+    html += '<th style="width:13%;text-align:right;">Сумма поставок</th>';
+    html += '<th style="width:13%;text-align:right;">Задолженность</th>';
+    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '</tr></thead><tbody>';
+    suppliers.forEach(function(s) {
+      const st = stats[s.id] || { count: 0, total: 0, debt: 0 };
+      const debtColor = st.debt > 0 ? 'color:var(--danger);font-weight:700;' : '';
+      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(s.name) + '</td>';
+      html += '<td style="word-break:break-word;">' + escapeHtml(s.phone || '—') + '</td>';
+      html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(s.comment || '—') + '</td>';
+      html += '<td style="text-align:right;">' + st.count + '</td>';
+      html += '<td style="text-align:right;font-weight:600;">' + formatMoney(st.total) + '</td>';
+      html += '<td style="text-align:right;' + debtColor + '">' + (st.debt > 0 ? formatMoney(st.debt) : '—') + '</td>';
+      html += '<td style="text-align:center;white-space:nowrap;">' +
+        '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openSupplierModal(\'' + s.id + '\')">✎</button> ' +
+        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteSupplierUI(\'' + s.id + '\')">✕</button>' +
+        '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+  } catch (err) {
+    div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+function openSupplierModal(id, returnToDelivery) {
+  const modal = document.getElementById('modal-supplier');
+  const title = document.getElementById('modal-supplier-title');
+  // Populate form
+  if (id) {
+    const s = (APP_DATA.suppliers || []).find(function(x) { return x.id === id; });
+    if (!s) return;
+    title.textContent = 'Изменить поставщика';
+    document.getElementById('supplier-id').value = s.id;
+    document.getElementById('supplier-name').value = s.name || '';
+    document.getElementById('supplier-phone').value = s.phone || '';
+    document.getElementById('supplier-address').value = s.address || '';
+    document.getElementById('supplier-comment').value = s.comment || '';
+  } else {
+    title.textContent = 'Новый поставщик';
+    document.getElementById('supplier-id').value = '';
+    document.getElementById('supplier-name').value = '';
+    document.getElementById('supplier-phone').value = '';
+    document.getElementById('supplier-address').value = '';
+    document.getElementById('supplier-comment').value = '';
+  }
+  // Remember if we should return to the delivery modal after saving
+  window._supplierModalReturnToDelivery = returnToDelivery === true;
+  openModal('modal-supplier');
+}
+
+async function saveSupplierUI() {
+  const id = document.getElementById('supplier-id').value;
+  const name = document.getElementById('supplier-name').value.trim();
+  if (!name) { showToast('Введите имя поставщика', 'warning'); return; }
+  const payload = {
+    id: id || undefined,
+    name: name,
+    phone: document.getElementById('supplier-phone').value,
+    address: document.getElementById('supplier-address').value,
+    comment: document.getElementById('supplier-comment').value
+  };
+  try {
+    await apiPost('saveSupplier', payload);
+    showToast('Поставщик сохранён', 'success');
+    closeModal('modal-supplier');
+    await loadAppDataForce();
+    // If we were in the middle of creating a delivery, refresh the supplier dropdown
+    if (window._supplierModalReturnToDelivery) {
+      window._supplierModalReturnToDelivery = false;
+      openDeliveryModal(document.getElementById('delivery-id').value || null);
+    } else {
+      loadSuppliersList();
+    }
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteSupplierUI(id) {
+  const ok = await confirmDialog('Удалить поставщика? Исторические поставки сохранятся.', 'Удаление поставщика', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
+  try {
+    await apiPost('deleteSupplier', { id: id });
+    showToast('Поставщик удалён', 'info');
+    await loadAppDataForce();
+    loadSuppliersList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- WAREHOUSES ---------- */
+async function loadWarehousesList() {
+  const div = document.getElementById('warehouses-list');
+  if (!div) return;
+  div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    const warehouses = (APP_DATA.warehouses || []).slice();
+    const menu = APP_DATA.menu || [];
+    const deliveries = APP_DATA.deliveries || [];
+    // Compute "сумма" — total value of all products delivered to this warehouse
+    // (sum of delivery_items.total_price where delivery.warehouse_id matches)
+    const deliveryItems = APP_DATA.delivery_items || [];
+    const whStats = {};
+    deliveries.forEach(function(d) {
+      if (!d.warehouse_id) return;
+      if (!whStats[d.warehouse_id]) whStats[d.warehouse_id] = 0;
+    });
+    // We need to match delivery_items back to delivery → warehouse
+    deliveryItems.forEach(function(dit) {
+      const deliv = deliveries.find(function(d) { return d.id === dit.delivery_id; });
+      if (!deliv || !deliv.warehouse_id) return;
+      if (!whStats[deliv.warehouse_id]) whStats[deliv.warehouse_id] = 0;
+      whStats[deliv.warehouse_id] += Number(dit.total_price) || 0;
+    });
+    if (warehouses.length === 0) {
+      div.innerHTML = '<div class="empty-state"><h3>Нет складов</h3><p>Нажмите «+ Добавить склад»</p></div>';
+      return;
+    }
+    warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
+    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    html += '<th style="width:10%;">№</th>';
+    html += '<th style="width:30%;">Название склада</th>';
+    html += '<th style="width:35%;">Комментарий</th>';
+    html += '<th style="width:15%;text-align:right;">Сумма</th>';
+    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '</tr></thead><tbody>';
+    warehouses.forEach(function(w, idx) {
+      const total = whStats[w.id] || 0;
+      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<td>' + (idx + 1) + '</td>';
+      html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(w.name) + '</td>';
+      html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(w.comment || '—') + '</td>';
+      html += '<td style="text-align:right;font-weight:600;">' + formatMoney(total) + '</td>';
+      html += '<td style="text-align:center;white-space:nowrap;">' +
+        '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openWarehouseModal(\'' + w.id + '\')">✎</button> ' +
+        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteWarehouseUI(\'' + w.id + '\')">✕</button>' +
+        '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+  } catch (err) {
+    div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+function openWarehouseModal(id, returnToDelivery) {
+  if (id) {
+    const w = (APP_DATA.warehouses || []).find(function(x) { return x.id === id; });
+    if (!w) return;
+    document.getElementById('modal-warehouse-title').textContent = 'Изменить склад';
+    document.getElementById('warehouse-id').value = w.id;
+    document.getElementById('warehouse-name').value = w.name || '';
+    document.getElementById('warehouse-comment').value = w.comment || '';
+  } else {
+    document.getElementById('modal-warehouse-title').textContent = 'Новый склад';
+    document.getElementById('warehouse-id').value = '';
+    document.getElementById('warehouse-name').value = '';
+    document.getElementById('warehouse-comment').value = '';
+  }
+  window._warehouseModalReturnToDelivery = returnToDelivery === true;
+  openModal('modal-warehouse');
+}
+
+async function saveWarehouseUI() {
+  const id = document.getElementById('warehouse-id').value;
+  const name = document.getElementById('warehouse-name').value.trim();
+  if (!name) { showToast('Введите название склада', 'warning'); return; }
+  const payload = {
+    id: id || undefined,
+    name: name,
+    comment: document.getElementById('warehouse-comment').value
+  };
+  try {
+    await apiPost('saveWarehouse', payload);
+    showToast('Склад сохранён', 'success');
+    closeModal('modal-warehouse');
+    await loadAppDataForce();
+    if (window._warehouseModalReturnToDelivery) {
+      window._warehouseModalReturnToDelivery = false;
+      openDeliveryModal(document.getElementById('delivery-id').value || null);
+    } else {
+      loadWarehousesList();
+    }
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteWarehouseUI(id) {
+  const ok = await confirmDialog('Удалить склад? Исторические поставки сохранятся.', 'Удаление склада', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
+  try {
+    await apiPost('deleteWarehouse', { id: id });
+    showToast('Склад удалён', 'info');
+    await loadAppDataForce();
+    loadWarehousesList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- ACCOUNTS ---------- */
+async function loadAccountsList() {
+  const div = document.getElementById('accounts-list');
+  if (!div) return;
+  div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    const accounts = (APP_DATA.accounts || []).slice();
+    if (accounts.length === 0) {
+      div.innerHTML = '<div class="empty-state"><h3>Нет счетов</h3><p>Нажмите «+ Добавить счёт»</p></div>';
+      return;
+    }
+    accounts.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
+    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    html += '<th style="width:30%;">Название счёта</th>';
+    html += '<th style="width:10%;">Валюта</th>';
+    html += '<th style="width:18%;">Тип</th>';
+    html += '<th style="width:17%;text-align:right;">Начальный баланс</th>';
+    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '</tr></thead><tbody>';
+    const typeLabels = { cash: 'Наличный', card: 'Карта', bank: 'Безналичный' };
+    accounts.forEach(function(a) {
+      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(a.name) + '</td>';
+      html += '<td>' + escapeHtml(a.currency || '₽') + '</td>';
+      html += '<td>' + escapeHtml(typeLabels[a.type] || a.type) + '</td>';
+      html += '<td style="text-align:right;font-weight:600;">' + formatMoney(a.initial_balance || 0, a.currency) + '</td>';
+      html += '<td style="text-align:center;white-space:nowrap;">' +
+        '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openAccountModal(\'' + a.id + '\')">✎</button> ' +
+        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteAccountUI(\'' + a.id + '\')">✕</button>' +
+        '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+  } catch (err) {
+    div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+function openAccountModal(id, returnToDelivery) {
+  if (id) {
+    const a = (APP_DATA.accounts || []).find(function(x) { return x.id === id; });
+    if (!a) return;
+    document.getElementById('modal-account-title').textContent = 'Изменить счёт';
+    document.getElementById('account-id').value = a.id;
+    document.getElementById('account-name').value = a.name || '';
+    document.getElementById('account-currency').value = a.currency || '₽';
+    document.getElementById('account-type').value = a.type || 'cash';
+    document.getElementById('account-initial-balance').value = a.initial_balance || 0;
+  } else {
+    document.getElementById('modal-account-title').textContent = 'Новый счёт';
+    document.getElementById('account-id').value = '';
+    document.getElementById('account-name').value = '';
+    document.getElementById('account-currency').value = '₽';
+    document.getElementById('account-type').value = 'cash';
+    document.getElementById('account-initial-balance').value = 0;
+  }
+  window._accountModalReturnToDelivery = returnToDelivery === true;
+  openModal('modal-account');
+}
+
+async function saveAccountUI() {
+  const id = document.getElementById('account-id').value;
+  const name = document.getElementById('account-name').value.trim();
+  if (!name) { showToast('Введите название счёта', 'warning'); return; }
+  const payload = {
+    id: id || undefined,
+    name: name,
+    currency: document.getElementById('account-currency').value || '₽',
+    type: document.getElementById('account-type').value || 'cash',
+    initial_balance: Number(document.getElementById('account-initial-balance').value) || 0
+  };
+  try {
+    await apiPost('saveAccount', payload);
+    showToast('Счёт сохранён', 'success');
+    closeModal('modal-account');
+    await loadAppDataForce();
+    if (window._accountModalReturnToDelivery) {
+      window._accountModalReturnToDelivery = false;
+      openDeliveryModal(document.getElementById('delivery-id').value || null);
+    } else {
+      loadAccountsList();
+    }
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteAccountUI(id) {
+  const ok = await confirmDialog('Удалить счёт? Исторические поставки сохранятся.', 'Удаление счёта', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
+  try {
+    await apiPost('deleteAccount', { id: id });
+    showToast('Счёт удалён', 'info');
+    await loadAppDataForce();
+    loadAccountsList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- DELIVERIES ---------- */
+async function loadDeliveriesList() {
+  const div = document.getElementById('deliveries-list');
+  if (!div) return;
+  div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    const data = await apiGet('getAllDeliveries', {});
+    const deliveries = data.deliveries || [];
+    if (deliveries.length === 0) {
+      div.innerHTML = '<div class="empty-state"><h3>Нет поставок</h3><p>Нажмите «+ Добавить поставку»</p></div>';
+      return;
+    }
+    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    html += '<th style="width:5%;">№</th>';
+    html += '<th style="width:13%;">Дата</th>';
+    html += '<th style="width:15%;">Поставщик</th>';
+    html += '<th style="width:11%;">Склад</th>';
+    html += '<th style="width:11%;">Счёт</th>';
+    html += '<th style="width:13%;">Товары</th>';
+    html += '<th style="width:9%;">Статус</th>';
+    html += '<th style="width:11%;text-align:right;">Сумма</th>';
+    html += '<th style="width:10%;text-align:right;">Задолженность</th>';
+    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '</tr></thead><tbody>';
+    deliveries.forEach(function(d) {
+      const debt = (Number(d.total_amount) || 0) - (Number(d.paid_amount) || 0);
+      const debtColor = debt > 0 ? 'color:var(--danger);font-weight:700;' : '';
+      let statusBadge = '';
+      if (d.status === 'received') {
+        statusBadge = '<span style="padding:2px 6px;border-radius:10px;font-size:0.75rem;background:#e8f5e9;color:var(--success);">получено</span>';
+      } else if (d.status === 'partial') {
+        statusBadge = '<span style="padding:2px 6px;border-radius:10px;font-size:0.75rem;background:#fff8e1;color:var(--warning);">частично</span>';
+      } else {
+        statusBadge = '<span style="padding:2px 6px;border-radius:10px;font-size:0.75rem;background:#ffebee;color:var(--danger);">не оплачено</span>';
+      }
+      // Items summary — show count of items, with first item name
+      const itemsCount = (d.items || []).length;
+      const firstItemName = (d.items || [])[0] ? (d.items || [])[0].name : '';
+      const itemsLabel = itemsCount > 0
+        ? (itemsCount === 1 ? escapeHtml(firstItemName) : escapeHtml(firstItemName) + ' +' + (itemsCount - 1))
+        : '—';
+
+      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<td>' + (d.number || '—') + '</td>';
+      html += '<td style="font-size:0.85rem;">' + escapeHtml(formatDateTime(d.delivery_date)) + '</td>';
+      html += '<td style="word-break:break-word;">' + escapeHtml(d.supplier_name || '—') + '</td>';
+      html += '<td style="word-break:break-word;">' + escapeHtml(d.warehouse_name || '—') + '</td>';
+      html += '<td style="word-break:break-word;">' + escapeHtml(d.account_name || '—') + '</td>';
+      html += '<td style="word-break:break-word;font-size:0.85rem;">' + itemsLabel + '</td>';
+      html += '<td>' + statusBadge + '</td>';
+      html += '<td style="text-align:right;font-weight:600;">' + formatMoney(d.total_amount) + '</td>';
+      html += '<td style="text-align:right;' + debtColor + '">' + (debt > 0 ? formatMoney(debt) : '—') + '</td>';
+      html += '<td style="text-align:center;white-space:nowrap;">' +
+        '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openDeliveryModal(\'' + d.id + '\')">✎</button> ' +
+        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteDeliveryUI(\'' + d.id + '\')">✕</button>' +
+        '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+  } catch (err) {
+    div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+// Open the delivery modal — for creating a new delivery or editing an existing one.
+// If `id` is provided, fetch the delivery with its items and populate the form.
+async function openDeliveryModal(id) {
+  // Reset form
+  document.getElementById('delivery-id').value = id || '';
+  document.getElementById('delivery-comment').value = '';
+  document.getElementById('delivery-paid-amount').value = 0;
+  document.getElementById('delivery-apply-to-stock').checked = false;
+  document.getElementById('modal-delivery-title').textContent = id ? 'Изменить поставку' : 'Новая поставка';
+
+  // Populate supplier/warehouse/account dropdowns from APP_DATA
+  const supplierSel = document.getElementById('delivery-supplier');
+  const warehouseSel = document.getElementById('delivery-warehouse');
+  const accountSel = document.getElementById('delivery-account');
+  supplierSel.innerHTML = '<option value="">— Выберите поставщика —</option>';
+  warehouseSel.innerHTML = '<option value="">— Выберите склад —</option>';
+  accountSel.innerHTML = '<option value="">— Без счёта —</option>';
+  (APP_DATA.suppliers || []).forEach(function(s) {
+    supplierSel.innerHTML += '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>';
+  });
+  (APP_DATA.warehouses || []).forEach(function(w) {
+    warehouseSel.innerHTML += '<option value="' + w.id + '">' + escapeHtml(w.name) + '</option>';
+  });
+  (APP_DATA.accounts || []).forEach(function(a) {
+    accountSel.innerHTML += '<option value="' + a.id + '">' + escapeHtml(a.name) + '</option>';
+  });
+
+  // Default date = now (in local datetime-local format)
+  const now = new Date();
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  const localISO = new Date(now.getTime() - tzOffset).toISOString().slice(0, 16);
+  document.getElementById('delivery-date').value = localISO;
+
+  // Reset items list
+  const itemsList = document.getElementById('delivery-items-list');
+  itemsList.innerHTML = '';
+  // Add one empty row by default
+  addDeliveryItemRow();
+
+  // If editing, load the existing delivery
+  if (id) {
+    try {
+      const d = await apiGet('getDelivery', { id: id });
+      document.getElementById('delivery-date').value = new Date(new Date(d.delivery_date).getTime() - tzOffset).toISOString().slice(0, 16);
+      document.getElementById('delivery-supplier').value = d.supplier_id || '';
+      document.getElementById('delivery-warehouse').value = d.warehouse_id || '';
+      document.getElementById('delivery-account').value = d.account_id || '';
+      document.getElementById('delivery-paid-amount').value = d.paid_amount || 0;
+      document.getElementById('delivery-comment').value = d.comment || '';
+      // Render existing items
+      itemsList.innerHTML = '';
+      (d.items || []).forEach(function(it) {
+        addDeliveryItemRow(it);
+      });
+      if ((d.items || []).length === 0) addDeliveryItemRow();
+    } catch (err) {
+      showToast('Ошибка загрузки поставки: ' + err.message, 'error');
+    }
+  }
+
+  updateDeliveryTotal();
+  updateDeliveryPaidStatus();
+  openModal('modal-delivery');
+}
+
+// Add a row to the delivery items list.
+// If `data` is provided (existing item), pre-fill the fields.
+function addDeliveryItemRow(data) {
+  const list = document.getElementById('delivery-items-list');
+  const row = document.createElement('div');
+  row.className = 'delivery-item-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 70px 100px 100px 32px;gap:6px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;';
+  // Build the menu item datalist for autocomplete
+  const menuItems = APP_DATA.menu || [];
+  const dataListId = 'delivery-menu-items-list';
+  // Compose options HTML lazily (only once per page) — we just render a select
+  let menuOptions = '<option value="">— из меню или своё название —</option>';
+  menuItems.forEach(function(m) {
+    menuOptions += '<option value="' + escapeHtmlAttr(m.id) + '">' + escapeHtmlAttr(m.name) + '</option>';
+  });
+  row.innerHTML =
+    '<input type="text" class="di-name" placeholder="Наименование" value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;">' +
+    '<input type="text" class="di-pack" placeholder="Фасовка" value="' + escapeHtmlAttr((data && data.pack) || '') + '" title="Фасовка (коробка, упаковка)">' +
+    '<input type="number" class="di-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
+    '<input type="number" class="di-price" min="0" step="0.01" placeholder="Цена за ед." value="' + ((data && data.unit_price) || '') + '" title="Цена за единицу" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
+    '<input type="number" class="di-total" min="0" step="0.01" placeholder="Сумма" value="' + ((data && data.total_price) || '') + '" title="Общая сумма" style="font-weight:700;" oninput="updateDeliveryTotal();">' +
+    '<button type="button" class="btn btn-outline" style="padding:4px 8px;color:var(--danger);" onclick="this.parentElement.remove();updateDeliveryTotal();" title="Удалить товар">✕</button>';
+  // Hidden menu_item_id (we'll detect it from the name input on save — for now keep it simple)
+  list.appendChild(row);
+}
+
+// Recompute a single row's "total" = qty × price
+function updateDeliveryItemTotal(input) {
+  const row = input.closest('.delivery-item-row');
+  if (!row) return;
+  const qtyEl = row.querySelector('.di-qty');
+  const priceEl = row.querySelector('.di-price');
+  const totalEl = row.querySelector('.di-total');
+  // Only auto-compute if user hasn't manually edited total
+  // Simple approach: always recompute on qty/price change
+  const qty = parseFloat(qtyEl.value) || 0;
+  const price = parseFloat(priceEl.value) || 0;
+  totalEl.value = (qty * price).toFixed(2);
+}
+
+// Update the bottom "Общая сумма" of all items
+function updateDeliveryTotal() {
+  let total = 0;
+  document.querySelectorAll('.delivery-item-row').forEach(function(row) {
+    const totalEl = row.querySelector('.di-total');
+    const t = parseFloat(totalEl.value) || 0;
+    total += t;
+  });
+  const totalEl = document.getElementById('delivery-total');
+  if (totalEl) totalEl.textContent = formatMoney(total);
+}
+
+// Show "оплачено/не оплачено/частично" based on paid_amount vs total
+function updateDeliveryPaidStatus() {
+  const paid = parseFloat(document.getElementById('delivery-paid-amount').value) || 0;
+  let total = 0;
+  document.querySelectorAll('.delivery-item-row .di-total').forEach(function(el) {
+    total += parseFloat(el.value) || 0;
+  });
+  const statusEl = document.getElementById('delivery-paid-status');
+  if (!statusEl) return;
+  if (paid >= total && total > 0) {
+    statusEl.textContent = 'Полностью оплачено';
+    statusEl.style.color = 'var(--success)';
+  } else if (paid > 0) {
+    statusEl.textContent = 'Частично оплачено (осталось: ' + formatMoney(total - paid) + ')';
+    statusEl.style.color = 'var(--warning)';
+  } else {
+    statusEl.textContent = 'Не оплачено';
+    statusEl.style.color = 'var(--danger)';
+  }
+}
+
+// Collect form data and save
+async function saveDeliveryUI() {
+  const deliveryDate = document.getElementById('delivery-date').value;
+  if (!deliveryDate) { showToast('Укажите дату поставки', 'warning'); return; }
+  const supplierId = document.getElementById('delivery-supplier').value;
+  const warehouseId = document.getElementById('delivery-warehouse').value;
+  if (!supplierId) { showToast('Выберите поставщика', 'warning'); return; }
+  if (!warehouseId) { showToast('Выберите склад', 'warning'); return; }
+  // Collect items
+  const items = [];
+  const rows = document.querySelectorAll('.delivery-item-row');
+  let hasValidItem = false;
+  rows.forEach(function(row) {
+    const name = (row.querySelector('.di-name').value || '').trim();
+    const pack = (row.querySelector('.di-pack').value || '').trim();
+    const qty = parseFloat(row.querySelector('.di-qty').value) || 0;
+    const unitPrice = parseFloat(row.querySelector('.di-price').value) || 0;
+    const totalPrice = parseFloat(row.querySelector('.di-total').value) || 0;
+    if (!name && !pack && !qty && !unitPrice) return; // skip empty rows
+    if (!name) { showToast('У одного из товаров не заполнено наименование', 'warning'); return; }
+    // Try to find a menu_item_id by name match
+    let menuItemId = '';
+    const matched = (APP_DATA.menu || []).find(function(m) { return m.name === name; });
+    if (matched) menuItemId = matched.id;
+    items.push({
+      menu_item_id: menuItemId,
+      name: name,
+      pack: pack,
+      quantity: qty,
+      unit_price: unitPrice,
+      total_price: totalPrice
+    });
+    hasValidItem = true;
+  });
+  if (!hasValidItem) { showToast('Добавьте хотя бы один товар', 'warning'); return; }
+
+  const payload = {
+    id: document.getElementById('delivery-id').value || undefined,
+    delivery_date: new Date(deliveryDate).toISOString(),
+    supplier_id: supplierId,
+    warehouse_id: warehouseId,
+    account_id: document.getElementById('delivery-account').value,
+    paid_amount: parseFloat(document.getElementById('delivery-paid-amount').value) || 0,
+    comment: document.getElementById('delivery-comment').value,
+    items: items,
+    apply_to_stock: document.getElementById('delivery-apply-to-stock').checked
+  };
+  try {
+    await apiPost('saveDelivery', payload);
+    showToast('Поставка сохранена', 'success');
+    closeModal('modal-delivery');
+    await loadAppDataForce();
+    loadDeliveriesList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+async function deleteDeliveryUI(id) {
+  const ok = await confirmDialog('Удалить поставку безвозвратно?', 'Удаление поставки', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
+  try {
+    await apiPost('deleteDelivery', { id: id });
+    showToast('Поставка удалена', 'info');
+    await loadAppDataForce();
+    loadDeliveriesList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Show a modal with the deliveries that contain a specific menu item
+async function showDeliveriesForMenuItem(menuItemId, itemName) {
+  const contentEl = document.getElementById('item-deliveries-content');
+  const nameEl = document.getElementById('item-deliveries-name');
+  nameEl.textContent = itemName || '';
+  contentEl.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  openModal('modal-item-deliveries');
+  try {
+    const data = await apiGet('getDeliveriesForMenuItem', { menu_item_id: menuItemId });
+    const deliveries = data.deliveries || [];
+    if (deliveries.length === 0) {
+      contentEl.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Поставок нет</p>';
+      return;
+    }
+    let html = '<table style="width:100%;"><thead><tr>';
+    html += '<th>№</th><th>Дата</th><th>Поставщик</th><th>Кол-во</th><th>Цена</th><th>Сумма</th>';
+    html += '</tr></thead><tbody>';
+    deliveries.forEach(function(d) {
+      d.items.forEach(function(it) {
+        html += '<tr style="border-bottom:1px solid var(--border);">';
+        html += '<td>' + (d.number || '—') + '</td>';
+        html += '<td style="font-size:0.85rem;">' + escapeHtml(formatDateTime(d.delivery_date)) + '</td>';
+        html += '<td>' + escapeHtml(d.supplier_name || '—') + '</td>';
+        html += '<td style="text-align:right;">' + it.quantity + '</td>';
+        html += '<td style="text-align:right;">' + formatMoney(it.unit_price) + '</td>';
+        html += '<td style="text-align:right;font-weight:700;">' + formatMoney(it.total_price) + '</td>';
+        html += '</tr>';
+      });
+    });
+    html += '</tbody></table>';
+    contentEl.innerHTML = html;
+  } catch (err) {
+    contentEl.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
   }
 }
 

@@ -159,13 +159,18 @@ async function loadAppData(force) {
   if (APP_DATA && !force) return APP_DATA;
 
   // Load all reference data in parallel (no is_active filter — filter on client)
-  const [settings, categories, menu, users, modifications, tables] = await Promise.all([
+  const [settings, categories, menu, users, modifications, tables, suppliers, warehouses, accounts, deliveries, deliveryItems] = await Promise.all([
     dbSelect('settings'),
     dbSelect('categories'),
     dbSelect('menu'),
     dbSelect('users'),
     dbSelect('menu_modifications'),
-    dbSelect('tables')
+    dbSelect('tables'),
+    dbSelect('suppliers'),
+    dbSelect('warehouses'),
+    dbSelect('accounts'),
+    dbSelect('deliveries'),
+    dbSelect('delivery_items')
   ]);
 
   // Filter active items on client side
@@ -240,6 +245,11 @@ async function loadAppData(force) {
       numbered: numberedTables,
       virtual: virtualTables
     },
+    suppliers: suppliers.filter(function(s) { return s.is_active === true || s.is_active === 'true'; }),
+    warehouses: warehouses.filter(function(w) { return w.is_active === true || w.is_active === 'true'; }),
+    accounts: accounts.filter(function(a) { return a.is_active === true || a.is_active === 'true'; }),
+    deliveries: deliveries, // all deliveries, including historic — don't filter
+    delivery_items: deliveryItems,
     users: activeUsers.map(function(u) {
       return {
         id: u.id,
@@ -821,6 +831,300 @@ async function saveTablesConfig(config) {
   return { ok: true, numbered: numberedCount, virtual: virtualList.length };
 }
 
+/* ---------- Suppliers / Warehouses / Accounts ---------- */
+// These are simple CRUD wrappers. Each record has an `id`, a name, optional
+// extra fields, and `is_active` (we never hard-delete — just deactivate, so
+// historical deliveries still reference the right supplier/warehouse/account).
+
+async function saveSupplier(data) {
+  const id = data.id || 'sup_' + Date.now().toString(36);
+  const existing = await dbSelect('suppliers', { id: id });
+  const record = {
+    name: (data.name || '').trim(),
+    phone: (data.phone || '').trim(),
+    address: (data.address || '').trim(),
+    comment: (data.comment || '').trim(),
+    is_active: data.is_active !== false
+  };
+  if (existing.length > 0) {
+    return await dbUpdate('suppliers', id, record);
+  } else {
+    record.id = id;
+    return await dbInsert('suppliers', record);
+  }
+}
+
+async function deleteSupplier(id) {
+  // Soft-delete: just mark as inactive so historical deliveries still work
+  return await dbUpdate('suppliers', id, { is_active: false });
+}
+
+async function saveWarehouse(data) {
+  const id = data.id || 'wh_' + Date.now().toString(36);
+  const existing = await dbSelect('warehouses', { id: id });
+  const record = {
+    name: (data.name || '').trim(),
+    comment: (data.comment || '').trim(),
+    is_active: data.is_active !== false
+  };
+  if (existing.length > 0) {
+    return await dbUpdate('warehouses', id, record);
+  } else {
+    record.id = id;
+    return await dbInsert('warehouses', record);
+  }
+}
+
+async function deleteWarehouse(id) {
+  return await dbUpdate('warehouses', id, { is_active: false });
+}
+
+async function saveAccount(data) {
+  const id = data.id || 'acc_' + Date.now().toString(36);
+  const existing = await dbSelect('accounts', { id: id });
+  const record = {
+    name: (data.name || '').trim(),
+    currency: data.currency || '₽',
+    type: data.type || 'cash', // cash | card | bank
+    initial_balance: Number(data.initial_balance) || 0,
+    is_active: data.is_active !== false
+  };
+  if (existing.length > 0) {
+    return await dbUpdate('accounts', id, record);
+  } else {
+    record.id = id;
+    return await dbInsert('accounts', record);
+  }
+}
+
+async function deleteAccount(id) {
+  return await dbUpdate('accounts', id, { is_active: false });
+}
+
+/* ---------- Deliveries ---------- */
+// A delivery is a header (date, supplier, warehouse, account, paid/unpaid,
+// total) plus a list of items. Each item links to a menu_item_id (or has a
+// free-form name), with pack/quantity/unit_price/total_price.
+//
+// Saving a delivery does NOT automatically update menu.stock — that's a
+// separate decision per item (the UI offers "apply to stock" checkboxes).
+// The replenishStock() RPC is used when applying.
+
+// Get the next delivery number from the settings counter
+async function getNextDeliveryNumber() {
+  const cur = await getSetting('delivery_number_seq');
+  let n = parseInt(cur, 10);
+  if (isNaN(n)) n = 1;
+  await saveSettingsToDB({ delivery_number_seq: String(n + 1) });
+  return n;
+}
+
+// Get a single delivery with its items, joined with names for display
+async function getDelivery(deliveryId) {
+  const deliveries = await dbSelect('deliveries', { id: deliveryId });
+  if (deliveries.length === 0) throw new Error('Поставка не найдена');
+  const delivery = deliveries[0];
+  const items = await dbSelect('delivery_items', { delivery_id: deliveryId });
+  items.sort(function(a, b) { return (Number(a.sort) || 0) - (Number(b.sort) || 0); });
+  delivery.items = items;
+  return delivery;
+}
+
+// Get all deliveries with their items. Sorted by delivery_date desc.
+async function getAllDeliveries() {
+  const deliveries = await dbSelect('deliveries');
+  const items = await dbSelect('delivery_items');
+  // Group items by delivery_id
+  const itemsByDelivery = {};
+  items.forEach(function(it) {
+    if (!itemsByDelivery[it.delivery_id]) itemsByDelivery[it.delivery_id] = [];
+    itemsByDelivery[it.delivery_id].push({
+      id: it.id,
+      menu_item_id: it.menu_item_id || '',
+      name: it.name,
+      pack: it.pack || '',
+      quantity: Number(it.quantity) || 0,
+      unit: it.unit || 'шт',
+      unit_price: Number(it.unit_price) || 0,
+      total_price: Number(it.total_price) || 0,
+      sort: Number(it.sort) || 0
+    });
+  });
+  // Attach items to deliveries and sort
+  const result = deliveries.map(function(d) {
+    return {
+      id: d.id,
+      number: d.number,
+      delivery_date: d.delivery_date,
+      supplier_id: d.supplier_id || '',
+      supplier_name: d.supplier_name || '',
+      warehouse_id: d.warehouse_id || '',
+      warehouse_name: d.warehouse_name || '',
+      account_id: d.account_id || '',
+      account_name: d.account_name || '',
+      is_paid: d.is_paid === true || d.is_paid === 'true',
+      paid_amount: Number(d.paid_amount) || 0,
+      total_amount: Number(d.total_amount) || 0,
+      status: d.status || 'received',
+      comment: d.comment || '',
+      items: (itemsByDelivery[d.id] || []).sort(function(a, b) { return a.sort - b.sort; })
+    };
+  });
+  result.sort(function(a, b) {
+    return new Date(b.delivery_date) - new Date(a.delivery_date);
+  });
+  return result;
+}
+
+// Get all deliveries that contain a specific menu_item_id — used in the
+// stock report's "Поставки" link next to each item.
+async function getDeliveriesForMenuItem(menuItemId) {
+  const all = await getAllDeliveries();
+  return all.filter(function(d) {
+    return d.items.some(function(it) { return it.menu_item_id === menuItemId; });
+  }).map(function(d) {
+    // Filter items to only those for this menu item
+    return Object.assign({}, d, {
+      items: d.items.filter(function(it) { return it.menu_item_id === menuItemId; })
+    });
+  });
+}
+
+// Save a delivery (insert or update) with all its items.
+// Items list replaces the existing items for this delivery.
+async function saveDelivery(data) {
+  const id = data.id || 'del_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+
+  // Look up supplier/warehouse/account names (so the delivery has them frozen
+  // in case the referenced record is later deactivated)
+  let supplierName = data.supplier_name || '';
+  if (data.supplier_id && !supplierName) {
+    const sup = await dbSelect('suppliers', { id: data.supplier_id });
+    if (sup.length > 0) supplierName = sup[0].name;
+  }
+  let warehouseName = data.warehouse_name || '';
+  if (data.warehouse_id && !warehouseName) {
+    const wh = await dbSelect('warehouses', { id: data.warehouse_id });
+    if (wh.length > 0) warehouseName = wh[0].name;
+  }
+  let accountName = data.account_name || '';
+  if (data.account_id && !accountName) {
+    const acc = await dbSelect('accounts', { id: data.account_id });
+    if (acc.length > 0) accountName = acc[0].name;
+  }
+
+  // Calculate total from items
+  const items = Array.isArray(data.items) ? data.items : [];
+  const total = items.reduce(function(s, it) {
+    return s + (Number(it.total_price) || (Number(it.quantity) * Number(it.unit_price)) || 0);
+  }, 0);
+
+  // Determine if this is a new delivery (need to assign a number)
+  const existing = await dbSelect('deliveries', { id: id });
+  let number = data.number;
+  if (!number && existing.length === 0) {
+    number = await getNextDeliveryNumber();
+  } else if (!number && existing.length > 0) {
+    number = existing[0].number;
+  }
+
+  // Determine paid status
+  const paidAmount = Number(data.paid_amount) || 0;
+  let isPaid, status;
+  if (paidAmount >= total) {
+    isPaid = true; status = 'received';
+  } else if (paidAmount > 0) {
+    isPaid = false; status = 'partial';
+  } else {
+    isPaid = false; status = 'unpaid';
+  }
+
+  const record = {
+    number: number,
+    delivery_date: data.delivery_date || new Date().toISOString(),
+    supplier_id: data.supplier_id || '',
+    supplier_name: supplierName,
+    warehouse_id: data.warehouse_id || '',
+    warehouse_name: warehouseName,
+    account_id: data.account_id || '',
+    account_name: accountName,
+    is_paid: isPaid,
+    paid_amount: paidAmount,
+    total_amount: total,
+    status: status,
+    comment: data.comment || ''
+  };
+
+  if (existing.length > 0) {
+    await dbUpdate('deliveries', id, record);
+  } else {
+    record.id = id;
+    record.created_at = new Date().toISOString();
+    await dbInsert('deliveries', record);
+  }
+
+  // Replace items: delete all existing items for this delivery, then insert the new ones
+  const existingItems = await dbSelect('delivery_items', { delivery_id: id });
+  for (const it of existingItems) {
+    try { await dbDelete('delivery_items', it.id); } catch (e) {
+      console.warn('Failed to delete delivery item', it.id, e.message);
+    }
+  }
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it.name && !it.menu_item_id) continue;
+    const itemName = it.name || '';
+    // If no name but menu_item_id is set, look up the menu item name
+    let finalName = itemName;
+    if (!finalName && it.menu_item_id) {
+      const menuItems = await dbSelect('menu', { id: it.menu_item_id });
+      if (menuItems.length > 0) finalName = menuItems[0].name;
+    }
+    const qty = Number(it.quantity) || 0;
+    const unitPrice = Number(it.unit_price) || 0;
+    const totalPrice = Number(it.total_price) || (qty * unitPrice);
+    const itemId = 'dit_' + Date.now().toString(36) + '_' + i + '_' + Math.random().toString(36).substr(2, 4);
+    await dbInsert('delivery_items', {
+      id: itemId,
+      delivery_id: id,
+      menu_item_id: it.menu_item_id || '',
+      name: finalName,
+      pack: it.pack || '',
+      quantity: qty,
+      unit: it.unit || 'шт',
+      unit_price: unitPrice,
+      total_price: totalPrice,
+      sort: i,
+      created_at: new Date().toISOString()
+    });
+  }
+
+  // Optionally apply items to stock (if data.apply_to_stock is true)
+  if (data.apply_to_stock === true) {
+    for (const it of items) {
+      if (!it.menu_item_id) continue;
+      const qty = Number(it.quantity) || 0;
+      if (qty <= 0) continue;
+      try {
+        await dbIncrementStock(it.menu_item_id, qty);
+      } catch (e) {
+        console.warn('Failed to apply stock for', it.menu_item_id, e.message);
+      }
+    }
+  }
+
+  return { id: id, number: number, total: total };
+}
+
+// Delete a delivery and all its items
+async function deleteDelivery(deliveryId) {
+  const items = await dbSelect('delivery_items', { delivery_id: deliveryId });
+  for (const it of items) {
+    try { await dbDelete('delivery_items', it.id); } catch (e) {}
+  }
+  return await dbDelete('deliveries', deliveryId);
+}
+
 /* ---------- Menu modifications ---------- */
 // Syncs the modifications list for a menu item:
 //  - inserts/updates the ones passed in
@@ -906,6 +1210,11 @@ async function getStockReport() {
   const allMenu = await dbSelect('menu');
   const menu = allMenu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
 
+  // Get all categories (to look up category names by id)
+  const categories = await dbSelect('categories');
+  const catById = {};
+  categories.forEach(function(c) { catById[c.id] = c; });
+
   // Get all order items for consumption calculation
   const { data: allItems } = await _sb
     .from('order_items')
@@ -929,23 +1238,52 @@ async function getStockReport() {
     if (created >= monthAgo) consumption[mid].month += qty;
   });
 
+  // Get all delivery items (for the "Поставки" link / count / total)
+  const allDeliveries = await dbSelect('deliveries');
+  const allDeliveryItems = await dbSelect('delivery_items');
+  const deliveryStats = {}; // menu_item_id → { count, total }
+  allDeliveryItems.forEach(function(dit) {
+    const mid = dit.menu_item_id;
+    if (!mid) return;
+    if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0 };
+    deliveryStats[mid].count += 1;
+    deliveryStats[mid].total += Number(dit.total_price) || 0;
+  });
+
   const items = menu.map(function(m) {
     const stock = Number(m.stock) || 0;
     const cons = consumption[m.id] || { day: 0, week: 0, month: 0, total: 0 };
+    const cost = Number(m.cost) || 0;
+    // Look up the category name (use parent → child format if it's a subcategory)
+    let categoryName = '';
+    if (m.category_id && catById[m.category_id]) {
+      const cat = catById[m.category_id];
+      if (cat.parent_id && catById[cat.parent_id]) {
+        categoryName = catById[cat.parent_id].name + ' → ' + cat.name;
+      } else {
+        categoryName = cat.name;
+      }
+    }
+    const dStats = deliveryStats[m.id] || { count: 0, total: 0 };
     return {
       id: m.id,
       name: m.name,
+      category_id: m.category_id || '',
+      category_name: categoryName,
       sort: Number(m.sort) || 0,
       stock: stock,
+      cost: cost,
+      stock_value: stock * cost, // остаток × себестоимость
       consumed_day: cons.day,
       consumed_week: cons.week,
       consumed_month: cons.month,
       consumed_total: cons.total,
+      deliveries_count: dStats.count,
+      deliveries_total: dStats.total,
       low_stock: stockTracking && stock <= threshold
     };
   });
   // Sort by sort field, then by name — keeps the order stable across reloads
-  // (otherwise PostgreSQL may return rows in different physical order after updates)
   items.sort(function(a, b) {
     const sa = Number(a.sort) || 0;
     const sb = Number(b.sort) || 0;
@@ -1453,6 +1791,12 @@ async function apiGet(action, params) {
       return await getStockReport();
     case 'getTablesConfig':
       return await getTablesConfig();
+    case 'getAllDeliveries':
+      return { deliveries: await getAllDeliveries() };
+    case 'getDelivery':
+      return await getDelivery(params.id);
+    case 'getDeliveriesForMenuItem':
+      return { deliveries: await getDeliveriesForMenuItem(params.menu_item_id) };
     case 'getTabs': {
       let tabs = await dbSelect('tabs');
       if (params.status && params.status !== 'all') {
@@ -1628,6 +1972,22 @@ async function apiPost(action, body) {
       return await replenishStock(body.menu_item_id, body.quantity);
     case 'saveTablesConfig':
       return await saveTablesConfig(body);
+    case 'saveSupplier':
+      return await saveSupplier(body);
+    case 'deleteSupplier':
+      return await deleteSupplier(body.id);
+    case 'saveWarehouse':
+      return await saveWarehouse(body);
+    case 'deleteWarehouse':
+      return await deleteWarehouse(body.id);
+    case 'saveAccount':
+      return await saveAccount(body);
+    case 'deleteAccount':
+      return await deleteAccount(body.id);
+    case 'saveDelivery':
+      return await saveDelivery(body);
+    case 'deleteDelivery':
+      return await deleteDelivery(body.id);
     case 'reorderMenu': {
       const items = body.items || [];
       for (const it of items) {
