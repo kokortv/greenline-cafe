@@ -15,7 +15,7 @@ const CONFIG = {
   POLL_BADGE: 5000,
   POLL_COOK: 5000,
 
-  DEFAULT_CURRENCY: '₽'
+  DEFAULT_CURRENCY: '₾'
 };
 
 if (typeof window !== 'undefined' && CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === 0) {

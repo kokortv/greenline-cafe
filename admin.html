@@ -367,7 +367,13 @@
       </div>
       <div class="form-group">
         <label>Валюта</label>
-        <input type="text" id="set-currency" placeholder="₽, $, €, грн, сум..." value="₽">
+        <select id="set-currency">
+          <option value="₾">₾ — Грузинский лари (GEL)</option>
+          <option value="$">$ — Доллар США (USD)</option>
+          <option value="₽">₽ — Российский рубль (RUB)</option>
+          <option value="₴">₴ — Украинская гривна (UAH)</option>
+          <option value="₺">₺ — Турецкая лира (TRY)</option>
+        </select>
       </div>
       <div class="form-group">
         <label>Язык перевода для повара</label>
@@ -788,7 +794,13 @@
     </div>
     <div class="form-group">
       <label>Валюта</label>
-      <input type="text" id="account-currency" placeholder="₽" value="₽">
+      <select id="account-currency">
+        <option value="₾">₾ — Грузинский лари (GEL)</option>
+        <option value="$">$ — Доллар США (USD)</option>
+        <option value="₽">₽ — Российский рубль (RUB)</option>
+        <option value="₴">₴ — Украинская гривна (UAH)</option>
+        <option value="₺">₺ — Турецкая лира (TRY)</option>
+      </select>
     </div>
     <div class="form-group">
       <label>Тип счёта</label>
@@ -1050,7 +1062,7 @@ function stopOrdersPolling() {
 /* ---------- SETTINGS ---------- */
 function populateSettingsForm() {
   document.getElementById('set-restaurant-name').value = APP_DATA.settings.restaurant_name || '';
-  document.getElementById('set-currency').value = APP_DATA.settings.currency || '₽';
+  document.getElementById('set-currency').value = APP_DATA.settings.currency || '₾';
   document.getElementById('set-translation-lang').value = APP_DATA.settings.translation_lang || '';
   document.getElementById('set-poll-waiter').value = APP_DATA.settings.poll_interval_waiter || 20;
   document.getElementById('set-poll-cook').value = APP_DATA.settings.poll_interval_cook || 10;
@@ -3029,7 +3041,7 @@ async function loadAccountsList() {
     accounts.forEach(function(a) {
       html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
       html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(a.name) + '</td>';
-      html += '<td>' + escapeHtml(a.currency || '₽') + '</td>';
+      html += '<td>' + escapeHtml(a.currency || '₾') + '</td>';
       html += '<td>' + escapeHtml(typeLabels[a.type] || a.type) + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(a.initial_balance || 0, a.currency) + '</td>';
       html += '<td style="text-align:center;white-space:nowrap;">' +
@@ -3052,14 +3064,14 @@ function openAccountModal(id, returnToDelivery) {
     document.getElementById('modal-account-title').textContent = 'Изменить счёт';
     document.getElementById('account-id').value = a.id;
     document.getElementById('account-name').value = a.name || '';
-    document.getElementById('account-currency').value = a.currency || '₽';
+    document.getElementById('account-currency').value = a.currency || '₾';
     document.getElementById('account-type').value = a.type || 'cash';
     document.getElementById('account-initial-balance').value = a.initial_balance || 0;
   } else {
     document.getElementById('modal-account-title').textContent = 'Новый счёт';
     document.getElementById('account-id').value = '';
     document.getElementById('account-name').value = '';
-    document.getElementById('account-currency').value = '₽';
+    document.getElementById('account-currency').value = '₾';
     document.getElementById('account-type').value = 'cash';
     document.getElementById('account-initial-balance').value = 0;
   }
@@ -3074,7 +3086,7 @@ async function saveAccountUI() {
   const payload = {
     id: id || undefined,
     name: name,
-    currency: document.getElementById('account-currency').value || '₽',
+    currency: document.getElementById('account-currency').value || '₾',
     type: document.getElementById('account-type').value || 'cash',
     initial_balance: Number(document.getElementById('account-initial-balance').value) || 0
   };

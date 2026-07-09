@@ -884,7 +884,7 @@ async function saveAccount(data) {
   const existing = await dbSelect('accounts', { id: id });
   const record = {
     name: (data.name || '').trim(),
-    currency: data.currency || '₽',
+    currency: data.currency || '₾',
     type: data.type || 'cash', // cash | card | bank
     initial_balance: Number(data.initial_balance) || 0,
     is_active: data.is_active !== false
