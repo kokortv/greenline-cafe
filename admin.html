@@ -682,8 +682,10 @@
           </div>
         </div>
         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
-          Введите значения в любые два поля — третье рассчитается автоматически.
-          Наценка указывается в процентах (например, 50 = +50% к себестоимости).
+          Себестоимость — не меняется автоматически. Наценка указывается в процентах.
+          Введите <b>себестоимость + цену</b> → посчитается наценка.<br>
+          Введите <b>себестоимость + наценку</b> → посчитается цена.<br>
+          Введите <b>цену + наценку</b> → посчитается себестоимость.
         </p>
       </div>
 
@@ -2097,42 +2099,49 @@ function isPricingModeMods() {
   return document.getElementById('modifications-block').style.display !== 'none';
 }
 
-// Recalculate single price fields. Markup is a PERCENTAGE, so:
-//   price = cost × (1 + markup / 100)
-// Logic:
-//   - User edits COST:  copy cost → price, set markup = 0
-//   - User edits PRICE: copy price → cost, set markup = 0
-//   - User edits MARKUP: price = cost × (1 + markup/100) (if cost is set)
-//     If price is set but no cost: cost = price / (1 + markup/100)
+// Recalculate single price fields. Markup is a PERCENTAGE.
+// Logic (per user spec):
+//   - User edits COST: do NOT change price or markup automatically.
+//     (Cost is just a base value — the other fields decide what to recompute.)
+//   - User edits PRICE: if cost is set, recompute markup = (price - cost) / cost * 100.
+//     If cost is empty, leave markup alone.
+//   - User edits MARKUP: if cost is set, recompute price = cost × (1 + markup/100).
+//     If cost is empty but price is set, recompute cost = price / (1 + markup/100).
 function recalcSinglePrice(changedField) {
   const costEl = document.getElementById('menu-cost');
   const markupEl = document.getElementById('menu-markup');
   const priceEl = document.getElementById('menu-price');
 
-  if (changedField === 'cost' && costEl.value !== '') {
-    // Cost was just edited: copy cost → price, set markup = 0
-    priceEl.value = parseFloat(costEl.value).toFixed(2);
-    markupEl.value = '0';
+  if (changedField === 'cost') {
+    // Don't auto-change anything — the user is just setting the base.
+    // (If both markup and price are already set, that's the user's choice.)
     return;
   }
 
   if (changedField === 'price' && priceEl.value !== '') {
-    // Price was just edited: copy price → cost, set markup = 0
-    costEl.value = parseFloat(priceEl.value).toFixed(2);
-    markupEl.value = '0';
+    // Price was just edited: derive markup from cost (if cost is set).
+    if (costEl.value !== '') {
+      const cost = parseFloat(costEl.value) || 0;
+      const price = parseFloat(priceEl.value) || 0;
+      if (cost > 0) {
+        const markup = ((price - cost) / cost) * 100;
+        markupEl.value = markup.toFixed(1);
+      }
+    }
+    // If cost is empty — leave markup alone (user might enter markup next).
     return;
   }
 
   if (changedField === 'markup' && markupEl.value !== '') {
-    // Markup is a percentage: price = cost × (1 + markup/100)
+    // Markup was just edited.
+    const markup = parseFloat(markupEl.value) || 0;
     if (costEl.value !== '') {
+      // Cost is set → recompute price = cost × (1 + markup/100)
       const cost = parseFloat(costEl.value) || 0;
-      const markup = parseFloat(markupEl.value) || 0;
       priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
     } else if (priceEl.value !== '') {
-      // No cost yet but price is set: derive cost = price / (1 + markup/100)
+      // No cost, but price is set → derive cost = price / (1 + markup/100)
       const price = parseFloat(priceEl.value) || 0;
-      const markup = parseFloat(markupEl.value) || 0;
       costEl.value = (price / (1 + markup / 100)).toFixed(2);
     }
     return;
@@ -2195,10 +2204,10 @@ function addModificationRow(mod) {
 
 // Recalculate cost/markup/price for a modification row
 // Markup is a PERCENTAGE — same logic as recalcSinglePrice:
-//   - COST edited:  price = cost, markup = 0
-//   - PRICE edited: cost = price, markup = 0
-//   - MARKUP edited: price = cost × (1 + markup/100) (if cost set);
-//     else cost = price / (1 + markup/100)
+//   - COST edited:  don't change anything (cost is just the base)
+//   - PRICE edited: if cost set, recompute markup = (price - cost) / cost * 100
+//   - MARKUP edited: if cost set, recompute price = cost × (1 + markup/100);
+//     else if price set, recompute cost = price / (1 + markup/100)
 function recalcModPrice(input) {
   const row = input.closest('.modification-row');
   if (!row) return;
@@ -2207,24 +2216,31 @@ function recalcModPrice(input) {
   const priceEl = row.querySelector('.mod-price');
   const cls = input.className;
 
-  if (cls.indexOf('mod-cost') >= 0 && costEl.value !== '') {
-    priceEl.value = parseFloat(costEl.value).toFixed(2);
-    markupEl.value = '0';
+  if (cls.indexOf('mod-cost') >= 0) {
+    // Cost edited — don't change anything automatically.
     return;
   }
+
   if (cls.indexOf('mod-price') >= 0 && priceEl.value !== '') {
-    costEl.value = parseFloat(priceEl.value).toFixed(2);
-    markupEl.value = '0';
-    return;
-  }
-  if (cls.indexOf('mod-markup') >= 0 && markupEl.value !== '') {
+    // Price edited — derive markup from cost (if cost is set).
     if (costEl.value !== '') {
       const cost = parseFloat(costEl.value) || 0;
-      const markup = parseFloat(markupEl.value) || 0;
+      const price = parseFloat(priceEl.value) || 0;
+      if (cost > 0) {
+        const markup = ((price - cost) / cost) * 100;
+        markupEl.value = markup.toFixed(1);
+      }
+    }
+    return;
+  }
+
+  if (cls.indexOf('mod-markup') >= 0 && markupEl.value !== '') {
+    const markup = parseFloat(markupEl.value) || 0;
+    if (costEl.value !== '') {
+      const cost = parseFloat(costEl.value) || 0;
       priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
     } else if (priceEl.value !== '') {
       const price = parseFloat(priceEl.value) || 0;
-      const markup = parseFloat(markupEl.value) || 0;
       costEl.value = (price / (1 + markup / 100)).toFixed(2);
     }
   }
