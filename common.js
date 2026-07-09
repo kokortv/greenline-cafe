@@ -987,6 +987,22 @@ function formatMoney(amount, currency) {
   return formatted + ' ' + cur;
 }
 
+// Format a markup percentage: 50 -> "50%", 12.5 -> "12.5%"
+function formatPercent(value) {
+  const n = Number(value) || 0;
+  const hasDec = (n % 1) !== 0;
+  return (hasDec ? n.toFixed(1) : Math.round(n).toString()) + '%';
+}
+
+// Calculate effective markup percentage from cost and price.
+// Returns 0 if cost == price (or cost == 0).
+function calcMarkupPercent(cost, price) {
+  cost = Number(cost) || 0;
+  price = Number(price) || 0;
+  if (cost === 0 || cost === price) return 0;
+  return ((price - cost) / cost) * 100;
+}
+
 function formatTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);

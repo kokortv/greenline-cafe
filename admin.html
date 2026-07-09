@@ -139,7 +139,6 @@
 
   /* Menu table (new tabular layout) */
   .menu-table { font-size: 0.95rem; }
-  .menu-table thead th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); font-weight: 600; }
   .menu-table-row:hover { background: rgba(0,0,0,0.02); }
   .menu-table-row.dragging { opacity: 0.4; }
   .menu-table-row.drag-over { border-top: 3px solid var(--primary) !important; }
@@ -553,8 +552,8 @@
             <input type="number" id="menu-cost" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('cost')">
           </div>
           <div>
-            <label style="font-size:0.85rem;color:var(--text-muted);">Наценка</label>
-            <input type="number" id="menu-markup" min="0" step="0.01" placeholder="0" oninput="recalcSinglePrice('markup')">
+            <label style="font-size:0.85rem;color:var(--text-muted);">Наценка, %</label>
+            <input type="number" id="menu-markup" min="0" step="0.1" placeholder="0" oninput="recalcSinglePrice('markup')">
           </div>
           <div>
             <label style="font-size:0.85rem;color:var(--text-muted);">Итого (цена)</label>
@@ -563,6 +562,7 @@
         </div>
         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
           Введите значения в любые два поля — третье рассчитается автоматически.
+          Наценка указывается в процентах (например, 50 = +50% к себестоимости).
         </p>
       </div>
 
@@ -1203,14 +1203,15 @@ function renderMenuList() {
     }, Infinity);
   }
 
-  // Helper: effective markup — 0 if cost == price, otherwise stored markup or (price - cost)
+  // Helper: effective markup percentage — 0 if cost == price (or cost == 0),
+  // otherwise stored markup if non-zero, else (price - cost) / cost * 100
   function effectiveMarkup(cost, price, storedMarkup) {
     cost = Number(cost) || 0;
     price = Number(price) || 0;
-    if (cost === price) return 0;
+    if (cost === 0 || cost === price) return 0;
     const m = Number(storedMarkup);
     if (!isNaN(m) && m !== 0) return m;
-    return price - cost;
+    return ((price - cost) / cost) * 100;
   }
 
   // Sorting:
@@ -1239,22 +1240,21 @@ function renderMenuList() {
   }
 
   // Build a table:
-  // Columns: [drag] | Название | Категория | Себестоимость | Наценка | Цена | Готовка | Изменить | Удалить
+  // Columns: [drag] | Название | Категория | Себестоимость | Наценка | Цена | Готовка | Действия
   let html = '';
   if (dragEnabled) {
     html += '<div class="reorder-hint">⇅ Перетащите строки за значок ⠿, чтобы изменить порядок внутри выбранной категории</div>';
   }
   html += '<table class="menu-table" style="width:100%;table-layout:fixed;border-collapse:collapse;">';
-  html += '<thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);">';
-  if (dragEnabled) html += '<th style="width:32px;padding:8px 4px;"></th>';
-  html += '<th style="width:24%;padding:8px;text-align:left;">Название</th>';
-  html += '<th style="width:18%;padding:8px;text-align:left;">Категория</th>';
-  html += '<th style="width:11%;padding:8px;text-align:right;">Себест.</th>';
-  html += '<th style="width:11%;padding:8px;text-align:right;">Наценка</th>';
-  html += '<th style="width:11%;padding:8px;text-align:right;">Цена</th>';
-  html += '<th style="width:11%;padding:8px;text-align:center;">Готовка</th>';
-  html += '<th style="width:42px;padding:8px;text-align:center;">✎</th>';
-  html += '<th style="width:42px;padding:8px;text-align:center;">✕</th>';
+  html += '<thead><tr>';
+  if (dragEnabled) html += '<th style="width:32px;padding:12px 4px;"></th>';
+  html += '<th style="width:24%;padding:12px;text-align:left;">Название</th>';
+  html += '<th style="width:16%;padding:12px;text-align:left;">Категория</th>';
+  html += '<th style="width:12%;padding:12px;text-align:right;">Себестоимость</th>';
+  html += '<th style="width:10%;padding:12px;text-align:right;">Наценка</th>';
+  html += '<th style="width:11%;padding:12px;text-align:right;">Цена</th>';
+  html += '<th style="width:11%;padding:12px;text-align:center;">Готовка</th>';
+  html += '<th style="width:76px;padding:12px;text-align:center;"></th>';
   html += '</tr></thead><tbody>';
 
   items.forEach(function(item) {
@@ -1268,52 +1268,67 @@ function renderMenuList() {
       (dragEnabled ? 'draggable="true" data-id="' + item.id + '"' : '') +
       ' style="border-bottom:1px solid var(--border);vertical-align:top;">';
     if (dragEnabled) {
-      html += '<td style="padding:8px 4px;text-align:center;cursor:grab;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">⠿</td>';
+      html += '<td style="padding:12px 4px;text-align:center;cursor:grab;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">⠿</td>';
     }
-    // Name
-    html += '<td style="padding:8px;word-break:break-word;">';
+    // Name cell — name + translation + (for items with mods) a small badge with mod count
+    html += '<td style="padding:12px;word-break:break-word;">';
     html += '<div style="font-weight:600;font-size:1.05rem;">' + escapeHtml(item.name) + '</div>';
     if (item.name_translation) {
       html += '<div style="font-size:0.85rem;color:var(--text-muted);margin-top:2px;">' + escapeHtml(item.name_translation) + '</div>';
     }
     if (hasMods) {
       html += '<div style="font-size:0.75rem;color:var(--primary);margin-top:4px;font-weight:600;">⚙ ' + item.modifications.length + ' модификаций</div>';
-      // Inline modifications list
-      html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">';
-      item.modifications.forEach(function(mod) {
-        const modCost = Number(mod.cost) || 0;
-        const modPrice = Number(mod.price) || 0;
-        const modMarkup = effectiveMarkup(modCost, modPrice, mod.markup);
-        html += '<div style="display:grid;grid-template-columns:1fr 60px 60px 60px;gap:4px;padding:3px 6px;background:#f7f7f7;border-radius:4px;font-size:0.78rem;align-items:center;">';
-        html += '<div style="word-break:break-word;">└ ' + escapeHtml(mod.name) + '</div>';
-        html += '<div style="text-align:right;color:var(--text-muted);">' + formatMoney(modCost) + '</div>';
-        html += '<div style="text-align:right;color:var(--text-muted);">' + formatMoney(modMarkup) + '</div>';
-        html += '<div style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(modPrice) + '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
     }
     html += '</td>';
     // Category
-    html += '<td style="padding:8px;font-size:0.9rem;color:var(--text-muted);word-break:break-word;">' + escapeHtml(catLabel(item)) + '</td>';
-    // Cost
-    html += '<td style="padding:8px;text-align:right;color:var(--text-muted);">' + (hasMods ? '—' : formatMoney(itemCost)) + '</td>';
-    // Markup
-    html += '<td style="padding:8px;text-align:right;color:var(--text-muted);">' + (hasMods ? '—' : formatMoney(itemMarkup)) + '</td>';
-    // Price
-    html += '<td style="padding:8px;text-align:right;font-weight:700;color:var(--primary);">' +
-      (hasMods ? 'от ' + formatMoney(minModPrice(item)) : formatMoney(itemPrice)) + '</td>';
+    html += '<td style="padding:12px;font-size:0.9rem;color:var(--text-muted);word-break:break-word;">' + escapeHtml(catLabel(item)) + '</td>';
+
+    // Cost / Markup / Price — for items WITH modifications, render each modification
+    // as a separate line within its column so all values stay aligned by column.
+    if (hasMods) {
+      // Cost column — list each modification's cost on its own line
+      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">';
+      item.modifications.forEach(function(mod, i) {
+        if (i > 0) html += '<div style="height:6px;"></div>';
+        const modCost = Number(mod.cost) || 0;
+        html += '<div style="font-size:0.85rem;">' + escapeHtml(mod.name) + ': ' + formatMoney(modCost) + '</div>';
+      });
+      html += '</td>';
+      // Markup column — list each modification's markup %
+      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">';
+      item.modifications.forEach(function(mod, i) {
+        if (i > 0) html += '<div style="height:6px;"></div>';
+        const modCost = Number(mod.cost) || 0;
+        const modPrice = Number(mod.price) || 0;
+        const modMarkup = effectiveMarkup(modCost, modPrice, mod.markup);
+        html += '<div style="font-size:0.85rem;">' + formatPercent(modMarkup) + '</div>';
+      });
+      html += '</td>';
+      // Price column — list each modification's price (bold, primary color)
+      html += '<td style="padding:12px;text-align:right;">';
+      item.modifications.forEach(function(mod, i) {
+        if (i > 0) html += '<div style="height:6px;"></div>';
+        const modPrice = Number(mod.price) || 0;
+        html += '<div style="font-size:0.85rem;font-weight:700;color:var(--primary);">' + formatMoney(modPrice) + '</div>';
+      });
+      html += '</td>';
+    } else {
+      // Single price item — show one value per column
+      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">' + formatMoney(itemCost) + '</td>';
+      html += '<td style="padding:12px;text-align:right;color:var(--text-muted);">' + formatPercent(itemMarkup) + '</td>';
+      html += '<td style="padding:12px;text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(itemPrice) + '</td>';
+    }
+
     // Cook flag
-    html += '<td style="padding:8px;text-align:center;">' +
+    html += '<td style="padding:12px;text-align:center;">' +
       '<span class="menu-cook-flag ' + (needsCook ? 'yes' : 'no') + '" style="display:inline-block;padding:3px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">' +
       (needsCook ? 'готовка' : 'без готовки') +
       '</span></td>';
-    // Edit (icon only)
-    html += '<td style="padding:8px;text-align:center;">' +
-      '<button class="btn btn-outline" style="padding:6px 10px;" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button></td>';
-    // Delete
-    html += '<td style="padding:8px;text-align:center;">' +
-      '<button class="btn btn-danger" style="padding:6px 10px;" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button></td>';
+    // Actions — both buttons in one cell, no header
+    html += '<td style="padding:12px;text-align:center;white-space:nowrap;">' +
+      '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button> ' +
+      '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
+      '</td>';
     html += '</tr>';
   });
   html += '</tbody></table>';
@@ -1511,14 +1526,13 @@ function isPricingModeMods() {
   return document.getElementById('modifications-block').style.display !== 'none';
 }
 
-// Recalculate single price fields: cost + markup = price
-// Logic (per user spec):
+// Recalculate single price fields. Markup is a PERCENTAGE, so:
+//   price = cost × (1 + markup / 100)
+// Logic:
 //   - User edits COST:  copy cost → price, set markup = 0
 //   - User edits PRICE: copy price → cost, set markup = 0
-//   - User edits MARKUP: price = cost + markup (only if cost is already set)
-//     If price < cost after this, markup stays as price - cost (could be negative).
-//
-// We track which field triggered the input via the `changedField` argument.
+//   - User edits MARKUP: price = cost × (1 + markup/100) (if cost is set)
+//     If price is set but no cost: cost = price / (1 + markup/100)
 function recalcSinglePrice(changedField) {
   const costEl = document.getElementById('menu-cost');
   const markupEl = document.getElementById('menu-markup');
@@ -1539,16 +1553,16 @@ function recalcSinglePrice(changedField) {
   }
 
   if (changedField === 'markup' && markupEl.value !== '') {
-    // Markup was just edited: price = cost + markup (if cost is set)
+    // Markup is a percentage: price = cost × (1 + markup/100)
     if (costEl.value !== '') {
       const cost = parseFloat(costEl.value) || 0;
       const markup = parseFloat(markupEl.value) || 0;
-      priceEl.value = (cost + markup).toFixed(2);
+      priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
     } else if (priceEl.value !== '') {
-      // No cost yet but price is set: derive cost = price - markup
+      // No cost yet but price is set: derive cost = price / (1 + markup/100)
       const price = parseFloat(priceEl.value) || 0;
       const markup = parseFloat(markupEl.value) || 0;
-      costEl.value = (price - markup).toFixed(2);
+      costEl.value = (price / (1 + markup / 100)).toFixed(2);
     }
     return;
   }
@@ -1579,7 +1593,7 @@ function addModificationRow(mod) {
     '<div class="mod-handle" style="cursor:grab;text-align:center;color:var(--text-muted);font-size:1.1rem;user-select:none;" title="Перетащите для изменения порядка">☰</div>' +
     '<input type="text" class="mod-name" placeholder="Напр. С сыром" value="' + escapeHtmlAttr((mod && mod.name) || '') + '">' +
     '<input type="number" class="mod-cost" min="0" step="0.01" placeholder="Себест." value="' + ((mod && mod.cost) || '') + '" title="Себестоимость" oninput="recalcModPrice(this)">' +
-    '<input type="number" class="mod-markup" min="0" step="0.01" placeholder="Наценка" value="' + ((mod && mod.markup) || '') + '" title="Наценка" oninput="recalcModPrice(this)">' +
+    '<input type="number" class="mod-markup" min="0" step="0.1" placeholder="Нац.%" value="' + ((mod && mod.markup) || '') + '" title="Наценка, %" oninput="recalcModPrice(this)">' +
     '<input type="number" class="mod-price" min="0" step="0.01" placeholder="Итого" value="' + ((mod && mod.price) || '') + '" title="Итоговая цена" style="font-weight:700;" oninput="recalcModPrice(this)">' +
     '<button type="button" class="btn btn-outline" style="padding:4px 8px;color:var(--danger);" onclick="this.parentElement.remove()" title="Удалить модификацию">✕</button>';
   // Drag-and-drop handlers
@@ -1609,10 +1623,11 @@ function addModificationRow(mod) {
 }
 
 // Recalculate cost/markup/price for a modification row
-// Same logic as recalcSinglePrice:
+// Markup is a PERCENTAGE — same logic as recalcSinglePrice:
 //   - COST edited:  price = cost, markup = 0
 //   - PRICE edited: cost = price, markup = 0
-//   - MARKUP edited: price = cost + markup (if cost set); else cost = price - markup
+//   - MARKUP edited: price = cost × (1 + markup/100) (if cost set);
+//     else cost = price / (1 + markup/100)
 function recalcModPrice(input) {
   const row = input.closest('.modification-row');
   if (!row) return;
@@ -1635,11 +1650,11 @@ function recalcModPrice(input) {
     if (costEl.value !== '') {
       const cost = parseFloat(costEl.value) || 0;
       const markup = parseFloat(markupEl.value) || 0;
-      priceEl.value = (cost + markup).toFixed(2);
+      priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
     } else if (priceEl.value !== '') {
       const price = parseFloat(priceEl.value) || 0;
       const markup = parseFloat(markupEl.value) || 0;
-      costEl.value = (price - markup).toFixed(2);
+      costEl.value = (price / (1 + markup / 100)).toFixed(2);
     }
   }
 }
@@ -1653,17 +1668,17 @@ function collectModifications() {
     if (!name) return; // skip empty rows
     const cost = parseFloat(row.querySelector('.mod-cost').value) || 0;
     const price = parseFloat(row.querySelector('.mod-price').value) || 0;
-    // If cost == price, markup is implicitly 0. Otherwise use the entered markup
-    // or derive it as price - cost.
+    // Markup is stored as a PERCENTAGE. If cost == price (or cost == 0), markup = 0.
+    // Otherwise use the entered markup; if it's 0 but price != cost, derive it.
     let markup = parseFloat(row.querySelector('.mod-markup').value);
     if (isNaN(markup)) markup = 0;
-    if (cost === price) markup = 0;
-    else if (markup === 0 && price !== cost) markup = price - cost;
+    if (cost === 0 || cost === price) markup = 0;
+    else if (markup === 0 && price !== cost) markup = ((price - cost) / cost) * 100;
     mods.push({
       id: row.dataset.modId || '',
       name: name,
       cost: cost,
-      markup: markup,
+      markup: markup,  // percentage
       price: price,
       is_active: true
     });
@@ -1699,13 +1714,14 @@ async function saveMenuItem() {
       }
     }
   }
-  // Normalize cost/markup/price for the main item:
-  // If cost == price, set markup = 0. Otherwise derive markup if it's 0 but price != cost.
+  // Normalize cost/markup/price for the main item (markup is a PERCENTAGE):
+  // If cost == price (or cost == 0), markup = 0. Otherwise use entered markup;
+  // if it's 0 but price != cost, derive markup% = (price - cost) / cost * 100.
   let itemCost = Number(document.getElementById('menu-cost').value) || 0;
   let itemPrice = Number(document.getElementById('menu-price').value) || 0;
   let itemMarkup = Number(document.getElementById('menu-markup').value) || 0;
-  if (itemCost === itemPrice) itemMarkup = 0;
-  else if (itemMarkup === 0 && itemPrice !== itemCost) itemMarkup = itemPrice - itemCost;
+  if (itemCost === 0 || itemCost === itemPrice) itemMarkup = 0;
+  else if (itemMarkup === 0 && itemPrice !== itemCost) itemMarkup = ((itemPrice - itemCost) / itemCost) * 100;
 
   const payload = {
     id: id || undefined,
@@ -2030,12 +2046,12 @@ async function loadStockReport() {
       html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
     }
     html += '<table style="width:100%;table-layout:fixed;" id="stock-table"><thead><tr>';
-    html += '<th style="width:28%;">Блюдо</th>';
-    html += '<th style="width:11%;">Остаток</th>';
-    html += '<th style="width:11%;">За день</th>';
-    html += '<th style="width:11%;">За неделю</th>';
-    html += '<th style="width:11%;">За месяц</th>';
-    html += '<th style="width:28%;">Пополнить</th>';
+    html += '<th style="width:30%;">Блюдо</th>';
+    html += '<th style="width:12%;">Остаток</th>';
+    html += '<th style="width:12%;">За день</th>';
+    html += '<th style="width:12%;">За неделю</th>';
+    html += '<th style="width:12%;">За месяц</th>';
+    html += '<th style="width:22%;">Пополнить</th>';
     html += '</tr></thead><tbody>';
     items.forEach(function(it) {
       const lowClass = it.low_stock ? ' style="background:#ffebee;"' : '';
@@ -2048,13 +2064,13 @@ async function loadStockReport() {
       html += '<td>' + it.consumed_day + '</td>';
       html += '<td>' + it.consumed_week + '</td>';
       html += '<td>' + it.consumed_month + '</td>';
-      // Larger replenish field + circular green button with a plus sign
-      html += '<td style="padding:6px 8px;"><div style="display:flex;align-items:center;gap:8px;">' +
+      // Slightly larger input + circular green button with a plus sign
+      html += '<td style="padding:6px 8px;"><div style="display:flex;align-items:center;gap:6px;">' +
         '<input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" ' +
-          'style="flex:1;min-width:0;padding:8px 10px;font-size:1rem;border:1px solid var(--border);border-radius:6px;" ' +
+          'style="flex:1;min-width:0;padding:6px 8px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;" ' +
           'onkeydown="if(event.key===\'Enter\'){event.preventDefault();replenishFromInput(\'' + it.id + '\');}">' +
         '<button type="button" class="replenish-btn" title="Пополнить" ' +
-          'style="flex:none;width:44px;height:44px;border-radius:50%;border:none;background:var(--success);color:#fff;font-size:1.6rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.15);" ' +
+          'style="flex:none;width:36px;height:36px;border-radius:50%;border:none;background:var(--success);color:#fff;font-size:1.3rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.15);" ' +
           'onclick="replenishFromInput(\'' + it.id + '\')">+</button>' +
         '</div></td>';
       html += '</tr>';

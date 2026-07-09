@@ -34,6 +34,11 @@ create table if not exists public.menu (
   stock int default 0,
   has_modifications boolean default false  -- если true — у товара есть модификации
 );
+-- If table already existed (without new columns), add them now.
+-- Safe to re-run thanks to IF NOT EXISTS.
+alter table public.menu add column if not exists cost numeric default 0;
+alter table public.menu add column if not exists markup numeric default 0;
+alter table public.menu add column if not exists has_modifications boolean default false;
 
 -- 3a. MENU MODIFICATIONS — варианты одного блюда (напр. "Сухарики: сыр/бекон/соль")
 create table if not exists public.menu_modifications (
@@ -101,6 +106,9 @@ create table if not exists public.order_items (
   needs_cooking boolean default true,
   created_at timestamptz default now()
 );
+-- If table already existed (without modification columns), add them now.
+alter table public.order_items add column if not exists modification_id text default '';
+alter table public.order_items add column if not exists modification_name text default '';
 
 -- 7. TABS (open client accounts)
 create table if not exists public.tabs (
