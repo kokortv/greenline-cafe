@@ -32,6 +32,8 @@
     --vm-bg: #121212; --vm-text: #e0e0e0; --vm-muted: #888;
     --vm-border: #333; --vm-card-bg: #1e1e1e;
   }
+  [data-theme="dark"] .subcat-tabs-bar { background: rgba(30,30,30,0.9); }
+  [data-theme="dark"] .bottom-cat-bar { background: rgba(30,30,30,0.92); }
   * { box-sizing: border-box; }
   body { background: var(--vm-bg); padding: 0; margin: 0; color: var(--vm-text); transition: background 0.3s, color 0.3s; }
 
@@ -54,7 +56,7 @@
 
   .subcat-tabs-bar {
     position: sticky; top: 0; z-index: 40;
-    background: color-mix(in srgb, var(--vm-card-bg) 88%, transparent);
+    background: rgba(255,255,255,0.9);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     display: flex; gap: 6px; padding: 10px 12px; overflow-x: auto;
     -webkit-overflow-scrolling: touch; border-bottom: 1px solid var(--vm-border);
@@ -96,7 +98,7 @@
 
   .bottom-cat-bar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
-    background: color-mix(in srgb, var(--vm-card-bg) 92%, transparent);
+    background: rgba(255,255,255,0.92);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     border-top: 1px solid var(--vm-border); padding: 12px 16px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -277,9 +279,11 @@ function selectMainCat(catId) {
 }
 
 // ===== SCROLL TO SUBCAT =====
+var _scrollingToSubcat = false;
 function scrollToSubcat(subId) {
   var el = document.getElementById('sub-' + subId);
   if (!el) return;
+  _scrollingToSubcat = true; // pause observer during programmatic scroll
   setTimeout(function() {
     var rect = el.getBoundingClientRect();
     var y = window.pageYOffset || document.documentElement.scrollTop || 0;
@@ -287,6 +291,8 @@ function scrollToSubcat(subId) {
     var tabsH = tabsBar.classList.contains('is-hidden') ? 0 : 50;
     var top = rect.top + y - tabsH - 6;
     window.scrollTo({ top: top, behavior: 'smooth' });
+    // Re-enable observer after scroll settles
+    setTimeout(function() { _scrollingToSubcat = false; }, 500);
   }, 80);
 }
 
@@ -397,12 +403,26 @@ function setupScrollObserver() {
   var sections = document.querySelectorAll('[data-subcat-id]');
   if (sections.length === 0) return;
   scrollObserver = new IntersectionObserver(function(entries) {
+    if (_scrollingToSubcat) return; // skip during programmatic scroll
     entries.forEach(function(entry) {
       if (entry.isIntersecting) {
         var id = entry.target.getAttribute('data-subcat-id');
         document.querySelectorAll('.subcat-tab').forEach(function(t) { t.classList.remove('active'); });
         var tab = document.querySelector('.subcat-tab[data-sub-id="' + id + '"]');
-        if (tab) { tab.classList.add('active'); tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); }
+        if (tab) {
+          tab.classList.add('active');
+          // Only scroll the tab bar horizontally — do NOT scroll the page vertically
+          var tabsBar = document.getElementById('subcat-tabs-bar');
+          var tabLeft = tab.offsetLeft;
+          var tabRight = tabLeft + tab.offsetWidth;
+          var barLeft = tabsBar.scrollLeft;
+          var barRight = barLeft + tabsBar.offsetWidth;
+          if (tabLeft < barLeft) {
+            tabsBar.scrollTo({ left: tabLeft - 10, behavior: 'smooth' });
+          } else if (tabRight > barRight) {
+            tabsBar.scrollTo({ left: tabRight - tabsBar.offsetWidth + 10, behavior: 'smooth' });
+          }
+        }
       }
     });
   }, { rootMargin: '-60px 0px -70% 0px', threshold: 0 });
