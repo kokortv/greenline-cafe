@@ -18,10 +18,7 @@
     --vm-border: #333; --vm-card-bg: #1e1e1e;
   }
   * { box-sizing: border-box; }
-  body {
-    background: var(--vm-bg); padding: 0; margin: 0;
-    color: var(--vm-text); transition: background 0.3s, color 0.3s;
-  }
+  body { background: var(--vm-bg); padding: 0; margin: 0; color: var(--vm-text); transition: background 0.3s, color 0.3s; }
 
   .menu-header {
     position: fixed; top: 0; left: 0; right: 0; z-index: 60;
@@ -86,10 +83,10 @@
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
     background: color-mix(in srgb, var(--vm-card-bg) 92%, transparent);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    border-top: 1px solid var(--vm-border);
-    padding: 12px 16px; display: flex; align-items: center; justify-content: center;
-    gap: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;
-    color: var(--vm-text); box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+    border-top: 1px solid var(--vm-border); padding: 12px 16px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 1rem; font-weight: 600; cursor: pointer; color: var(--vm-text);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
   }
   .bottom-cat-bar .bcb-arrow { font-size: 0.7rem; color: var(--vm-muted); }
 
@@ -131,7 +128,7 @@
     <h1 id="menu-restaurant-name">Меню</h1>
     <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
   </div>
-  <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Сменить тему">🌙</button>
+  <button class="theme-toggle" id="theme-toggle" title="Сменить тему">🌙</button>
 </div>
 <div class="header-spacer"></div>
 
@@ -143,13 +140,13 @@
 
 <div class="menu-footer" id="menu-footer" style="display:none;"></div>
 
-<div class="bottom-cat-bar" id="bottom-cat-bar" onclick="toggleCategoryDropdown()">
+<div class="bottom-cat-bar" id="bottom-cat-bar">
   <span>☰</span>
   <span id="bottom-cat-text">Выберите категорию меню</span>
   <span class="bcb-arrow">▲</span>
 </div>
 
-<div class="category-dropdown" id="category-dropdown" onclick="if(event.target===this)toggleCategoryDropdown()">
+<div class="category-dropdown" id="category-dropdown">
   <div class="category-dropdown-content">
     <h3>Выберите категорию меню</h3>
     <div id="category-dropdown-list"></div>
@@ -159,118 +156,86 @@
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
 <script>
-// ===== Self-contained menu page — does NOT load common.js =====
-// This avoids the GoTrueClient conflict when the waiter app is open
-// in another tab.
+// ===== Self-contained — NO common.js, NO IIFE, all global =====
 
-var _menu_sb = null;
-var _menu_data = null;
+var _sb_menu = null;
+var APP_DATA = null;
+var selectedMainCat = null;
+var allMainCats = [];
+var itemsByCat = {};
+var scrollObserver = null;
 
-function _menu_initSupabase() {
+function initSupabaseMenu() {
   if (window.supabase && CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === -1) {
-    _menu_sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+    _sb_menu = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
   }
 }
 
-async function _menu_dbSelect(table) {
-  var result = await _menu_sb.from(table).select('*');
-  if (result.error) throw new Error(result.error.message);
-  return result.data || [];
+async function dbSelectMenu(table) {
+  var r = await _sb_menu.from(table).select('*');
+  if (r.error) throw new Error(r.error.message);
+  return r.data || [];
 }
 
-async function _menu_loadData() {
-  var settings = await _menu_dbSelect('settings');
-  var categories = await _menu_dbSelect('categories');
-  var menu = await _menu_dbSelect('menu');
-  var modifications = await _menu_dbSelect('menu_modifications');
-
+async function loadAppDataMenu() {
+  var settings = await dbSelectMenu('settings');
+  var categories = await dbSelectMenu('categories');
+  var menu = await dbSelectMenu('menu');
+  var modifications = await dbSelectMenu('menu_modifications');
   var s = {};
   settings.forEach(function(x) { s[x.key] = x.value; });
-
   var activeCats = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
   var activeMenu = menu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
   var activeMods = modifications.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
-
   var modsByMenu = {};
   activeMods.forEach(function(mod) {
     if (!modsByMenu[mod.menu_id]) modsByMenu[mod.menu_id] = [];
-    modsByMenu[mod.menu_id].push({
-      id: mod.id, name: mod.name, price: Number(mod.price) || 0, sort: Number(mod.sort) || 0
-    });
+    modsByMenu[mod.menu_id].push({ id: mod.id, name: mod.name, price: Number(mod.price) || 0, sort: Number(mod.sort) || 0 });
   });
-  Object.keys(modsByMenu).forEach(function(mid) {
-    modsByMenu[mid].sort(function(a, b) { return a.sort - b.sort; });
-  });
-
+  Object.keys(modsByMenu).forEach(function(mid) { modsByMenu[mid].sort(function(a, b) { return a.sort - b.sort; }); });
   var menuWithMods = activeMenu.map(function(m) {
     return Object.assign({}, m, {
       has_modifications: m.has_modifications === true || m.has_modifications === 'true',
       modifications: modsByMenu[m.id] || []
     });
   });
-
-  _menu_data = { settings: s, categories: activeCats, menu: menuWithMods };
-  return _menu_data;
+  APP_DATA = { settings: s, categories: activeCats, menu: menuWithMods };
+  return APP_DATA;
 }
 
-function _menu_formatMoney(amount) {
+function fmtMoney(amount) {
   var n = Number(amount) || 0;
   var cur = '₾';
-  if (_menu_data && _menu_data.settings && _menu_data.settings.currency) cur = _menu_data.settings.currency;
+  if (APP_DATA && APP_DATA.settings && APP_DATA.settings.currency) cur = APP_DATA.settings.currency;
   if (!cur || cur === 'PASTE_YOUR') cur = '₾';
-  var hasDec = (n % 1) !== 0;
-  return (hasDec ? n.toFixed(2) : Math.round(n).toString()) + ' ' + cur;
+  return (n % 1 !== 0 ? n.toFixed(2) : Math.round(n).toString()) + ' ' + cur;
 }
 
-function _menu_escapeHtml(s) {
+function escHtml(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-</script>
-<script>
-(function() {
-  _menu_initSupabase();
 
-  var selectedMainCat = null;
-  var allMainCats = [];
-  var itemsByCat = {};
-  var scrollObserver = null;
+// ===== THEME =====
+function getSystemTheme() {
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+  return 'light';
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  var btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+  try { localStorage.setItem('vm-theme', theme); } catch(e) {}
+}
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme') || getSystemTheme();
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// ===== HEADER SCROLL =====
+function setupScroll() {
   var headerEl = document.getElementById('menu-header');
-
-  // ===== THEME =====
-  function getSystemTheme() {
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
-    return 'light';
-  }
-  function applyTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme);
-    var btn = document.getElementById('theme-toggle');
-    if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
-    try { localStorage.setItem('vm-theme', theme); } catch(e) {}
-  }
-  window.toggleTheme = function() {
-    var current = document.documentElement.getAttribute('data-theme') || getSystemTheme();
-    applyTheme(current === 'dark' ? 'light' : 'dark');
-  };
-  var savedTheme = null;
-  try { savedTheme = localStorage.getItem('vm-theme'); } catch(e) {}
-  applyTheme(savedTheme || getSystemTheme());
-  if (window.matchMedia) {
-    var mq = window.matchMedia('(prefers-color-scheme: dark)');
-    if (mq.addEventListener) {
-      mq.addEventListener('change', function(e) {
-        try { if (!localStorage.getItem('vm-theme')) applyTheme(e.matches ? 'dark' : 'light'); } catch(e2) {}
-      });
-    } else if (mq.addListener) {
-      mq.addListener(function(e) {
-        try { if (!localStorage.getItem('vm-theme')) applyTheme(e.matches ? 'dark' : 'light'); } catch(e2) {}
-      });
-    }
-  }
-
-  // ===== HEADER HIDE/SHOW =====
-  // Header hides when scrolling down. Shows ONLY when scrollY reaches 0.
   window.addEventListener('scroll', function() {
     var y = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
     if (y <= 0) {
@@ -279,195 +244,225 @@ function _menu_escapeHtml(s) {
       headerEl.classList.add('is-hidden');
     }
   }, false);
+}
 
-  // ===== APPEARANCE =====
-  function applyAppearance() {
-    var s = _menu_data.settings || {};
-    var priceColor = s.qr_menu_color_price || '#d32f2f';
-    var headerColor = s.qr_menu_color_header || priceColor;
-    document.getElementById('dynamic-menu-styles').textContent =
-      ':root { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; } ' +
-      '[data-theme="dark"] { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; }';
-    document.getElementById('menu-restaurant-subtitle').textContent = s.qr_menu_subtitle || '';
-    var footer = document.getElementById('menu-footer');
-    if (s.qr_menu_footer) { footer.textContent = s.qr_menu_footer; footer.style.display = 'block'; }
-    else footer.style.display = 'none';
-  }
+// ===== DROPDOWN =====
+function toggleCategoryDropdown() {
+  document.getElementById('category-dropdown').classList.toggle('open');
+}
 
-  // ===== RENDER =====
-  function render() {
-    var contentEl = document.getElementById('menu-content');
-    try {
-      var menu = _menu_data.menu || [];
-      var categories = _menu_data.categories || [];
-      if (menu.length === 0) { contentEl.innerHTML = '<div class="empty">Меню пока пустое</div>'; return; }
-      itemsByCat = {};
-      menu.forEach(function(m) { var cid = m.category_id || ''; if (!itemsByCat[cid]) itemsByCat[cid] = []; itemsByCat[cid].push(m); });
-      allMainCats = categories.filter(function(c) { return !c.parent_id; });
-      allMainCats.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
-      renderCategoryDropdown();
-      if (!selectedMainCat) { renderAllCategories(); }
-      else { renderSingleCategory(selectedMainCat); }
-    } catch (err) {
-      contentEl.innerHTML = '<div class="empty">Ошибка: ' + _menu_escapeHtml(err.message) + '</div>';
-    }
-  }
+// ===== CATEGORY SELECTION =====
+function selectMainCat(catId) {
+  selectedMainCat = catId ? allMainCats.find(function(c) { return c.id === catId; }) : null;
+  document.getElementById('category-dropdown').classList.remove('open');
+  renderCategoryDropdown();
+  if (selectedMainCat) { renderSingleCategory(selectedMainCat); }
+  else { renderAllCategories(); }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
-  function renderCategoryDropdown() {
-    var list = document.getElementById('category-dropdown-list');
-    var html = '<div class="cat-dropdown-item' + (!selectedMainCat ? ' active' : '') + '" onclick="selectMainCat(null)"><span>Выберите категорию меню</span>' + (!selectedMainCat ? '<span class="cdi-check">✓</span>' : '') + '</div>';
-    allMainCats.forEach(function(cat) {
-      var isActive = selectedMainCat && selectedMainCat.id === cat.id;
-      html += '<div class="cat-dropdown-item' + (isActive ? ' active' : '') + '" onclick="selectMainCat(\'' + cat.id + '\')"><span>' + _menu_escapeHtml(cat.name) + '</span>' + (isActive ? '<span class="cdi-check">✓</span>' : '') + '</div>';
-    });
-    list.innerHTML = html;
-  }
-
-  function renderAllCategories() {
-    document.getElementById('bottom-cat-text').textContent = 'Выберите категорию меню';
-    document.getElementById('subcat-tabs-bar').classList.add('is-hidden');
-    var html = '';
-    allMainCats.forEach(function(mc) {
-      var subs = _menu_data.categories.filter(function(c) { return c.parent_id === mc.id; });
-      var directItems = itemsByCat[mc.id] || [];
-      if (subs.length === 0 && directItems.length === 0) return;
-      html += '<div class="main-cat-title">' + _menu_escapeHtml(mc.name) + '</div>';
-      subs.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
-      subs.forEach(function(sc) {
-        var items = itemsByCat[sc.id] || [];
-        if (items.length === 0) return;
-        html += '<div class="subcat-section-title" data-subcat-id="' + sc.id + '">' + _menu_escapeHtml(sc.name) + '</div>';
-        items.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
-        items.forEach(function(item) { html += renderItem(item); });
-      });
-      if (directItems.length > 0) {
-        if (subs.length > 0) html += '<div class="subcat-section-title" data-subcat-id="direct-' + mc.id + '">Прочее</div>';
-        directItems.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
-        directItems.forEach(function(item) { html += renderItem(item); });
-      }
-    });
-    document.getElementById('menu-content').innerHTML = html || '<div class="empty">Нет блюд</div>';
-    if (scrollObserver) { scrollObserver.disconnect(); scrollObserver = null; }
-  }
-
-  function renderSingleCategory(mc) {
-    document.getElementById('bottom-cat-text').textContent = mc.name;
-    var subs = _menu_data.categories.filter(function(c) { return c.parent_id === mc.id; });
-    subs.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
-    var directItems = itemsByCat[mc.id] || [];
-    var visibleSubs = [];
-
-    var tabsHtml = '';
-    subs.forEach(function(sc) {
-      var items = itemsByCat[sc.id] || [];
-      if (items.length === 0) return;
-      visibleSubs.push(sc);
-      tabsHtml += '<button class="subcat-tab" data-sub-id="' + sc.id + '">' + _menu_escapeHtml(sc.name) + '</button>';
-    });
-    if (directItems.length > 0 && subs.length > 0) {
-      tabsHtml += '<button class="subcat-tab" data-sub-id="direct">Прочее</button>';
-    }
+// ===== SCROLL TO SUBCAT =====
+function scrollToSubcat(subId) {
+  var el = document.getElementById('sub-' + subId);
+  if (!el) return;
+  setTimeout(function() {
+    var rect = el.getBoundingClientRect();
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
     var tabsBar = document.getElementById('subcat-tabs-bar');
-    tabsBar.innerHTML = tabsHtml;
-    tabsBar.classList.toggle('is-hidden', visibleSubs.length === 0);
+    var tabsH = tabsBar.classList.contains('is-hidden') ? 0 : 50;
+    var top = rect.top + y - tabsH - 6;
+    window.scrollTo({ top: top, behavior: 'smooth' });
+  }, 80);
+}
 
-    // Attach click handlers to subcat tabs
-    tabsBar.querySelectorAll('.subcat-tab').forEach(function(tab) {
-      tab.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        var subId = this.getAttribute('data-sub-id');
-        scrollToSubcat(subId);
-      });
-    });
+// ===== RENDER =====
+function renderCategoryDropdown() {
+  var list = document.getElementById('category-dropdown-list');
+  var html = '<div class="cat-dropdown-item' + (!selectedMainCat ? ' active' : '') + '" onclick="selectMainCat(null)"><span>Выберите категорию меню</span>' + (!selectedMainCat ? '<span class="cdi-check">✓</span>' : '') + '</div>';
+  allMainCats.forEach(function(cat) {
+    var isActive = selectedMainCat && selectedMainCat.id === cat.id;
+    html += '<div class="cat-dropdown-item' + (isActive ? ' active' : '') + '" onclick="selectMainCat(\'' + cat.id + '\')"><span>' + escHtml(cat.name) + '</span>' + (isActive ? '<span class="cdi-check">✓</span>' : '') + '</div>';
+  });
+  list.innerHTML = html;
+}
 
-    var html = '<div class="main-cat-title">' + _menu_escapeHtml(mc.name) + '</div>';
+function renderAllCategories() {
+  document.getElementById('bottom-cat-text').textContent = 'Выберите категорию меню';
+  document.getElementById('subcat-tabs-bar').classList.add('is-hidden');
+  var html = '';
+  allMainCats.forEach(function(mc) {
+    var subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
+    var directItems = itemsByCat[mc.id] || [];
+    if (subs.length === 0 && directItems.length === 0) return;
+    html += '<div class="main-cat-title">' + escHtml(mc.name) + '</div>';
+    subs.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
     subs.forEach(function(sc) {
       var items = itemsByCat[sc.id] || [];
       if (items.length === 0) return;
-      html += '<div class="subcat-section-title" id="sub-' + sc.id + '" data-subcat-id="' + sc.id + '">' + _menu_escapeHtml(sc.name) + '</div>';
+      html += '<div class="subcat-section-title" data-subcat-id="' + sc.id + '">' + escHtml(sc.name) + '</div>';
       items.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
       items.forEach(function(item) { html += renderItem(item); });
     });
     if (directItems.length > 0) {
-      if (subs.length > 0) html += '<div class="subcat-section-title" id="sub-direct" data-subcat-id="direct">Прочее</div>';
+      if (subs.length > 0) html += '<div class="subcat-section-title" data-subcat-id="direct-' + mc.id + '">Прочее</div>';
       directItems.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
       directItems.forEach(function(item) { html += renderItem(item); });
     }
-    document.getElementById('menu-content').innerHTML = html || '<div class="empty">В этой категории нет блюд</div>';
-    setupScrollObserver();
+  });
+  document.getElementById('menu-content').innerHTML = html || '<div class="empty">Нет блюд</div>';
+  if (scrollObserver) { scrollObserver.disconnect(); scrollObserver = null; }
+}
+
+function renderSingleCategory(mc) {
+  document.getElementById('bottom-cat-text').textContent = mc.name;
+  var subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
+  subs.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
+  var directItems = itemsByCat[mc.id] || [];
+  var visibleSubs = [];
+
+  // Build subcat tabs
+  var tabsHtml = '';
+  subs.forEach(function(sc) {
+    var items = itemsByCat[sc.id] || [];
+    if (items.length === 0) return;
+    visibleSubs.push(sc);
+    tabsHtml += '<button class="subcat-tab" data-sub-id="' + sc.id + '">' + escHtml(sc.name) + '</button>';
+  });
+  if (directItems.length > 0 && subs.length > 0) {
+    tabsHtml += '<button class="subcat-tab" data-sub-id="direct">Прочее</button>';
+  }
+  var tabsBar = document.getElementById('subcat-tabs-bar');
+  tabsBar.innerHTML = tabsHtml;
+  tabsBar.classList.toggle('is-hidden', visibleSubs.length === 0);
+
+  // Attach click handlers — direct, no IIFE
+  var tabs = tabsBar.querySelectorAll('.subcat-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var sid = this.getAttribute('data-sub-id');
+      scrollToSubcat(sid);
+    });
   }
 
-  function renderItem(item) {
-    var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
-    if (hasMods) {
-      var modsHtml = '<div class="mi-mods">';
-      item.modifications.forEach(function(mod) {
-        modsHtml += '<div class="mi-mod-row"><span>└ ' + _menu_escapeHtml(mod.name) + '</span><span class="mi-mod-price">' + _menu_escapeHtml(_menu_formatMoney(Number(mod.price) || 0)) + '</span></div>';
-      });
-      modsHtml += '</div>';
-      return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + _menu_escapeHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + _menu_escapeHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
-    }
-    return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + _menu_escapeHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + _menu_escapeHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + _menu_escapeHtml(_menu_formatMoney(Number(item.price) || 0)) + '</div></div>';
+  // Build content
+  var html = '<div class="main-cat-title">' + escHtml(mc.name) + '</div>';
+  subs.forEach(function(sc) {
+    var items = itemsByCat[sc.id] || [];
+    if (items.length === 0) return;
+    html += '<div class="subcat-section-title" id="sub-' + sc.id + '" data-subcat-id="' + sc.id + '">' + escHtml(sc.name) + '</div>';
+    items.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
+    items.forEach(function(item) { html += renderItem(item); });
+  });
+  if (directItems.length > 0) {
+    if (subs.length > 0) html += '<div class="subcat-section-title" id="sub-direct" data-subcat-id="direct">Прочее</div>';
+    directItems.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
+    directItems.forEach(function(item) { html += renderItem(item); });
   }
+  document.getElementById('menu-content').innerHTML = html || '<div class="empty">В этой категории нет блюд</div>';
+  setupScrollObserver();
+}
 
-  function setupScrollObserver() {
-    if (scrollObserver) scrollObserver.disconnect();
-    var sections = document.querySelectorAll('[data-subcat-id]');
-    if (sections.length === 0) return;
-    scrollObserver = new IntersectionObserver(function(entries) {
-      entries.forEach(function(entry) {
-        if (entry.isIntersecting) {
-          var id = entry.target.getAttribute('data-subcat-id');
-          document.querySelectorAll('.subcat-tab').forEach(function(t) { t.classList.remove('active'); });
-          var tab = document.querySelector('.subcat-tab[data-sub-id="' + id + '"]');
-          if (tab) { tab.classList.add('active'); tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); }
-        }
-      });
-    }, { rootMargin: '-60px 0px -70% 0px', threshold: 0 });
-    sections.forEach(function(s) { scrollObserver.observe(s); });
+function renderItem(item) {
+  var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+  if (hasMods) {
+    var modsHtml = '<div class="mi-mods">';
+    item.modifications.forEach(function(mod) {
+      modsHtml += '<div class="mi-mod-row"><span>└ ' + escHtml(mod.name) + '</span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
+    });
+    modsHtml += '</div>';
+    return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
   }
+  return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div></div>';
+}
 
-  // ===== GLOBAL FUNCTIONS (for onclick handlers) =====
-  window.toggleCategoryDropdown = function() {
-    document.getElementById('category-dropdown').classList.toggle('open');
-  };
+function setupScrollObserver() {
+  if (scrollObserver) scrollObserver.disconnect();
+  var sections = document.querySelectorAll('[data-subcat-id]');
+  if (sections.length === 0) return;
+  scrollObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var id = entry.target.getAttribute('data-subcat-id');
+        document.querySelectorAll('.subcat-tab').forEach(function(t) { t.classList.remove('active'); });
+        var tab = document.querySelector('.subcat-tab[data-sub-id="' + id + '"]');
+        if (tab) { tab.classList.add('active'); tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); }
+      }
+    });
+  }, { rootMargin: '-60px 0px -70% 0px', threshold: 0 });
+  sections.forEach(function(s) { scrollObserver.observe(s); });
+}
 
-  window.selectMainCat = function(catId) {
-    selectedMainCat = catId ? allMainCats.find(function(c) { return c.id === catId; }) : null;
-    document.getElementById('category-dropdown').classList.remove('open');
-    renderCategoryDropdown();
-    if (selectedMainCat) { renderSingleCategory(selectedMainCat); }
-    else { renderAllCategories(); }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+function applyAppearance() {
+  var s = APP_DATA.settings || {};
+  var priceColor = s.qr_menu_color_price || '#d32f2f';
+  var headerColor = s.qr_menu_color_header || priceColor;
+  document.getElementById('dynamic-menu-styles').textContent =
+    ':root { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; } ' +
+    '[data-theme="dark"] { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; }';
+  document.getElementById('menu-restaurant-subtitle').textContent = s.qr_menu_subtitle || '';
+  var footer = document.getElementById('menu-footer');
+  if (s.qr_menu_footer) { footer.textContent = s.qr_menu_footer; footer.style.display = 'block'; }
+  else footer.style.display = 'none';
+}
 
-  function scrollToSubcat(subId) {
-    var el = document.getElementById('sub-' + subId);
-    if (!el) return;
-    setTimeout(function() {
-      var rect = el.getBoundingClientRect();
-      var y = window.pageYOffset || document.documentElement.scrollTop || 0;
-      var tabsBar = document.getElementById('subcat-tabs-bar');
-      var tabsH = tabsBar.classList.contains('is-hidden') ? 0 : 50;
-      var top = rect.top + y - tabsH - 6;
-      window.scrollTo({ top: top, behavior: 'smooth' });
-    }, 80);
+function render() {
+  var contentEl = document.getElementById('menu-content');
+  var menu = APP_DATA.menu || [];
+  var categories = APP_DATA.categories || [];
+  if (menu.length === 0) { contentEl.innerHTML = '<div class="empty">Меню пока пустое</div>'; return; }
+  itemsByCat = {};
+  menu.forEach(function(m) { var cid = m.category_id || ''; if (!itemsByCat[cid]) itemsByCat[cid] = []; itemsByCat[cid].push(m); });
+  allMainCats = categories.filter(function(c) { return !c.parent_id; });
+  allMainCats.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
+  renderCategoryDropdown();
+  if (!selectedMainCat) { renderAllCategories(); }
+  else { renderSingleCategory(selectedMainCat); }
+}
+
+// ===== EVENT HANDLERS (direct, no IIFE) =====
+document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+document.getElementById('bottom-cat-bar').addEventListener('click', toggleCategoryDropdown);
+document.getElementById('category-dropdown').addEventListener('click', function(e) {
+  if (e.target === this) toggleCategoryDropdown();
+});
+
+// ===== INIT =====
+async function initMenu() {
+  try {
+    initSupabaseMenu();
+    await loadAppDataMenu();
+    applyAppearance();
+    document.getElementById('menu-restaurant-name').textContent = APP_DATA.settings.restaurant_name || 'Меню';
+    render();
+    setupScroll();
+  } catch (err) {
+    document.getElementById('menu-content').innerHTML = '<div class="empty">Ошибка: ' + escHtml(err.message) + '</div>';
   }
+}
 
-  // ===== INIT =====
-  async function init() {
-    try {
-      await _menu_loadData();
-      applyAppearance();
-      document.getElementById('menu-restaurant-name').textContent = _menu_data.settings.restaurant_name || 'Меню';
-      render();
-    } catch (err) {
-      document.getElementById('menu-content').innerHTML = '<div class="empty">Ошибка: ' + _menu_escapeHtml(err.message) + '</div>';
-    }
+// Theme init
+var savedTheme = null;
+try { savedTheme = localStorage.getItem('vm-theme'); } catch(e) {}
+applyTheme(savedTheme || getSystemTheme());
+
+// Listen for system theme changes
+if (window.matchMedia) {
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) {
+    mq.addEventListener('change', function(e) {
+      try { if (!localStorage.getItem('vm-theme')) applyTheme(e.matches ? 'dark' : 'light'); } catch(e2) {}
+    });
+  } else if (mq.addListener) {
+    mq.addListener(function(e) {
+      try { if (!localStorage.getItem('vm-theme')) applyTheme(e.matches ? 'dark' : 'light'); } catch(e2) {}
+    });
   }
-  init();
-})();
+}
+
+// Start
+initMenu();
 </script>
 </body>
 </html>
