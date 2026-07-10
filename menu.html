@@ -6,34 +6,179 @@
 <title>Меню — Ресторан</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
-<style id="dynamic-menu-styles">
-  /* Default values — overridden at runtime from APP_DATA.settings */
-  body { background: #fafafa; padding: 0; margin: 0; }
-  .menu-header { background: #d32f2f; }
-  .mi-price, .mi-mod-price { color: #d32f2f; }
-  .main-cat-title { color: #d32f2f; border-bottom-color: #d32f2f; }
-</style>
+<style id="dynamic-menu-styles"></style>
 <style>
-  .menu-header {
-    text-align: center;
-    padding: 24px 16px 16px;
-    color: #fff;
-    border-radius: 0 0 16px 16px;
-    margin-bottom: 0;
-    position: sticky;
-    top: 0;
-    z-index: 50;
+  :root {
+    --vm-bg: #fafafa;
+    --vm-text: #1a1a1a;
+    --vm-muted: #666;
+    --vm-border: #e0e0e0;
+    --vm-card-bg: #fff;
+    --vm-header-bg: #d32f2f;
+    --vm-accent: #d32f2f;
   }
-  .menu-header h1 { margin: 0 0 4px; font-size: 1.6rem; }
-  .menu-header .menu-subtitle { font-size: 0.9rem; opacity: 0.9; white-space: pre-wrap; }
+  [data-theme="dark"] {
+    --vm-bg: #1a1a2e;
+    --vm-text: #f0f0f0;
+    --vm-muted: #999;
+    --vm-border: #333;
+    --vm-card-bg: #252535;
+    --vm-header-bg: #d32f2f;
+    --vm-accent: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--vm-bg);
+    padding: 0;
+    margin: 0;
+    color: var(--vm-text);
+    transition: background 0.3s, color 0.3s;
+  }
 
-  /* Sticky category bar — shows current main category, tap to switch */
-  .category-bar {
+  /* Header — hide on scroll down, show on scroll up */
+  .menu-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    background: var(--vm-header-bg);
+    color: #fff;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .menu-header.hidden { transform: translateY(-100%); }
+  .menu-header h1 { margin: 0; font-size: 1.4rem; flex: 1; text-align: center; }
+  .menu-header .menu-subtitle { font-size: 0.8rem; opacity: 0.85; white-space: pre-wrap; text-align: center; }
+  .menu-header-center { flex: 1; text-align: center; }
+  .theme-toggle {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+  .theme-toggle:hover { background: rgba(255,255,255,0.35); }
+
+  /* Spacer for fixed header */
+  .header-spacer { height: 70px; }
+
+  /* Subcategory tabs — sticky below header */
+  .subcat-tabs-bar {
     position: sticky;
     top: 0;
     z-index: 40;
-    background: #fff;
-    border-bottom: 1px solid var(--border);
+    background: var(--vm-card-bg);
+    display: flex;
+    gap: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-bottom: 1px solid var(--vm-border);
+    scrollbar-width: none;
+    transition: background 0.3s;
+  }
+  .subcat-tabs-bar::-webkit-scrollbar { display: none; }
+  .subcat-tabs-bar.hidden { display: none; }
+  .subcat-tab {
+    flex: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--vm-muted);
+    background: var(--vm-bg);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    border: 1px solid var(--vm-border);
+  }
+  .subcat-tab.active {
+    background: var(--vm-accent);
+    color: #fff;
+    border-color: var(--vm-accent);
+  }
+
+  .menu-section { padding: 0 14px 80px; }
+
+  /* Main category title — large with background */
+  .main-cat-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--vm-accent);
+    margin: 20px 0 14px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: var(--vm-accent);
+    color: #fff;
+    scroll-margin-top: 10px;
+  }
+  /* Subcategory title — medium with background */
+  .subcat-section-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--vm-text);
+    margin: 18px 0 10px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--vm-card-bg);
+    border-left: 4px solid var(--vm-accent);
+    scroll-margin-top: 56px;
+    transition: background 0.3s;
+  }
+
+  .menu-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 4px;
+    border-bottom: 1px dashed var(--vm-border);
+    gap: 12px;
+  }
+  .menu-item:last-child { border-bottom: none; }
+  .mi-info { flex: 1; min-width: 0; }
+  .mi-name { font-weight: 600; font-size: 1.05rem; color: var(--vm-text); }
+  .mi-translation { font-size: 0.85rem; color: var(--vm-muted); margin-top: 2px; font-style: italic; }
+  .mi-mods {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.95rem;
+    color: var(--vm-text);
+  }
+  .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); }
+  .mi-price, .mi-mod-price {
+    font-size: 1.05rem;
+    font-weight: 700;
+    white-space: nowrap;
+    flex: none;
+    color: var(--vm-accent);
+  }
+
+  /* Bottom category bar — always visible */
+  .bottom-cat-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--vm-card-bg);
+    border-top: 1px solid var(--vm-border);
     padding: 10px 16px;
     display: flex;
     align-items: center;
@@ -42,174 +187,85 @@
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.2s, transform 0.3s;
+    color: var(--vm-text);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
   }
-  .category-bar:hover { background: #f5f5f5; }
-  .category-bar .cb-arrow { font-size: 0.7rem; color: var(--text-muted); }
+  .bottom-cat-bar:active { background: var(--vm-bg); }
+  .bottom-cat-bar .bcb-arrow { font-size: 0.7rem; color: var(--vm-muted); }
+  .bottom-cat-bar .bcb-icon { font-size: 1.1rem; }
 
-  /* Category dropdown panel */
+  /* Category dropdown — slides up from bottom */
   .category-dropdown {
     display: none;
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.4);
+    inset: 0;
+    background: rgba(0,0,0,0.5);
     z-index: 100;
-    align-items: flex-start;
+    align-items: flex-end;
     justify-content: center;
-    padding: 60px 16px 0;
   }
   .category-dropdown.open { display: flex; }
   .category-dropdown-content {
-    background: #fff;
-    border-radius: 12px;
+    background: var(--vm-card-bg);
+    border-radius: 16px 16px 0 0;
     width: 100%;
     max-width: 500px;
-    padding: 16px;
+    padding: 20px 16px 24px;
     max-height: 70vh;
     overflow-y: auto;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    animation: slideUp 0.25s ease-out;
+    color: var(--vm-text);
   }
-  .category-dropdown-content h3 {
-    margin: 0 0 12px;
-    font-size: 1.1rem;
-  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .category-dropdown-content h3 { margin: 0 0 12px; font-size: 1.1rem; }
   .cat-dropdown-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 14px 16px;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
     font-size: 1rem;
     font-weight: 600;
     transition: background 0.15s;
     margin-bottom: 4px;
+    color: var(--vm-text);
   }
-  .cat-dropdown-item:hover { background: var(--bg); }
-  .cat-dropdown-item.active { background: rgba(211,47,47,0.08); color: var(--primary); }
-  .cat-dropdown-item .cdi-check { color: var(--primary); }
+  .cat-dropdown-item:hover { background: var(--vm-bg); }
+  .cat-dropdown-item.active { background: var(--vm-accent)20; color: var(--vm-accent); }
+  .cat-dropdown-item .cdi-check { color: var(--vm-accent); }
 
-  /* Subcategory tabs — horizontal scroll */
-  .subcat-tabs-bar {
-    position: sticky;
-    top: 47px;
-    z-index: 30;
-    background: #fff;
-    display: flex;
-    gap: 4px;
-    padding: 8px 16px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    border-bottom: 1px solid var(--border);
-    scrollbar-width: none;
-  }
-  .subcat-tabs-bar::-webkit-scrollbar { display: none; }
-  .subcat-tab {
-    flex: none;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    background: var(--bg);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
-    border: none;
-  }
-  .subcat-tab.active {
-    background: var(--primary);
-    color: #fff;
-  }
-
-  .menu-section { padding: 0 16px 24px; }
-  .main-cat-title {
-    font-size: 1.4rem;
-    font-weight: 700;
-    margin: 20px 0 12px;
-    padding-bottom: 6px;
-    border-bottom: 2px solid;
-    scroll-margin-top: 100px;
-  }
-  .subcat-section-title {
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: var(--text);
-    margin: 16px 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    opacity: 0.7;
-    scroll-margin-top: 100px;
-  }
-  .menu-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 12px 0;
-    border-bottom: 1px dashed var(--border);
-    gap: 12px;
-  }
-  .menu-item:last-child { border-bottom: none; }
-  .mi-info { flex: 1; min-width: 0; }
-  .mi-name { font-weight: 600; font-size: 1.05rem; }
-  .mi-translation { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; font-style: italic; }
-  .mi-mods {
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 0.95rem;
-    color: var(--text);
-  }
-  .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .mi-mod-row .mi-mod-price { font-weight: 700; }
-  .mi-price, .mi-mod-price {
-    font-size: 1.05rem;
-    font-weight: 700;
-    white-space: nowrap;
-    flex: none;
-  }
   .menu-footer {
     text-align: center;
     padding: 24px 16px;
-    color: var(--text-muted);
+    color: var(--vm-muted);
     font-size: 0.9rem;
     white-space: pre-wrap;
     line-height: 1.5;
-    border-top: 1px dashed var(--border);
+    border-top: 1px dashed var(--vm-border);
     margin-top: 24px;
   }
-  .loading { text-align: center; padding: 40px 16px; color: var(--text-muted); }
-  .empty { text-align: center; padding: 40px 16px; color: var(--text-muted); }
+  .loading { text-align: center; padding: 40px 16px; color: var(--vm-muted); }
+  .empty { text-align: center; padding: 40px 16px; color: var(--vm-muted); }
   .error { text-align: center; padding: 40px 16px; color: var(--danger); }
 </style>
 </head>
 <body>
 
-<div class="menu-header">
-  <h1 id="menu-restaurant-name">Меню</h1>
-  <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
-</div>
-
-<!-- Sticky category bar -->
-<div class="category-bar" id="category-bar" onclick="toggleCategoryDropdown()">
-  <span id="category-bar-text">Выберите категорию меню</span>
-  <span class="cb-arrow">▼</span>
-</div>
-
-<!-- Category dropdown -->
-<div class="category-dropdown" id="category-dropdown" onclick="if(event.target===this)toggleCategoryDropdown()">
-  <div class="category-dropdown-content">
-    <h3>Выберите категорию</h3>
-    <div id="category-dropdown-list"></div>
+<!-- Fixed header -->
+<div class="menu-header" id="menu-header">
+  <div class="header-spacer-left" style="width:40px;"></div>
+  <div class="menu-header-center">
+    <h1 id="menu-restaurant-name">Меню</h1>
+    <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
   </div>
+  <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Сменить тему">🌙</button>
 </div>
+<div class="header-spacer"></div>
 
-<!-- Subcategory tabs (horizontal scroll) -->
-<div class="subcat-tabs-bar" id="subcat-tabs-bar" style="display:none;"></div>
+<!-- Subcategory tabs (horizontal scroll, sticky) -->
+<div class="subcat-tabs-bar hidden" id="subcat-tabs-bar"></div>
 
 <!-- Menu content -->
 <div id="menu-content" class="menu-section">
@@ -219,31 +275,75 @@
 <!-- Footer -->
 <div class="menu-footer" id="menu-footer" style="display:none;"></div>
 
+<!-- Bottom category bar — always visible -->
+<div class="bottom-cat-bar" id="bottom-cat-bar" onclick="toggleCategoryDropdown()">
+  <span class="bcb-icon">☰</span>
+  <span id="bottom-cat-text">Выберите категорию меню</span>
+  <span class="bcb-arrow">▲</span>
+</div>
+
+<!-- Category dropdown -->
+<div class="category-dropdown" id="category-dropdown" onclick="if(event.target===this)toggleCategoryDropdown()">
+  <div class="category-dropdown-content">
+    <h3>Выберите категорию меню</h3>
+    <div id="category-dropdown-list"></div>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
 <script src="common.js"></script>
 <script>
 (function() {
   initSupabase();
-
-  var selectedMainCat = null; // currently selected main category object
+  var selectedMainCat = null;
   var allMainCats = [];
   var itemsByCat = {};
-  var visibleSubcats = [];
+  var scrollObserver = null;
+
+  // Theme management
+  function getPreferredTheme() {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+    return 'light';
+  }
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    var btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    try { localStorage.setItem('vm-theme', theme); } catch(e) {}
+  }
+  function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  }
+  window.toggleTheme = toggleTheme;
+  // Init theme — use saved or auto
+  var savedTheme = null;
+  try { savedTheme = localStorage.getItem('vm-theme'); } catch(e) {}
+  applyTheme(savedTheme || getPreferredTheme());
+
+  // Header hide/show on scroll
+  var lastScrollY = 0;
+  var headerEl = document.getElementById('menu-header');
+  window.addEventListener('scroll', function() {
+    var y = window.scrollY;
+    if (y > lastScrollY && y > 80) {
+      headerEl.classList.add('hidden');
+    } else {
+      headerEl.classList.remove('hidden');
+    }
+    lastScrollY = y;
+  }, { passive: true });
 
   function applyAppearance() {
     var s = APP_DATA.settings || {};
     var priceColor = s.qr_menu_color_price || '#d32f2f';
     var headerColor = s.qr_menu_color_header || priceColor;
+    // Update CSS variables for both themes
     var styleEl = document.getElementById('dynamic-menu-styles');
     styleEl.textContent =
-      'body { background: #fafafa; padding: 0; margin: 0; } ' +
-      '.menu-header { background: ' + priceColor + '; } ' +
-      '.mi-price, .mi-mod-price { color: ' + priceColor + '; } ' +
-      '.main-cat-title { color: ' + headerColor + '; border-bottom-color: ' + headerColor + '; } ' +
-      '.subcat-tab.active { background: ' + priceColor + '; } ' +
-      '.cat-dropdown-item.active { background: ' + priceColor + '20; color: ' + priceColor + '; } ' +
-      '.cat-dropdown-item .cdi-check { color: ' + priceColor + '; }';
+      ':root { --vm-header-bg: ' + headerColor + '; --vm-accent: ' + priceColor + '; } ' +
+      '[data-theme="dark"] { --vm-header-bg: ' + headerColor + '; --vm-accent: ' + priceColor + '; }';
     document.getElementById('menu-restaurant-subtitle').textContent = s.qr_menu_subtitle || '';
     var footer = document.getElementById('menu-footer');
     if (s.qr_menu_footer) { footer.textContent = s.qr_menu_footer; footer.style.display = 'block'; }
@@ -256,32 +356,13 @@
       var menu = APP_DATA.menu || [];
       var categories = APP_DATA.categories || [];
       if (menu.length === 0) { contentEl.innerHTML = '<div class="empty">Меню пока пустое</div>'; return; }
-
-      // Group items by category
       itemsByCat = {};
-      menu.forEach(function(m) {
-        var cid = m.category_id || '';
-        if (!itemsByCat[cid]) itemsByCat[cid] = [];
-        itemsByCat[cid].push(m);
-      });
-
+      menu.forEach(function(m) { var cid = m.category_id || ''; if (!itemsByCat[cid]) itemsByCat[cid] = []; itemsByCat[cid].push(m); });
       allMainCats = categories.filter(function(c) { return !c.parent_id; });
-      allMainCats.sort(function(a, b) {
-        return (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name).localeCompare(String(b.name));
-      });
-
-      // Render category dropdown
+      allMainCats.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
       renderCategoryDropdown();
-
-      // If no main category selected yet, show all (or first category)
-      if (!selectedMainCat && allMainCats.length > 0) {
-        // Show "all" mode — render everything
-        renderAllCategories();
-      } else if (selectedMainCat) {
-        renderSingleCategory(selectedMainCat);
-      } else {
-        contentEl.innerHTML = '<div class="empty">Категории не настроены</div>';
-      }
+      if (!selectedMainCat) { renderAllCategories(); }
+      else { renderSingleCategory(selectedMainCat); }
     } catch (err) {
       contentEl.innerHTML = '<div class="error">Ошибка: ' + escapeHtml(err.message) + '</div>';
     }
@@ -289,21 +370,17 @@
 
   function renderCategoryDropdown() {
     var list = document.getElementById('category-dropdown-list');
-    var html = '';
-    // "All" option
-    html += '<div class="cat-dropdown-item' + (!selectedMainCat ? ' active' : '') + '" onclick="selectMainCat(null)">' +
-      '<span>Всё меню</span>' + (!selectedMainCat ? '<span class="cdi-check">✓</span>' : '') + '</div>';
+    var html = '<div class="cat-dropdown-item' + (!selectedMainCat ? ' active' : '') + '" onclick="selectMainCat(null)"><span>Выберите категорию меню</span>' + (!selectedMainCat ? '<span class="cdi-check">✓</span>' : '') + '</div>';
     allMainCats.forEach(function(cat) {
       var isActive = selectedMainCat && selectedMainCat.id === cat.id;
-      html += '<div class="cat-dropdown-item' + (isActive ? ' active' : '') + '" onclick="selectMainCat(\'' + cat.id + '\')">' +
-        '<span>' + escapeHtml(cat.name) + '</span>' + (isActive ? '<span class="cdi-check">✓</span>' : '') + '</div>';
+      html += '<div class="cat-dropdown-item' + (isActive ? ' active' : '') + '" onclick="selectMainCat(\'' + cat.id + '\')"><span>' + escapeHtml(cat.name) + '</span>' + (isActive ? '<span class="cdi-check">✓</span>' : '') + '</div>';
     });
     list.innerHTML = html;
   }
 
   function renderAllCategories() {
-    document.getElementById('category-bar-text').textContent = 'Всё меню';
-    document.getElementById('subcat-tabs-bar').style.display = 'none';
+    document.getElementById('bottom-cat-text').textContent = 'Выберите категорию меню';
+    document.getElementById('subcat-tabs-bar').classList.add('hidden');
     var html = '';
     allMainCats.forEach(function(mc) {
       var subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
@@ -314,32 +391,32 @@
       subs.forEach(function(sc) {
         var items = itemsByCat[sc.id] || [];
         if (items.length === 0) return;
-        html += '<div class="subcat-section-title" id="sub-' + sc.id + '">' + escapeHtml(sc.name) + '</div>';
+        html += '<div class="subcat-section-title" data-subcat-id="' + sc.id + '">' + escapeHtml(sc.name) + '</div>';
         items.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
         items.forEach(function(item) { html += renderItem(item); });
       });
       if (directItems.length > 0) {
-        if (subs.length > 0) html += '<div class="subcat-section-title">Прочее</div>';
+        if (subs.length > 0) html += '<div class="subcat-section-title" data-subcat-id="direct-' + mc.id + '">Прочее</div>';
         directItems.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
         directItems.forEach(function(item) { html += renderItem(item); });
       }
     });
-    document.getElementById('menu-content').innerHTML = html || '<div class="empty">Нет блюд для отображения</div>';
+    document.getElementById('menu-content').innerHTML = html || '<div class="empty">Нет блюд</div>';
+    if (scrollObserver) { scrollObserver.disconnect(); scrollObserver = null; }
   }
 
   function renderSingleCategory(mc) {
-    document.getElementById('category-bar-text').textContent = mc.name;
+    document.getElementById('bottom-cat-text').textContent = mc.name;
     var subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
     subs.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
     var directItems = itemsByCat[mc.id] || [];
-    visibleSubcats = [];
+    var visibleSubs = [];
 
-    // Render subcategory tabs
     var tabsHtml = '';
     subs.forEach(function(sc) {
       var items = itemsByCat[sc.id] || [];
       if (items.length === 0) return;
-      visibleSubcats.push(sc);
+      visibleSubs.push(sc);
       tabsHtml += '<button class="subcat-tab" id="tab-' + sc.id + '" onclick="scrollToSubcat(\'' + sc.id + '\')">' + escapeHtml(sc.name) + '</button>';
     });
     if (directItems.length > 0 && subs.length > 0) {
@@ -347,11 +424,9 @@
     }
     var tabsBar = document.getElementById('subcat-tabs-bar');
     tabsBar.innerHTML = tabsHtml;
-    tabsBar.style.display = visibleSubcats.length > 0 ? 'flex' : 'none';
+    tabsBar.classList.toggle('hidden', visibleSubs.length === 0);
 
-    // Render items
-    var html = '';
-    html += '<div class="main-cat-title">' + escapeHtml(mc.name) + '</div>';
+    var html = '<div class="main-cat-title">' + escapeHtml(mc.name) + '</div>';
     subs.forEach(function(sc) {
       var items = itemsByCat[sc.id] || [];
       if (items.length === 0) return;
@@ -365,8 +440,6 @@
       directItems.forEach(function(item) { html += renderItem(item); });
     }
     document.getElementById('menu-content').innerHTML = html || '<div class="empty">В этой категории нет блюд</div>';
-
-    // Set up scroll observer to highlight active tab
     setupScrollObserver();
   }
 
@@ -378,17 +451,11 @@
         modsHtml += '<div class="mi-mod-row"><span>└ ' + escapeHtml(mod.name) + '</span><span class="mi-mod-price">' + escapeHtml(formatMoney(Number(mod.price) || 0)) + '</span></div>';
       });
       modsHtml += '</div>';
-      return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtml(item.name) + '</div>' +
-        (item.name_translation ? '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
-        modsHtml + '</div></div>';
+      return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
     }
-    return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtml(item.name) + '</div>' +
-      (item.name_translation ? '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>' : '') + '</div>' +
-      '<div class="mi-price">' + escapeHtml(formatMoney(Number(item.price) || 0)) + '</div></div>';
+    return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escapeHtml(formatMoney(Number(item.price) || 0)) + '</div></div>';
   }
 
-  // Scroll observer — highlights active subcat tab based on scroll position
-  var scrollObserver = null;
   function setupScrollObserver() {
     if (scrollObserver) scrollObserver.disconnect();
     var sections = document.querySelectorAll('[data-subcat-id]');
@@ -397,62 +464,52 @@
       entries.forEach(function(entry) {
         if (entry.isIntersecting) {
           var id = entry.target.dataset.subcatId;
-          // Highlight the corresponding tab
           document.querySelectorAll('.subcat-tab').forEach(function(t) { t.classList.remove('active'); });
           var tab = document.getElementById('tab-' + id);
           if (tab) {
             tab.classList.add('active');
-            // Scroll the tab into view in the horizontal bar
             tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
           }
         }
       });
-    }, { rootMargin: '-100px 0px -60% 0px', threshold: 0 });
+    }, { rootMargin: '-60px 0px -70% 0px', threshold: 0 });
     sections.forEach(function(s) { scrollObserver.observe(s); });
   }
 
-  // Expose functions for onclick handlers
   window.toggleCategoryDropdown = function() {
     document.getElementById('category-dropdown').classList.toggle('open');
   };
 
   window.selectMainCat = function(catId) {
-    if (!catId) {
-      selectedMainCat = null;
-    } else {
-      selectedMainCat = allMainCats.find(function(c) { return c.id === catId; });
-    }
+    selectedMainCat = catId ? allMainCats.find(function(c) { return c.id === catId; }) : null;
     document.getElementById('category-dropdown').classList.remove('open');
     renderCategoryDropdown();
-    if (selectedMainCat) {
-      renderSingleCategory(selectedMainCat);
-    } else {
-      renderAllCategories();
-    }
-    // Scroll to top of menu content
+    if (selectedMainCat) { renderSingleCategory(selectedMainCat); }
+    else { renderAllCategories(); }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   window.scrollToSubcat = function(subId) {
     var el = document.getElementById('sub-' + subId);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Calculate offset: header (when visible) ~70px + subcat tabs ~50px
+      var offset = 56; // subcat tabs height
+      var headerHeight = headerEl.classList.contains('hidden') ? 0 : 66;
+      var top = el.getBoundingClientRect().top + window.scrollY - offset - headerHeight + 5;
+      window.scrollTo({ top: top, behavior: 'smooth' });
     }
   };
 
-  // Init
   async function init() {
-    var contentEl = document.getElementById('menu-content');
     try {
       await loadAppData();
       applyAppearance();
       document.getElementById('menu-restaurant-name').textContent = APP_DATA.settings.restaurant_name || 'Меню';
       render();
     } catch (err) {
-      contentEl.innerHTML = '<div class="error">Ошибка загрузки меню: ' + escapeHtml(err.message) + '</div>';
+      document.getElementById('menu-content').innerHTML = '<div class="error">Ошибка: ' + escapeHtml(err.message) + '</div>';
     }
   }
-
   init();
 })();
 </script>
