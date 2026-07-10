@@ -860,8 +860,13 @@
         <div>Карта</div>
         <div class="po-amount" id="pay-amount-card">—</div>
       </div>
+      <div class="payment-option" data-method="mixed" onclick="selectPaymentMethod('mixed')">
+        <div class="po-icon">🔀</div>
+        <div>Смешанная</div>
+        <div class="po-amount" id="pay-amount-mixed">💵+💳</div>
+      </div>
     </div>
-    <!-- Cash change calculator -->
+    <!-- Cash change calculator (for cash-only) -->
     <div id="cash-change-section" style="display:none;margin-top:16px;">
       <div class="form-group">
         <label>Получено от клиента</label>
@@ -870,6 +875,24 @@
       </div>
       <div id="change-display" style="padding:16px;border-radius:8px;text-align:center;font-size:1.5rem;font-weight:700;margin-bottom:8px;">
         Сдача: —
+      </div>
+    </div>
+    <!-- Mixed payment: split amounts -->
+    <div id="mixed-payment-section" style="display:none;margin-top:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>💵 Наличными</label>
+          <input type="number" id="mixed-cash-amount" min="0" step="0.01" placeholder="0"
+                 oninput="calculateMixedTotal()" style="font-size:1.2rem;font-weight:700;">
+        </div>
+        <div class="form-group">
+          <label>💳 Картой</label>
+          <input type="number" id="mixed-card-amount" min="0" step="0.01" placeholder="0"
+                 oninput="calculateMixedTotal()" style="font-size:1.2rem;font-weight:700;">
+        </div>
+      </div>
+      <div id="mixed-total-display" style="padding:12px;border-radius:8px;text-align:center;font-size:1.3rem;font-weight:700;margin-bottom:8px;background:#f5f5f5;">
+        Итого: —
       </div>
     </div>
     <div class="modal-actions" style="flex-direction:column;gap:8px;">
@@ -3126,8 +3149,20 @@ async function completeOrderById(orderId) {
   // Clear cash-received and change fields from previous orders
   const cashInput = document.getElementById('cash-received');
   if (cashInput) cashInput.value = '';
-  const changeEl = document.getElementById('change-amount');
-  if (changeEl) changeEl.textContent = '';
+  const changeEl = document.getElementById('change-display');
+  if (changeEl) changeEl.innerHTML = 'Сдача: —';
+  // Hide cash change section
+  const cashSection = document.getElementById('cash-change-section');
+  if (cashSection) cashSection.style.display = 'none';
+  // Clear mixed payment fields
+  const mixedCash = document.getElementById('mixed-cash-amount');
+  if (mixedCash) mixedCash.value = '';
+  const mixedCard = document.getElementById('mixed-card-amount');
+  if (mixedCard) mixedCard.value = '';
+  const mixedTotal = document.getElementById('mixed-total-display');
+  if (mixedTotal) { mixedTotal.innerHTML = 'Итого: —'; mixedTotal.style.background = '#f5f5f5'; }
+  const mixedSection = document.getElementById('mixed-payment-section');
+  if (mixedSection) mixedSection.style.display = 'none';
 
   // Fill order info
   const info = document.getElementById('payment-order-info');
@@ -3149,19 +3184,24 @@ function selectPaymentMethod(method) {
     el.classList.toggle('selected', el.dataset.method === method);
   });
   document.getElementById('confirm-payment-btn').disabled = false;
-  // Show/hide cash change calculator
+  // Show/hide cash change calculator (cash only)
   const cashSection = document.getElementById('cash-change-section');
-  if (cashSection) {
-    cashSection.style.display = (method === 'cash') ? 'block' : 'none';
-  }
-  // Reset change display
+  if (cashSection) cashSection.style.display = (method === 'cash') ? 'block' : 'none';
+  // Show/hide mixed payment section
+  const mixedSection = document.getElementById('mixed-payment-section');
+  if (mixedSection) mixedSection.style.display = (method === 'mixed') ? 'block' : 'none';
+  // Reset cash change display
   const changeDisplay = document.getElementById('change-display');
-  if (changeDisplay) {
-    changeDisplay.textContent = 'Сдача: —';
-    changeDisplay.style.background = '';
-  }
+  if (changeDisplay) { changeDisplay.textContent = 'Сдача: —'; changeDisplay.style.background = ''; }
   const cashInput = document.getElementById('cash-received');
   if (cashInput) cashInput.value = '';
+  // Reset mixed fields
+  const mixedCash = document.getElementById('mixed-cash-amount');
+  if (mixedCash) mixedCash.value = '';
+  const mixedCard = document.getElementById('mixed-card-amount');
+  if (mixedCard) mixedCard.value = '';
+  const mixedTotal = document.getElementById('mixed-total-display');
+  if (mixedTotal) { mixedTotal.innerHTML = 'Итого: —'; mixedTotal.style.background = '#f5f5f5'; }
 }
 
 function calculateChange() {
@@ -3169,7 +3209,6 @@ function calculateChange() {
   const changeDisplay = document.getElementById('change-display');
   if (!cashInput || !changeDisplay) return;
   const received = Number(cashInput.value) || 0;
-  // Get the order total from the modal
   const order = state.activeOrders.find(function(o) { return o.id === _pendingCompleteOrderId; });
   if (!order) return;
   const total = Number(order.total) || 0;
@@ -3194,6 +3233,38 @@ function calculateChange() {
   }
 }
 
+// Calculate total for mixed payment and check if it matches the order total
+function calculateMixedTotal() {
+  const cashEl = document.getElementById('mixed-cash-amount');
+  const cardEl = document.getElementById('mixed-card-amount');
+  const totalEl = document.getElementById('mixed-total-display');
+  if (!cashEl || !cardEl || !totalEl) return;
+  const cash = Number(cashEl.value) || 0;
+  const card = Number(cardEl.value) || 0;
+  const sum = cash + card;
+  const order = state.activeOrders.find(function(o) { return o.id === _pendingCompleteOrderId; });
+  if (!order) return;
+  const total = Number(order.total) || 0;
+  if (sum === 0) {
+    totalEl.innerHTML = 'Итого: —';
+    totalEl.style.background = '#f5f5f5';
+    totalEl.style.color = '';
+    return;
+  }
+  const diff = sum - total;
+  if (diff < 0) {
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--danger);">(не хватает ' + formatMoney(Math.abs(diff)) + ')</span>';
+    totalEl.style.background = '#ffebee';
+  } else if (diff === 0) {
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' ✅';
+    totalEl.style.background = '#e8f5e9';
+    totalEl.style.color = 'var(--success)';
+  } else {
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--warning);">(переплата ' + formatMoney(diff) + ')</span>';
+    totalEl.style.background = '#fff8e1';
+  }
+}
+
 function closePaymentModal() {
   document.getElementById('modal-payment').classList.remove('open');
   _pendingCompleteOrderId = null;
@@ -3208,13 +3279,25 @@ async function confirmCompleteOrder() {
   }
   const orderId = _pendingCompleteOrderId;
   const method = _selectedPaymentMethod;
+  // For mixed payment, validate that the amounts match the total
+  if (method === 'mixed') {
+    const cash = Number(document.getElementById('mixed-cash-amount').value) || 0;
+    const card = Number(document.getElementById('mixed-card-amount').value) || 0;
+    const order = state.activeOrders.find(function(o) { return o.id === orderId; });
+    const total = Number(order?.total) || 0;
+    if (cash + card !== total) {
+      showToast('Сумма наличных и карты должна равняться ' + formatMoney(total), 'warning');
+      return;
+    }
+  }
   try {
     await apiPost('updateOrderStatus', {
       order_id: orderId,
       status: 'completed',
       payment_method: method
     });
-    showToast('Заказ завершён (' + (method === 'cash' ? 'наличные' : 'карта') + ')', 'success');
+    const methodLabel = method === 'cash' ? 'наличные' : (method === 'card' ? 'карта' : 'смешанная');
+    showToast('Заказ завершён (' + methodLabel + ')', 'success');
     closePaymentModal();
     await refreshActiveOrders();
     if (state.currentOrderId === orderId) {
