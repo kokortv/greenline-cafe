@@ -419,8 +419,8 @@
   }
   .order-footer button {
     flex: none;
-    padding: 8px 24px;
-    font-size: 0.95rem;
+    padding: 6px 20px;
+    font-size: 0.85rem;
   }
   /* Active category button highlight */
   .main-cat-btn.selected {
@@ -688,7 +688,7 @@
     <!-- FOOTER: total + accept button — fixed at bottom of the screen -->
     <div class="order-footer">
       <div class="order-footer-total" id="order-total">0 ₾</div>
-      <button class="btn btn-success btn-lg" style="flex:1;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
+      <button class="btn btn-success" style="flex:1;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrderOrAddToExisting(); })">
         ✓ ПРИНЯТЬ ЗАКАЗ
       </button>
     </div>
@@ -1497,6 +1497,7 @@ function openOrderScreen() {
   if (commentEl) commentEl.value = state.orderComment || '';
   renderMainCats();
   renderOrderCart();
+  renderMenu(); // render the menu area (shows "select category" if mainCategory is null)
 }
 
 // Render the main category buttons inside the order screen
@@ -2502,7 +2503,7 @@ function renderHomeActiveOrders() {
       '</div>';
     html += '<div class="hoc-items">' +
       order.guests + ' чел. · ' +
-      items.length + ' поз. · <span style="font-size:1.15rem;font-weight:800;color:var(--primary);">' + formatMoney(order.total) + '</span>' +
+      items.length + ' поз. · <span style="font-size:1.15rem;font-weight:800;color:var(--primary);white-space:nowrap;">' + formatMoney(order.total) + '</span>' +
     '</div>';
     // Order comment (if any)
     if (order.waiter_note) {
@@ -2663,9 +2664,10 @@ function renderActiveOrdersList() {
       '</div>' +
       '<div class="oc-items">' +
         order.guests + ' чел. · ' +
-        itemsCount + ' поз. · готово ' + readyCount + '/' + itemsCount +
+        itemsCount + ' поз.' +
+        (cookingItems.length > 0 ? ' · готово ' + readyCount + '/' + cookingItems.length : '') +
       '</div>' +
-      '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;">' +
+      '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;white-space:nowrap;">' +
         formatMoney(total) +
       '</div>' +
       '<div class="oc-actions">' + actions + '</div>';
@@ -2966,22 +2968,22 @@ async function toggleItemServed(itemId, newValue) {
 }
 
 function addMoreToOrder() {
-  // Switch to menu mode for adding to existing order
+  // Switch to order screen for adding to existing order
   state.addingToOrder = true;
-  // Find main category from order
-  const mainCat = APP_DATA.categories.find(function(c) { return c.id === state.currentOrder.main_category_id; });
-  if (!mainCat) {
-    showToast('Категория не найдена', 'error');
-    return;
-  }
-  state.mainCategory = mainCat;
-  state.currentSubcat = null;
+  // Use the order's table info so the left panel shows the right context
+  state.selectedTable = state.currentOrder.table_number;
+  state.selectedTableType = state.currentOrder.table_type || 'numbered';
+  state.selectedTabId = state.currentOrder.tab_id || '';
+  state.selectedTabName = state.currentOrder.table_type === 'tab' ? state.currentOrder.table_number : '';
+  state.selectedVirtualBase = state.currentOrder.table_type === 'virtual' ? state.currentOrder.table_number : '';
+  state.selectedVirtualLabel = state.currentOrder.table_type === 'virtual' ? state.currentOrder.table_number : '';
   state.cart = [];
-  state.orderComment = ''; // temporary cart for additions
-  showScreen('menu');
-  // Override the accept handler
-  // (the menu screen works the same way; we'll redirect the cart-accept to add-to-existing-order)
-  renderMenu();
+  state.orderComment = '';
+  state.guests = state.currentOrder.guests || 1;
+  // Reset category — let the waiter choose what to add
+  state.mainCategory = null;
+  state.currentSubcat = null;
+  openOrderScreen();
 }
 
 // Override: if user is in "add to order" mode, acceptOrder becomes addToExistingOrder
