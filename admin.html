@@ -1827,7 +1827,7 @@ function renderOrders() {
     }
     row.innerHTML =
       '<div class="ohr-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
-      '<div class="ohr-cat">' + escapeHtml(order.main_category_name || '') + ' · ' + order.guests + ' чел.</div>' +
+      '<div class="ohr-cat">' + order.guests + ' чел.</div>' +
       '<div class="ohr-cat">' + escapeHtml(order.waiter_name || '—') + '</div>' +
       '<div class="ohr-cat">' +
         (order.payment_method === 'cash' ? '💵 Наличные' :
@@ -1897,7 +1897,6 @@ async function viewOrder(orderId) {
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
         '<div><b>Заказ:</b> ' + escapeHtml(formatTableLabel(order)) + '</div>' +
         '<div><b>Гостей:</b> ' + order.guests + '</div>' +
-        '<div><b>Категория:</b> ' + escapeHtml(order.main_category_name || '') + '</div>' +
         '<div><b>Официант:</b> ' + escapeHtml(order.waiter_name || '—') + '</div>' +
         '<div><b>Оплата:</b> ' +
           (order.payment_method === 'cash' ? '💵 Наличные' :
