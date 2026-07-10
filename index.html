@@ -1363,21 +1363,6 @@ function renderHome() {
 
   // Open tabs (long-running client accounts)
   renderOpenTabs();
-
-  // Guests
-  document.getElementById('guests-value').textContent = state.guests;
-
-  // Main categories
-  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
-  const catsDiv = document.getElementById('main-cats');
-  catsDiv.innerHTML = '';
-  mainCats.forEach(function(cat) {
-    const btn = document.createElement('button');
-    btn.className = 'main-cat-btn';
-    btn.textContent = cat.name;
-    btn.onclick = function() { selectMainCategory(cat); };
-    catsDiv.appendChild(btn);
-  });
 }
 
 function selectTable(num, type, evt) {
@@ -1413,7 +1398,22 @@ function openOrderScreen() {
   document.getElementById('guests-value').textContent = state.guests;
   renderMainCats();
   renderOrderCart();
-  renderMenu();
+}
+
+// Render the main category buttons inside the order screen
+function renderMainCats() {
+  const catsDiv = document.getElementById('main-cats');
+  if (!catsDiv) return;
+  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
+  catsDiv.innerHTML = '';
+  mainCats.forEach(function(cat) {
+    const btn = document.createElement('button');
+    btn.className = 'main-cat-btn';
+    if (state.mainCategory && state.mainCategory.id === cat.id) btn.classList.add('selected');
+    btn.textContent = cat.name;
+    btn.onclick = function() { selectMainCategory(cat); };
+    catsDiv.appendChild(btn);
+  });
 }
 
 // Cancel new order — go back to tables
@@ -1589,6 +1589,7 @@ function selectMainCategory(cat) {
   }
   state.mainCategory = cat;
   state.currentSubcat = null;
+  renderMainCats(); // update active button
   renderMenu();
 }
 
@@ -1638,8 +1639,7 @@ function renderMenu() {
     state.currentSubcat = hasSubcats ? subcats[0].id : (hasDirect ? '__direct__' : null);
   }
 
-  // Context
-  // Context: show table number / virtual label / tab name
+  // Context: show in the order-context element (may not exist on all screens)
   let contextLabel = '';
   if (state.selectedTabId) {
     contextLabel = 'Счёт: <b>' + escapeHtml(state.selectedTabName || '') + '</b>';
@@ -1648,15 +1648,15 @@ function renderMenu() {
   } else {
     contextLabel = 'Стол <b>' + state.selectedTable + '</b>';
   }
-  // Show cart count in the context bar so the waiter sees items persist
-  // across category switches.
   const cartCount = state.cart.reduce(function(s, c) { return s + c.quantity; }, 0);
   const cartInfo = cartCount > 0
     ? ' · <span style="color:var(--success);font-weight:700;">🛒 ' + cartCount + '</span>'
     : '';
-  document.getElementById('menu-context').innerHTML =
-    contextLabel + ' · ' + state.guests + ' чел. · ' +
-    '<b>' + escapeHtml(mainCat.name) + '</b>' + cartInfo;
+  const menuCtxEl = document.getElementById('menu-context');
+  if (menuCtxEl) {
+    menuCtxEl.innerHTML = contextLabel + ' · ' + state.guests + ' чел. · ' +
+      '<b>' + escapeHtml(mainCat.name) + '</b>' + cartInfo;
+  }
 
   // Subcategory tabs
   // Show tabs only if there are subcategories. If the only items are direct
@@ -1988,6 +1988,7 @@ function setCartQty(idx, qty) {
 
 function renderCartPanel() {
   const panel = document.getElementById('cart-panel');
+  if (!panel) return; // cart-panel only exists on certain screens
   const count = state.cart.reduce(function(s, c) { return s + c.quantity; }, 0);
   const total = state.cart.reduce(function(s, c) { return s + c.price * c.quantity; }, 0);
   if (count === 0) {
@@ -1996,8 +1997,10 @@ function renderCartPanel() {
   } else {
     panel.style.display = 'flex';
     document.body.classList.add('has-cart-panel');
-    document.getElementById('cart-count-num').textContent = count;
-    document.getElementById('cart-total-amount').textContent = formatMoney(total);
+    const cn = document.getElementById('cart-count-num');
+    if (cn) cn.textContent = count;
+    const ct = document.getElementById('cart-total-amount');
+    if (ct) ct.textContent = formatMoney(total);
   }
 }
 
