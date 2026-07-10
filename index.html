@@ -582,6 +582,7 @@
   <div class="header-row header-bottom">
     <button class="badge shift-badge" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
+    <button class="badge" id="qr-menu-btn" style="display:none;font-size:1.1rem;padding:4px 10px;" onclick="showWaiterQrMenu()" title="QR-код меню">📱</button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -1057,6 +1058,9 @@ async function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = state.currentUser.name;
+  // Show QR menu button if enabled in settings
+  var qrBtn = document.getElementById('qr-menu-btn');
+  if (qrBtn) qrBtn.style.display = (String(APP_DATA.settings.show_qr_to_waiter) === 'true') ? 'inline-flex' : 'none';
   requestWakeLock();
   await initServiceWorker();
   if (APP_DATA.settings.sound_notifications !== 'false') {
@@ -1123,6 +1127,29 @@ function updateShiftButton() {
     btn.textContent = '🔴 Открыть смену';
     btn.style.background = 'rgba(244,67,54,0.3)';
   }
+}
+
+// Show QR code of the visitor menu in a modal
+function showWaiterQrMenu() {
+  // Build URL to menu.html (all categories)
+  var baseUrl = window.location.href.replace(/[^/]*$/, '');
+  var menuUrl = baseUrl + 'menu.html';
+  var qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(menuUrl);
+  // Remove existing
+  var existing = document.getElementById('waiter-qr-overlay');
+  if (existing) existing.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'waiter-qr-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:24px;max-width:360px;width:100%;text-align:center;">' +
+      '<h3 style="margin:0 0 12px;">QR-код меню</h3>' +
+      '<p style="font-size:0.85rem;color:#666;margin:0 0 16px;">Покажите этот код посетителю</p>' +
+      '<img src="' + qrApiUrl + '" style="width:280px;height:280px;display:block;margin:0 auto 12px;" alt="QR">' +
+      '<button class="btn btn-outline" style="width:100%;" onclick="document.getElementById(\'waiter-qr-overlay\').remove()">Закрыть</button>' +
+    '</div>';
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 }
 
 function handleShiftClick() {

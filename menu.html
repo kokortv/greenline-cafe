@@ -23,8 +23,6 @@
     --vm-muted: #999;
     --vm-border: #333;
     --vm-card-bg: #252535;
-    --vm-header-bg: #d32f2f;
-    --vm-accent: #ff6b6b;
   }
   * { box-sizing: border-box; }
   body {
@@ -35,16 +33,13 @@
     transition: background 0.3s, color 0.3s;
   }
 
-  /* Header — hide on scroll down, show on scroll up */
   .menu-header {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
+    top: 0; left: 0; right: 0;
     z-index: 60;
     background: var(--vm-header-bg);
     color: #fff;
-    padding: 16px;
+    padding: 14px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -53,209 +48,119 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   }
   .menu-header.hidden { transform: translateY(-100%); }
-  .menu-header h1 { margin: 0; font-size: 1.4rem; flex: 1; text-align: center; }
-  .menu-header .menu-subtitle { font-size: 0.8rem; opacity: 0.85; white-space: pre-wrap; text-align: center; }
+  .menu-header h1 { margin: 0; font-size: 1.4rem; }
+  .menu-header .menu-subtitle { font-size: 0.8rem; opacity: 0.85; white-space: pre-wrap; }
   .menu-header-center { flex: 1; text-align: center; }
   .theme-toggle {
-    flex: none;
-    width: 40px;
-    height: 40px;
-    border: none;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.2);
-    color: #fff;
-    font-size: 1.2rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.2s;
+    flex: none; width: 40px; height: 40px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.2); color: #fff;
+    font-size: 1.2rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
   }
-  .theme-toggle:hover { background: rgba(255,255,255,0.35); }
+  .header-spacer { height: 64px; }
 
-  /* Spacer for fixed header */
-  .header-spacer { height: 70px; }
-
-  /* Subcategory tabs — sticky below header */
   .subcat-tabs-bar {
-    position: sticky;
-    top: 0;
-    z-index: 40;
+    position: sticky; top: 0; z-index: 40;
     background: var(--vm-card-bg);
-    display: flex;
-    gap: 6px;
-    padding: 10px 12px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    display: flex; gap: 6px; padding: 10px 12px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
     border-bottom: 1px solid var(--vm-border);
     scrollbar-width: none;
-    transition: background 0.3s;
   }
   .subcat-tabs-bar::-webkit-scrollbar { display: none; }
   .subcat-tabs-bar.hidden { display: none; }
   .subcat-tab {
-    flex: none;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--vm-muted);
-    background: var(--vm-bg);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
+    flex: none; padding: 8px 16px; border-radius: 20px;
+    font-size: 0.9rem; font-weight: 600;
+    color: var(--vm-muted); background: var(--vm-bg);
+    cursor: pointer; white-space: nowrap;
     border: 1px solid var(--vm-border);
   }
   .subcat-tab.active {
-    background: var(--vm-accent);
-    color: #fff;
-    border-color: var(--vm-accent);
+    background: var(--vm-accent); color: #fff; border-color: var(--vm-accent);
   }
 
-  .menu-section { padding: 0 14px 80px; }
-
-  /* Main category title — large with background */
+  .menu-section { padding: 0 14px 90px; }
   .main-cat-title {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: var(--vm-accent);
-    margin: 20px 0 14px;
-    padding: 12px 16px;
-    border-radius: 10px;
-    background: var(--vm-accent);
-    color: #fff;
+    font-size: 1.5rem; font-weight: 800;
+    margin: 20px 0 14px; padding: 12px 16px;
+    border-radius: 10px; background: var(--vm-accent); color: #fff;
     scroll-margin-top: 10px;
   }
-  /* Subcategory title — medium with background */
   .subcat-section-title {
-    font-size: 1.2rem;
-    font-weight: 700;
+    font-size: 1.2rem; font-weight: 700;
     color: var(--vm-text);
-    margin: 18px 0 10px;
-    padding: 8px 14px;
-    border-radius: 8px;
-    background: var(--vm-card-bg);
+    margin: 18px 0 10px; padding: 8px 14px;
+    border-radius: 8px; background: var(--vm-card-bg);
     border-left: 4px solid var(--vm-accent);
     scroll-margin-top: 56px;
-    transition: background 0.3s;
   }
 
   .menu-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 12px 4px;
-    border-bottom: 1px dashed var(--vm-border);
-    gap: 12px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 12px 4px; border-bottom: 1px dashed var(--vm-border); gap: 12px;
   }
   .menu-item:last-child { border-bottom: none; }
   .mi-info { flex: 1; min-width: 0; }
   .mi-name { font-weight: 600; font-size: 1.05rem; color: var(--vm-text); }
   .mi-translation { font-size: 0.85rem; color: var(--vm-muted); margin-top: 2px; font-style: italic; }
   .mi-mods {
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    font-size: 0.95rem;
-    color: var(--vm-text);
+    margin-top: 8px; display: flex; flex-direction: column; gap: 4px;
+    font-size: 1rem; color: var(--vm-text);
   }
   .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); }
-  .mi-price, .mi-mod-price {
-    font-size: 1.05rem;
-    font-weight: 700;
-    white-space: nowrap;
-    flex: none;
+  .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); white-space: nowrap; }
+  .mi-price {
+    font-size: 1.05rem; font-weight: 700; white-space: nowrap; flex: none;
     color: var(--vm-accent);
   }
 
-  /* Bottom category bar — always visible */
   .bottom-cat-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 50;
-    background: var(--vm-card-bg);
-    border-top: 1px solid var(--vm-border);
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.3s;
-    color: var(--vm-text);
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+    background: var(--vm-card-bg); border-top: 1px solid var(--vm-border);
+    padding: 12px 16px; display: flex; align-items: center; justify-content: center;
+    gap: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;
+    color: var(--vm-text); box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
   }
-  .bottom-cat-bar:active { background: var(--vm-bg); }
   .bottom-cat-bar .bcb-arrow { font-size: 0.7rem; color: var(--vm-muted); }
-  .bottom-cat-bar .bcb-icon { font-size: 1.1rem; }
 
-  /* Category dropdown — slides up from bottom */
   .category-dropdown {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 100;
-    align-items: flex-end;
-    justify-content: center;
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 100;
+    align-items: flex-end; justify-content: center;
   }
   .category-dropdown.open { display: flex; }
   .category-dropdown-content {
-    background: var(--vm-card-bg);
-    border-radius: 16px 16px 0 0;
-    width: 100%;
-    max-width: 500px;
-    padding: 20px 16px 24px;
-    max-height: 70vh;
-    overflow-y: auto;
+    background: var(--vm-card-bg); border-radius: 16px 16px 0 0;
+    width: 100%; max-width: 500px; padding: 20px 16px 24px;
+    max-height: 70vh; overflow-y: auto; color: var(--vm-text);
     animation: slideUp 0.25s ease-out;
-    color: var(--vm-text);
   }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  .category-dropdown-content h3 { margin: 0 0 12px; font-size: 1.1rem; }
   .cat-dropdown-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 600;
-    transition: background 0.15s;
-    margin-bottom: 4px;
-    color: var(--vm-text);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-radius: 10px; cursor: pointer;
+    font-size: 1rem; font-weight: 600; margin-bottom: 4px; color: var(--vm-text);
   }
   .cat-dropdown-item:hover { background: var(--vm-bg); }
-  .cat-dropdown-item.active { background: var(--vm-accent)20; color: var(--vm-accent); }
+  .cat-dropdown-item.active { color: var(--vm-accent); }
   .cat-dropdown-item .cdi-check { color: var(--vm-accent); }
 
   .menu-footer {
-    text-align: center;
-    padding: 24px 16px;
-    color: var(--vm-muted);
-    font-size: 0.9rem;
-    white-space: pre-wrap;
-    line-height: 1.5;
-    border-top: 1px dashed var(--vm-border);
-    margin-top: 24px;
+    text-align: center; padding: 24px 16px;
+    color: var(--vm-muted); font-size: 0.9rem;
+    white-space: pre-wrap; line-height: 1.5;
+    border-top: 1px dashed var(--vm-border); margin-top: 24px;
   }
   .loading { text-align: center; padding: 40px 16px; color: var(--vm-muted); }
   .empty { text-align: center; padding: 40px 16px; color: var(--vm-muted); }
-  .error { text-align: center; padding: 40px 16px; color: var(--danger); }
 </style>
 </head>
 <body>
 
-<!-- Fixed header -->
 <div class="menu-header" id="menu-header">
-  <div class="header-spacer-left" style="width:40px;"></div>
+  <div style="width:40px;"></div>
   <div class="menu-header-center">
     <h1 id="menu-restaurant-name">Меню</h1>
     <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
@@ -264,25 +169,20 @@
 </div>
 <div class="header-spacer"></div>
 
-<!-- Subcategory tabs (horizontal scroll, sticky) -->
 <div class="subcat-tabs-bar hidden" id="subcat-tabs-bar"></div>
 
-<!-- Menu content -->
 <div id="menu-content" class="menu-section">
   <div class="loading">Загрузка меню...</div>
 </div>
 
-<!-- Footer -->
 <div class="menu-footer" id="menu-footer" style="display:none;"></div>
 
-<!-- Bottom category bar — always visible -->
 <div class="bottom-cat-bar" id="bottom-cat-bar" onclick="toggleCategoryDropdown()">
-  <span class="bcb-icon">☰</span>
+  <span>☰</span>
   <span id="bottom-cat-text">Выберите категорию меню</span>
   <span class="bcb-arrow">▲</span>
 </div>
 
-<!-- Category dropdown -->
 <div class="category-dropdown" id="category-dropdown" onclick="if(event.target===this)toggleCategoryDropdown()">
   <div class="category-dropdown-content">
     <h3>Выберите категорию меню</h3>
@@ -300,8 +200,9 @@
   var allMainCats = [];
   var itemsByCat = {};
   var scrollObserver = null;
+  var headerEl = document.getElementById('menu-header');
 
-  // Theme management
+  // Theme
   function getPreferredTheme() {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
     return 'light';
@@ -312,20 +213,18 @@
     if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
     try { localStorage.setItem('vm-theme', theme); } catch(e) {}
   }
-  function toggleTheme() {
+  window.toggleTheme = function() {
     var current = document.documentElement.getAttribute('data-theme') || 'light';
     applyTheme(current === 'dark' ? 'light' : 'dark');
-  }
-  window.toggleTheme = toggleTheme;
-  // Init theme — use saved or auto
+  };
   var savedTheme = null;
   try { savedTheme = localStorage.getItem('vm-theme'); } catch(e) {}
   applyTheme(savedTheme || getPreferredTheme());
 
-  // Header hide/show on scroll
+  // Header hide/show
   var lastScrollY = 0;
-  var headerEl = document.getElementById('menu-header');
-  window.addEventListener('scroll', function() {
+  var ticking = false;
+  function onScroll() {
     var y = window.scrollY;
     if (y > lastScrollY && y > 80) {
       headerEl.classList.add('hidden');
@@ -333,17 +232,21 @@
       headerEl.classList.remove('hidden');
     }
     lastScrollY = y;
-  }, { passive: true });
+    ticking = false;
+  }
+  window.addEventListener('scroll', function() {
+    if (!ticking) { window.requestAnimationFrame(onScroll); ticking = true; }
+  }, false);
 
   function applyAppearance() {
     var s = APP_DATA.settings || {};
     var priceColor = s.qr_menu_color_price || '#d32f2f';
     var headerColor = s.qr_menu_color_header || priceColor;
-    // Update CSS variables for both themes
+    // Use !important to override both :root and [data-theme] blocks
     var styleEl = document.getElementById('dynamic-menu-styles');
     styleEl.textContent =
-      ':root { --vm-header-bg: ' + headerColor + '; --vm-accent: ' + priceColor + '; } ' +
-      '[data-theme="dark"] { --vm-header-bg: ' + headerColor + '; --vm-accent: ' + priceColor + '; }';
+      ':root { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; } ' +
+      '[data-theme="dark"] { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; }';
     document.getElementById('menu-restaurant-subtitle').textContent = s.qr_menu_subtitle || '';
     var footer = document.getElementById('menu-footer');
     if (s.qr_menu_footer) { footer.textContent = s.qr_menu_footer; footer.style.display = 'block'; }
@@ -364,7 +267,7 @@
       if (!selectedMainCat) { renderAllCategories(); }
       else { renderSingleCategory(selectedMainCat); }
     } catch (err) {
-      contentEl.innerHTML = '<div class="error">Ошибка: ' + escapeHtml(err.message) + '</div>';
+      contentEl.innerHTML = '<div class="empty">Ошибка: ' + escapeHtml(err.message) + '</div>';
     }
   }
 
@@ -417,14 +320,22 @@
       var items = itemsByCat[sc.id] || [];
       if (items.length === 0) return;
       visibleSubs.push(sc);
-      tabsHtml += '<button class="subcat-tab" id="tab-' + sc.id + '" onclick="scrollToSubcat(\'' + sc.id + '\')">' + escapeHtml(sc.name) + '</button>';
+      tabsHtml += '<button class="subcat-tab" id="tab-' + sc.id + '" data-sub-id="' + sc.id + '">' + escapeHtml(sc.name) + '</button>';
     });
     if (directItems.length > 0 && subs.length > 0) {
-      tabsHtml += '<button class="subcat-tab" id="tab-direct" onclick="scrollToSubcat(\'direct\')">Прочее</button>';
+      tabsHtml += '<button class="subcat-tab" id="tab-direct" data-sub-id="direct">Прочее</button>';
     }
     var tabsBar = document.getElementById('subcat-tabs-bar');
     tabsBar.innerHTML = tabsHtml;
     tabsBar.classList.toggle('hidden', visibleSubs.length === 0);
+
+    // Attach click handlers to tabs
+    tabsBar.querySelectorAll('.subcat-tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        var subId = this.dataset.subId;
+        scrollToSubcat(subId);
+      });
+    });
 
     var html = '<div class="main-cat-title">' + escapeHtml(mc.name) + '</div>';
     subs.forEach(function(sc) {
@@ -489,16 +400,19 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  window.scrollToSubcat = function(subId) {
+  function scrollToSubcat(subId) {
     var el = document.getElementById('sub-' + subId);
-    if (el) {
-      // Calculate offset: header (when visible) ~70px + subcat tabs ~50px
-      var offset = 56; // subcat tabs height
-      var headerHeight = headerEl.classList.contains('hidden') ? 0 : 66;
-      var top = el.getBoundingClientRect().top + window.scrollY - offset - headerHeight + 5;
+    if (!el) return;
+    // Wait a tick for the DOM to settle, then scroll
+    setTimeout(function() {
+      var rect = el.getBoundingClientRect();
+      var headerH = headerEl.classList.contains('hidden') ? 0 : 64;
+      var tabsH = document.getElementById('subcat-tabs-bar').classList.contains('hidden') ? 0 : 50;
+      var top = rect.top + window.scrollY - headerH - tabsH - 6;
       window.scrollTo({ top: top, behavior: 'smooth' });
-    }
-  };
+    }, 50);
+  }
+  window._scrollToSubcat = scrollToSubcat;
 
   async function init() {
     try {
@@ -507,7 +421,7 @@
       document.getElementById('menu-restaurant-name').textContent = APP_DATA.settings.restaurant_name || 'Меню';
       render();
     } catch (err) {
-      document.getElementById('menu-content').innerHTML = '<div class="error">Ошибка: ' + escapeHtml(err.message) + '</div>';
+      document.getElementById('menu-content').innerHTML = '<div class="empty">Ошибка: ' + escapeHtml(err.message) + '</div>';
     }
   }
   init();

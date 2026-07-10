@@ -634,8 +634,12 @@
       <div class="form-group checkbox-field">
         <input type="checkbox" id="set-dish-comments" checked>
         <label for="set-dish-comments" style="margin:0;">Показывать комментарии к блюдам в заказе</label>
+      </div>
+      <div class="form-group checkbox-field">
+        <input type="checkbox" id="set-show-qr">
+        <label for="set-show-qr" style="margin:0;">Показать QR-меню у официантов</label>
         <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;width:100%;">
-          Если включено — официант может оставить комментарий к каждой позиции (например, «без лука», «хорошо прожаренный»). Если выключено — поле комментария скрывается.
+          Если включено — у официанта рядом с именем появится иконка QR-кода. При нажатии покажется QR-код меню для посетителей.
         </p>
       </div>
 
@@ -1409,6 +1413,7 @@ function populateSettingsForm() {
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
   document.getElementById('set-dish-comments').checked = String(APP_DATA.settings.dish_comments) !== 'false';
+  document.getElementById('set-show-qr').checked = String(APP_DATA.settings.show_qr_to_waiter) === 'true';
   renderBarCategoriesList();
   updateTranslationLangLabel();
 }
@@ -1508,6 +1513,7 @@ async function saveSettings() {
     stock_threshold: document.getElementById('set-stock-threshold').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false',
     dish_comments: document.getElementById('set-dish-comments').checked ? 'true' : 'false',
+    show_qr_to_waiter: document.getElementById('set-show-qr').checked ? 'true' : 'false',
     bar_categories: JSON.stringify(collectBarCategories())
   };
   try {
