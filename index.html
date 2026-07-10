@@ -370,14 +370,60 @@
   body { padding-bottom: 32px; }
   body.has-cart-panel { padding-bottom: 110px; }
 
-  /* SPLIT-VIEW for tablets (≥769px): tables on left, menu on right */
-  @media (min-width: 769px) {
-    body.split-view #screen-home, body.split-view #screen-menu { display: block !important; }
-    body.split-view #screen-home { width: 340px; flex: none; border-right: 2px solid var(--border); padding: 12px; overflow-y: auto; max-height: calc(100vh - 60px); position: sticky; top: 0; }
-    body.split-view #screen-menu { flex: 1; padding: 12px 16px; }
-    body.split-view #screen-menu .btn-outline[onclick*="showScreen('home')"] { display: none; }
-    body.split-view #screen-menu .cart-panel { position: sticky; bottom: 0; }
-    body.split-view { display: flex; align-items: flex-start; }
+  /* SPLIT-VIEW for tablets (≥769px): order panel on left, menu on right */
+  .order-layout {
+    display: flex;
+    gap: 0;
+    align-items: flex-start;
+    min-height: calc(100vh - 60px);
+  }
+  .order-panel-left {
+    width: 360px;
+    flex: none;
+    padding: 12px;
+    border-right: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 60px);
+    position: sticky;
+    top: 0;
+    overflow: hidden;
+  }
+  .order-panel-right {
+    flex: 1;
+    padding: 12px 16px;
+    overflow-y: auto;
+    max-height: calc(100vh - 60px);
+  }
+  .order-total-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 2px solid var(--border);
+    margin-top: 8px;
+  }
+  .order-total-amount {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--primary);
+    white-space: nowrap;
+  }
+  /* On phones — single column */
+  @media (max-width: 768px) {
+    .order-layout { flex-direction: column; }
+    .order-panel-left {
+      width: 100%;
+      max-height: none;
+      border-right: none;
+      border-bottom: 2px solid var(--border);
+      position: static;
+      overflow: visible;
+    }
+    .order-panel-right {
+      max-height: none;
+      overflow: visible;
+    }
   }
 
   /* Mobile responsive tweaks for waiter page */
@@ -549,12 +595,10 @@
 </div>
 
 <main class="app-main" id="app-main" style="display:none;">
-  <!-- HOME SCREEN -->
+  <!-- HOME SCREEN — only tables -->
   <div class="screen active" id="screen-home">
-    <!-- Ready-to-serve alert panel: shows dishes that became ready recently -->
     <div id="ready-alert-panel" style="display:none;"></div>
 
-    <!-- Active orders overview on home screen -->
     <div id="home-active-orders" style="display:none;">
       <h2 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
         Активные заказы
@@ -567,13 +611,11 @@
     <h3 style="font-size:1rem;color:var(--text-muted);margin-bottom:8px;">Выберите столик</h3>
     <div class="table-grid" id="table-grid"></div>
 
-    <!-- Virtual tables (Бар, С собой) — populated from settings.virtual_tables -->
     <div id="virtual-tables-section" style="display:none;">
       <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Виртуальный столик</h3>
       <div class="table-grid" id="virtual-table-grid"></div>
     </div>
 
-    <!-- Open tabs (long-running client accounts) -->
     <div id="open-tabs-section" style="display:none;">
       <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center;">
         Открытые счета клиентов
@@ -582,46 +624,55 @@
       <div id="open-tabs-list"></div>
     </div>
 
-    <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Количество гостей</h3>
-    <div class="guests-stepper">
-      <button onclick="changeGuests(-1)">−</button>
-      <div class="guests-value" id="guests-value">1</div>
-      <button onclick="changeGuests(1)">+</button>
-    </div>
-
-    <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Тип заказа</h3>
-    <div class="grid grid-4" id="main-cats"></div>
-    <!-- Bottom padding so buttons don't stick to the bottom of the screen -->
     <div style="height:60px;"></div>
   </div>
 
-  <!-- MENU SCREEN -->
-  <div class="screen" id="screen-menu">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showScreen('home')">← Назад</button>
-      <div id="menu-context" style="font-weight:600;"></div>
-    </div>
-    <div class="subcat-tabs" id="subcat-tabs"></div>
-    <div class="grid grid-auto" id="menu-items"></div>
-    <div class="cart-panel" id="cart-panel" style="display:none;">
-      <div class="cart-count">
-        В корзине: <span id="cart-count-num">0</span> шт.
-        <span class="cart-total" id="cart-total-amount">0 ₽</span>
+  <!-- ORDER SCREEN — split-view: left = order panel, right = menu -->
+  <div class="screen" id="screen-order">
+    <div class="order-layout">
+      <!-- LEFT: order panel -->
+      <div class="order-panel-left">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <button class="btn btn-outline" onclick="cancelNewOrder()">← Столы</button>
+          <div id="order-context" style="font-weight:600;font-size:0.9rem;text-align:right;"></div>
+        </div>
+        <div id="order-guests-section">
+          <h3 style="font-size:0.95rem;color:var(--text-muted);margin:8px 0;">Количество гостей</h3>
+          <div class="guests-stepper">
+            <button onclick="changeGuests(-1)">−</button>
+            <div class="guests-value" id="guests-value">1</div>
+            <button onclick="changeGuests(1)">+</button>
+          </div>
+        </div>
+        <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Тип заказа</h3>
+        <div class="grid grid-4" id="main-cats"></div>
+        <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Добавленные блюда</h3>
+        <div id="order-cart-items" style="flex:1;overflow-y:auto;min-height:100px;"></div>
+        <div class="order-total-bar">
+          <div class="order-total-amount" id="order-total">0 ₾</div>
+          <button class="btn btn-success btn-lg" style="flex:1;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
+            ✓ ПРИНЯТЬ ЗАКАЗ
+          </button>
+        </div>
       </div>
-      <button class="btn btn-primary btn-lg" onclick="showCart()">Корзина →</button>
+      <!-- RIGHT: menu -->
+      <div class="order-panel-right">
+        <div class="subcat-tabs" id="subcat-tabs"></div>
+        <div class="grid grid-auto" id="menu-items"></div>
+      </div>
     </div>
   </div>
 
-  <!-- CART SCREEN (new order) -->
+  <!-- CART SCREEN (mobile only — full cart view) -->
   <div class="screen" id="screen-cart">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showScreen('menu')">← К меню</button>
+      <button class="btn btn-outline" onclick="showScreen('order')">← К меню</button>
       <button class="btn btn-danger" onclick="clearCart()">Очистить</button>
     </div>
     <div id="cart-items"></div>
     <div class="cart-total-display">
       <div class="label">Итого к оплате</div>
-      <div class="amount" id="cart-grand-total">0 ₽</div>
+      <div class="amount" id="cart-grand-total">0 ₾</div>
     </div>
     <button class="btn btn-success btn-xl" style="width:100%;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
       ✓ ПРИНЯТЬ ЗАКАЗ
@@ -1161,19 +1212,9 @@ function showScreen(name) {
     if (_qtySyncTimer) { clearTimeout(_qtySyncTimer); _qtySyncTimer = null; }
     flushQtyChanges();
   }
-  // Split-view on tablets: show home + menu side by side
-  const isTablet = window.innerWidth >= 769;
-  if (isTablet && (name === 'menu' || name === 'home')) {
-    document.body.classList.add('split-view');
-    document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-    document.getElementById('screen-home').classList.add('active');
-    document.getElementById('screen-menu').classList.add('active');
-  } else {
-    document.body.classList.remove('split-view');
-    document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-    const target = document.getElementById('screen-' + name);
-    if (target) target.classList.add('active');
-  }
+  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+  const target = document.getElementById('screen-' + name);
+  if (target) target.classList.add('active');
   if (name !== 'order-detail') { stopOrderPolling(); }
   if (name === 'home') { refreshAppDataAndRender(); startBadgePolling(); }
   if (name === 'orders') { stopBadgePolling(); loadActiveOrders(); }
@@ -1340,20 +1381,82 @@ function renderHome() {
 }
 
 function selectTable(num, type, evt) {
-  // For virtual tables: ask for optional name/room, then proceed (each click
-  // creates a NEW virtual order — virtual tables are never "occupied" in the
-  // exclusive sense, they can be opened as many times as needed in parallel).
   if (type === 'virtual') {
     openVirtualOrderModal(num);
     return;
   }
   state.selectedTable = num;
   state.selectedTableType = type || 'numbered';
-  state.selectedTabId = null;  // table and tab are mutually exclusive
+  state.selectedTabId = null;
   state.selectedTabName = null;
-  showToast('Выбран: ' + (type === 'virtual' ? num : 'Столик ' + num), 'info');
-  // Re-render to apply `selected` class persistently
-  renderHome();
+  state.cart = [];
+  state.guests = 1;
+  state.mainCategory = null;
+  state.currentSubcat = null;
+  // Open the order screen (split-view: order panel + menu)
+  openOrderScreen();
+}
+
+// Open the order screen — sets up the split-view layout
+function openOrderScreen() {
+  showScreen('order');
+  // Update the context label
+  const ctxEl = document.getElementById('order-context');
+  if (ctxEl) {
+    let label = '';
+    if (state.selectedTabId) label = 'Счёт: ' + (state.selectedTabName || '');
+    else if (state.selectedTableType === 'virtual') label = state.selectedVirtualLabel || state.selectedVirtualBase || 'Виртуальный';
+    else label = 'Столик ' + state.selectedTable;
+    ctxEl.textContent = label;
+  }
+  // Render guests + main categories + cart
+  document.getElementById('guests-value').textContent = state.guests;
+  renderMainCats();
+  renderOrderCart();
+  renderMenu();
+}
+
+// Cancel new order — go back to tables
+function cancelNewOrder() {
+  state.cart = [];
+  state.selectedTable = null;
+  state.selectedTableType = null;
+  state.selectedTabId = null;
+  state.selectedTabName = null;
+  state.mainCategory = null;
+  state.currentSubcat = null;
+  state.guests = 1;
+  document.body.classList.remove('has-cart-panel');
+  showScreen('home');
+}
+
+// Render the cart items inside the left panel of the order screen
+function renderOrderCart() {
+  const div = document.getElementById('order-cart-items');
+  if (!div) return;
+  if (state.cart.length === 0) {
+    div.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:16px;font-size:0.9rem;">Блюд нет. Выберите из меню справа →</p>';
+  } else {
+    let html = '';
+    state.cart.forEach(function(item, idx) {
+      let nameLine = escapeHtml(item.name);
+      if (item.modification_name) nameLine += ' <span style="color:var(--primary);font-weight:600;font-size:0.85rem;">· ' + escapeHtml(item.modification_name) + '</span>';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);gap:8px;">';
+      html += '<div style="flex:1;min-width:0;font-size:0.9rem;">' + nameLine + '</div>';
+      html += '<div style="display:flex;align-items:center;gap:4px;flex:none;">';
+      html += '<button onclick="changeCartQty(' + idx + ', -1)" style="width:28px;height:28px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:1rem;">−</button>';
+      html += '<span style="min-width:24px;text-align:center;font-weight:600;font-size:0.9rem;">' + item.quantity + '</span>';
+      html += '<button onclick="changeCartQty(' + idx + ', 1)" style="width:28px;height:28px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:1rem;">+</button>';
+      html += '<span style="min-width:70px;text-align:right;font-weight:700;color:var(--primary);font-size:0.9rem;">' + formatMoney(item.price * item.quantity) + '</span>';
+      html += '</div>';
+      html += '</div>';
+    });
+    div.innerHTML = html;
+  }
+  // Update total
+  const total = state.cart.reduce(function(s, c) { return s + c.price * c.quantity; }, 0);
+  const totalEl = document.getElementById('order-total');
+  if (totalEl) totalEl.textContent = formatMoney(total);
 }
 
 /* ---------- Virtual order modal ---------- */
@@ -1373,22 +1476,22 @@ function confirmVirtualOrder() {
   const name = document.getElementById('virtual-order-name').value.trim();
   const room = document.getElementById('virtual-order-room').value.trim();
   const notes = document.getElementById('virtual-order-notes').value.trim();
-  // Build a display label: "Бар — Иван" or "Бар — комната 5" or just "Бар"
   let label = virtualName;
   if (name) label += ' — ' + name;
   else if (room) label += ' — комната ' + room;
   if (notes) label += ' (' + notes + ')';
-  // Set as selected
   state.selectedTable = label;
   state.selectedTableType = 'virtual';
   state.selectedTabId = null;
   state.selectedTabName = null;
-  // Store the raw virtual name (e.g. "Бар") separately — backend uses it
   state.selectedVirtualBase = virtualName;
   state.selectedVirtualLabel = label;
+  state.cart = [];
+  state.guests = 1;
+  state.mainCategory = null;
+  state.currentSubcat = null;
   closeModal('modal-virtual-order');
-  showToast('Выбран: ' + label, 'info');
-  renderHome();
+  openOrderScreen();
 }
 
 /* ---------- OPEN TABS ---------- */
@@ -1485,13 +1588,8 @@ function selectMainCategory(cat) {
     return;
   }
   state.mainCategory = cat;
-  // NOTE: do NOT clear state.cart here — user may have added items from other
-  // categories and we want them to persist across category switches. The cart
-  // is only cleared when the order is accepted (acceptOrder) or explicitly
-  // cleared via the "Очистить" button on the cart screen.
-  state.currentSubcat = null; // reset so renderMenu picks a sensible default
+  state.currentSubcat = null;
   renderMenu();
-  showScreen('menu');
 }
 
 /* ---------- MENU ---------- */
@@ -1864,6 +1962,7 @@ function addToCart(item, modification) {
     });
   }
   renderCartPanel();
+  renderOrderCart(); // update the left panel on the order screen
   beep(880, 80, 0.15);
 }
 
@@ -1876,6 +1975,7 @@ function changeCartQty(idx, delta) {
   }
   renderCartPanel();
   renderCartItems();
+  renderOrderCart(); // update the left panel on the order screen
 }
 
 function setCartQty(idx, qty) {

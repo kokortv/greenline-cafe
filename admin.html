@@ -147,6 +147,37 @@
   .sort-arrow { font-size: 0.75rem; opacity: 0.7; margin-left: 4px; }
   th[onclick]:hover .sort-arrow { opacity: 1; }
 
+  /* QR MENU categories — custom checkbox (name left, checkbox right) */
+  .qr-cat-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--border);
+    border-radius: 5px;
+    background: #fff;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+    flex: none;
+  }
+  .qr-cat-checkbox:hover { border-color: var(--primary); }
+  .qr-cat-checkbox:checked {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  .qr-cat-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 2px;
+    width: 6px;
+    height: 11px;
+    border: solid #fff;
+    border-width: 0 2.5px 2.5px 0;
+    transform: rotate(45deg);
+  }
+
   /* ============================================================
      ADMIN SIDEBAR LAYOUT
      ============================================================ */
@@ -461,6 +492,9 @@
         <button class="sidebar-item" data-tab="tables" onclick="switchTab('tables')">
           <span class="sidebar-icon">🪑</span> Столы
         </button>
+        <button class="sidebar-item" data-tab="qrmenu" onclick="switchTab('qrmenu')">
+          <span class="sidebar-icon">📱</span> QR-меню
+        </button>
         <button class="sidebar-item" data-tab="settings" onclick="switchTab('settings')">
           <span class="sidebar-icon">⚙️</span> Настройки
         </button>
@@ -618,83 +652,6 @@
       <button class="btn btn-primary btn-lg" onclick="withLoading(this, 'Сохраняем...', function() { return saveSettings(); })" style="width:100%;margin-top:16px;">Сохранить настройки</button>
     </div>
 
-    <!-- QR MENU FOR VISITORS -->
-    <h2 class="section-title" style="margin-top:30px;">QR-код меню для посетителей</h2>
-    <div class="settings-card">
-      <p style="margin-bottom:12px;">
-        Сгенерируйте QR-код для публичного меню. Посетитель наведёт камеру телефона и увидит меню с ценами —
-        без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
-      </p>
-
-      <!-- Оформление меню -->
-      <h3 style="margin:16px 0 8px;font-size:1rem;">Оформление меню</h3>
-      <div class="form-group">
-        <label>Текст под названием ресторана (подзаголовок)</label>
-        <input type="text" id="qr-menu-subtitle" placeholder="Например: Добро пожаловать! или телефон для брони">
-      </div>
-      <div class="form-group">
-        <label>Текст внизу меню (подвал)</label>
-        <textarea id="qr-menu-footer" rows="3" placeholder="Например: Спасибо за визит! Адрес: г. Тбилиси, ул. ... Тел: +995 ... Часы работы: 10:00 — 23:00"></textarea>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-group">
-          <label>Цвет цен, заголовков и фона шапки</label>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-            <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-price').value = this.value;">
-          </div>
-          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
-            Этот цвет используется для: цен, заголовков категорий и фона шапки вверху меню.
-          </p>
-        </div>
-        <div class="form-group">
-          <label>Цвет заголовков категорий</label>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-            <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-header').value = this.value;">
-          </div>
-          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
-            Цвет заголовков главных категорий (и линии под ними). По умолчанию такой же, как у цен.
-          </p>
-        </div>
-      </div>
-      <!-- Sync color picker ↔ text input both ways -->
-      <script>
-        (function() {
-          const pairs = [
-            ['qr-menu-color-price', 'qr-menu-color-price-text'],
-            ['qr-menu-color-header', 'qr-menu-color-header-text']
-          ];
-          pairs.forEach(function(p) {
-            const picker = document.getElementById(p[0]);
-            const text = document.getElementById(p[1]);
-            if (!picker || !text) return;
-            picker.addEventListener('input', function() { text.value = picker.value; });
-          });
-        })();
-      </script>
-
-      <div id="qr-menu-categories" style="margin-top:16px;margin-bottom:16px;"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:10px;background:var(--bg);border-radius:8px;">
-        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(true)" style="font-size:0.9rem;">☑ Выбрать все</button>
-        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(false)" style="font-size:0.9rem;">☐ Снять все</button>
-        <button class="btn btn-primary" type="button" onclick="saveAndGenerateQrMenu()" style="margin-left:auto;">💾 Сохранить и сгенерировать QR-код</button>
-      </div>
-      <div id="qr-menu-result" style="display:none;">
-        <div style="background:#fff;padding:16px;border-radius:8px;display:inline-block;border:1px solid var(--border);">
-          <img id="qr-menu-image" alt="QR-код меню" style="display:block;width:280px;height:280px;">
-        </div>
-        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
-          <a id="qr-menu-link" href="#" target="_blank" style="color:var(--primary);word-break:break-all;"></a>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-outline" type="button" onclick="downloadQrMenuImage()">⬇ Скачать QR-код (PNG)</button>
-            <button class="btn btn-outline" type="button" onclick="openVisitorMenuInNewTab()">↗ Открыть меню в новой вкладке</button>
-            <button class="btn btn-outline" type="button" onclick="printQrMenu()">🖨 Печать QR-кода</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <h2 class="section-title" style="margin-top:30px;">Опасная зона</h2>
     <div class="settings-card" style="border:2px solid var(--danger);">
       <p style="margin-bottom:12px;"><b>Сброс данных</b> — удалит все заказы, но сохранит настройки, категории и меню.</p>
@@ -811,6 +768,85 @@
     </div>
     <div id="tables-config-container">
       <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
+    </div>
+  </div>
+
+  <!-- QRMENU TAB -->
+  <div class="tab-content" id="tab-qrmenu" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 class="section-title" style="margin:0;">QR-код меню для посетителей</h2>
+    </div>
+    <div class="settings-card">
+      <p style="margin-bottom:12px;">
+        Сгенерируйте QR-код для публичного меню. Посетитель наведёт камеру телефона и увидит меню с ценами —
+        без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
+      </p>
+
+      <h3 style="margin:16px 0 8px;font-size:1rem;">Оформление меню</h3>
+      <div class="form-group">
+        <label>Текст под названием ресторана (подзаголовок)</label>
+        <input type="text" id="qr-menu-subtitle" placeholder="Например: Добро пожаловать! или телефон для брони">
+      </div>
+      <div class="form-group">
+        <label>Текст внизу меню (подвал)</label>
+        <textarea id="qr-menu-footer" rows="3" placeholder="Например: Спасибо за визит! Адрес: г. Тбилиси, ул. ... Тел: +995 ... Часы работы: 10:00 — 23:00"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>Цвет цен, заголовков и фона шапки</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-price').value = this.value;">
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+            Этот цвет используется для: цен, заголовков категорий и фона шапки вверху меню.
+          </p>
+        </div>
+        <div class="form-group">
+          <label>Цвет заголовков категорий</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-header').value = this.value;">
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+            Цвет заголовков главных категорий (и линии под ними). По умолчанию такой же, как у цен.
+          </p>
+        </div>
+      </div>
+      <script>
+        (function() {
+          const pairs = [
+            ['qr-menu-color-price', 'qr-menu-color-price-text'],
+            ['qr-menu-color-header', 'qr-menu-color-header-text']
+          ];
+          pairs.forEach(function(p) {
+            const picker = document.getElementById(p[0]);
+            const text = document.getElementById(p[1]);
+            if (!picker || !text) return;
+            picker.addEventListener('input', function() { text.value = picker.value; });
+          });
+        })();
+      </script>
+
+      <div id="qr-menu-categories" style="margin-top:16px;margin-bottom:16px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:10px;background:var(--bg);border-radius:8px;">
+        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(true)" style="font-size:0.9rem;">☑ Выбрать все</button>
+        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(false)" style="font-size:0.9rem;">☐ Снять все</button>
+        <button class="btn btn-primary" type="button" onclick="saveAndGenerateQrMenu()" style="margin-left:auto;">💾 Сохранить и сгенерировать QR-код</button>
+      </div>
+      <div id="qr-menu-result" style="display:none;">
+        <div style="background:#fff;padding:16px;border-radius:8px;display:inline-block;border:1px solid var(--border);">
+          <img id="qr-menu-image" alt="QR-код меню" style="display:block;width:280px;height:280px;">
+        </div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+          <a id="qr-menu-link" href="#" target="_blank" style="color:var(--primary);word-break:break-all;"></a>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" type="button" onclick="downloadQrMenuImage()">⬇ Скачать QR-код (PNG)</button>
+            <button class="btn btn-outline" type="button" onclick="openVisitorMenuInNewTab()">↗ Открыть меню в новой вкладке</button>
+            <button class="btn btn-outline" type="button" onclick="printQrMenu()">🖨 Печать QR-кода</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1309,7 +1345,7 @@ function switchTab(name) {
   if (name === 'staff') renderStaffList();
   if (name === 'sounds') updateSoundStatuses();
   if (name === 'tables') loadTablesConfig();
-  if (name === 'settings') renderQrMenuCategories();
+  if (name === 'qrmenu') renderQrMenuCategories();
   // On mobile, close the sidebar after selecting a tab
   closeSidebarOnMobile();
 }
