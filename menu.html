@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Меню — Ресторан</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
 <style id="dynamic-menu-styles"></style>
 <style>
   :root {
@@ -13,11 +14,15 @@
     --vm-header-bg: #d32f2f; --vm-accent: #d32f2f;
   }
   [data-theme="dark"] {
-    --vm-bg: #1a1a2e; --vm-text: #f0f0f0; --vm-muted: #999;
-    --vm-border: #333; --vm-card-bg: #252535;
+    --vm-bg: #121212; --vm-text: #e0e0e0; --vm-muted: #888;
+    --vm-border: #333; --vm-card-bg: #1e1e1e;
   }
   * { box-sizing: border-box; }
-  body { background: var(--vm-bg); padding: 0; margin: 0; color: var(--vm-text); transition: background 0.3s, color 0.3s; }
+  body {
+    background: var(--vm-bg); padding: 0; margin: 0;
+    color: var(--vm-text); transition: background 0.3s, color 0.3s;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
 
   .menu-header {
     position: fixed; top: 0; left: 0; right: 0; z-index: 60;
@@ -37,7 +42,9 @@
   .header-spacer { height: 64px; }
 
   .subcat-tabs-bar {
-    position: sticky; top: 0; z-index: 40; background: var(--vm-card-bg);
+    position: sticky; top: 0; z-index: 40;
+    background: color-mix(in srgb, var(--vm-card-bg) 88%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     display: flex; gap: 6px; padding: 10px 12px; overflow-x: auto;
     -webkit-overflow-scrolling: touch; border-bottom: 1px solid var(--vm-border);
     scrollbar-width: none;
@@ -78,7 +85,9 @@
 
   .bottom-cat-bar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
-    background: var(--vm-card-bg); border-top: 1px solid var(--vm-border);
+    background: color-mix(in srgb, var(--vm-card-bg) 92%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border-top: 1px solid var(--vm-border);
     padding: 12px 16px; display: flex; align-items: center; justify-content: center;
     gap: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;
     color: var(--vm-text); box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
@@ -150,61 +159,10 @@
 
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
-<script>
-// Lightweight Supabase init for menu.html — avoids creating a GoTrueClient
-// (which causes "Multiple GoTrueClient instances" warning when the waiter
-// app is also open in another tab).
-var _sb_menu = null;
-function initSupabaseMenu() {
-  if (typeof window !== 'undefined' && window.supabase && CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === -1) {
-    _sb_menu = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
-  }
-}
-
-// Minimal helpers — we only need dbSelect and formatMoney
-async function dbSelectMenu(table, filters) {
-  let query = _sb_menu.from(table).select('*');
-  if (filters) {
-    Object.keys(filters).forEach(function(k) {
-      const v = filters[k];
-      if (v !== undefined && v !== null && v !== '') query = query.eq(k, v);
-    });
-  }
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return data || [];
-}
-
-function formatMoneyMenu(amount) {
-  const n = Number(amount) || 0;
-  let cur = '₾';
-  try { if (window.APP_DATA && APP_DATA.settings && APP_DATA.settings.currency) cur = APP_DATA.settings.currency; } catch(e) {}
-  if (cur === 'PASTE_YOUR') cur = '₾';
-  const hasDec = (n % 1) !== 0;
-  const formatted = hasDec ? n.toFixed(2) : Math.round(n).toString();
-  return formatted + ' ' + cur;
-}
-
-function escapeHtmlMenu(s) {
-  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-</script>
-<script>
-// Common functions that menu.html needs from common.js (loaded via script tag below)
-// We redefine what we need to avoid loading the full common.js
-</script>
 <script src="common.js"></script>
 <script>
 (function() {
-  // Use the _sb from common.js (initSupabase), but with persistSession:false to avoid GoTrue warning
-  // Actually common.js already calls initSupabase() which creates _sb.
-  // The GoTrue warning is harmless but let's suppress it by checking if _sb already exists.
-  if (typeof _sb === 'undefined' || !_sb) {
-    initSupabase();
-  }
-
+  initSupabase();
   var selectedMainCat = null;
   var allMainCats = [];
   var itemsByCat = {};
@@ -212,62 +170,81 @@ function escapeHtmlMenu(s) {
   var headerEl = document.getElementById('menu-header');
   var bottomBarEl = document.getElementById('bottom-cat-bar');
 
-  // Theme
-  function getPreferredTheme() {
+  // ---- THEME ----
+  // Auto-detect dark mode — works on Android Chrome, iPhone Safari, etc.
+  // Use multiple methods: localStorage (user override), then prefers-color-scheme.
+  function getSystemTheme() {
+    // Method 1: matchMedia (standard, works on modern browsers)
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+    // Method 2: Check if the browser reports dark color scheme
+    if (window.matchMedia && window.matchMedia('(color-scheme: dark)').matches) return 'dark';
+    // Method 3: Fallback — check the computed background color of a test element
     return 'light';
   }
+
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     var btn = document.getElementById('theme-toggle');
     if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
     try { localStorage.setItem('vm-theme', theme); } catch(e) {}
   }
+
   window.toggleTheme = function() {
-    var current = document.documentElement.getAttribute('data-theme') || getPreferredTheme();
+    var current = document.documentElement.getAttribute('data-theme') || getSystemTheme();
     applyTheme(current === 'dark' ? 'light' : 'dark');
   };
-  // Init: use saved theme, or auto-detect from device
+
+  // Init theme — check localStorage first, then system preference
   var savedTheme = null;
   try { savedTheme = localStorage.getItem('vm-theme'); } catch(e) {}
-  applyTheme(savedTheme || getPreferredTheme());
-  // Listen for system theme changes
-  if (window.matchMedia) {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-      if (!savedTheme) applyTheme(e.matches ? 'dark' : 'light');
-    });
+  if (savedTheme) {
+    applyTheme(savedTheme);
+  } else {
+    applyTheme(getSystemTheme());
   }
 
-  // Header hide/show — show when scrolling UP, hide when scrolling DOWN
-  var lastScrollY = 0;
+  // Listen for system theme changes (real-time, when user switches in settings)
+  if (window.matchMedia) {
+    try {
+      var mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', function(e) {
+          // Only auto-switch if user hasn't manually chosen a theme
+          var current = null;
+          try { current = localStorage.getItem('vm-theme'); } catch(e) {}
+          if (!current) applyTheme(e.matches ? 'dark' : 'light');
+        });
+      } else if (mediaQuery.addListener) {
+        // Older browsers (Safari < 14)
+        mediaQuery.addListener(function(e) {
+          var current = null;
+          try { current = localStorage.getItem('vm-theme'); } catch(e) {}
+          if (!current) applyTheme(e.matches ? 'dark' : 'light');
+        });
+      }
+    } catch(e) {}
+  }
+
+  // ---- HEADER SHOW/HIDE ----
+  // Header is hidden when scrolling down. It only comes back when you reach
+  // the very top of the page (scrollY === 0), NOT when you scroll up in general.
   var ticking = false;
   function onScroll() {
     var y = window.scrollY;
-    var bottomBarH = 56;
-    var contentH = document.getElementById('menu-content').offsetHeight;
-    var docH = document.body.scrollHeight;
-    var winH = window.innerHeight;
-
-    // Only hide header if there's enough content to scroll
-    if (docH > winH + 100) {
-      if (y > lastScrollY && y > 80) {
-        // Scrolling down — hide header, show bottom bar
-        headerEl.classList.add('hidden');
-        bottomBarEl.style.transform = 'translateY(0)';
-      } else {
-        // Scrolling up — show header
-        headerEl.classList.remove('hidden');
-      }
-    } else {
+    if (y <= 0) {
+      // At the very top — show header
       headerEl.classList.remove('hidden');
+    } else {
+      // Anywhere below the top — hide header
+      headerEl.classList.add('hidden');
     }
-    lastScrollY = y;
     ticking = false;
   }
   window.addEventListener('scroll', function() {
     if (!ticking) { window.requestAnimationFrame(onScroll); ticking = true; }
   }, false);
 
+  // ---- APPEARANCE ----
   function applyAppearance() {
     var s = APP_DATA.settings || {};
     var priceColor = s.qr_menu_color_price || '#d32f2f';
@@ -282,6 +259,7 @@ function escapeHtmlMenu(s) {
     else footer.style.display = 'none';
   }
 
+  // ---- RENDER ----
   function render() {
     var contentEl = document.getElementById('menu-content');
     try {
@@ -358,13 +336,10 @@ function escapeHtmlMenu(s) {
     tabsBar.innerHTML = tabsHtml;
     tabsBar.classList.toggle('hidden', visibleSubs.length === 0);
 
-    // Attach click handlers
     tabsBar.querySelectorAll('.subcat-tab').forEach(function(tab) {
       tab.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        var subId = this.getAttribute('data-sub-id');
-        scrollToSubcat(subId);
+        e.preventDefault(); e.stopPropagation();
+        scrollToSubcat(this.getAttribute('data-sub-id'));
       });
     });
 
@@ -408,20 +383,14 @@ function escapeHtmlMenu(s) {
           var id = entry.target.getAttribute('data-subcat-id');
           document.querySelectorAll('.subcat-tab').forEach(function(t) { t.classList.remove('active'); });
           var tab = document.querySelector('.subcat-tab[data-sub-id="' + id + '"]');
-          if (tab) {
-            tab.classList.add('active');
-            tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-          }
+          if (tab) { tab.classList.add('active'); tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); }
         }
       });
     }, { rootMargin: '-60px 0px -70% 0px', threshold: 0 });
     sections.forEach(function(s) { scrollObserver.observe(s); });
   }
 
-  window.toggleCategoryDropdown = function() {
-    document.getElementById('category-dropdown').classList.toggle('open');
-  };
-
+  window.toggleCategoryDropdown = function() { document.getElementById('category-dropdown').classList.toggle('open'); };
   window.selectMainCat = function(catId) {
     selectedMainCat = catId ? allMainCats.find(function(c) { return c.id === catId; }) : null;
     document.getElementById('category-dropdown').classList.remove('open');
@@ -434,13 +403,12 @@ function escapeHtmlMenu(s) {
   function scrollToSubcat(subId) {
     var el = document.getElementById('sub-' + subId);
     if (!el) return;
-    // Use setTimeout to ensure DOM is ready
     setTimeout(function() {
       var rect = el.getBoundingClientRect();
-      var headerH = headerEl.classList.contains('hidden') ? 0 : 64;
       var tabsBar = document.getElementById('subcat-tabs-bar');
       var tabsH = tabsBar.classList.contains('hidden') ? 0 : 50;
-      var top = rect.top + window.scrollY - headerH - tabsH - 6;
+      // Header is hidden when not at top, so no header offset
+      var top = rect.top + window.scrollY - tabsH - 6;
       window.scrollTo({ top: top, behavior: 'smooth' });
     }, 80);
   }
