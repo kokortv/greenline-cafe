@@ -1234,9 +1234,11 @@ async function refreshAppDataAndRender() {
     renderHome();
     renderReadyAlerts();
     renderHomeActiveOrders();
+    // Also refresh active orders + shift status in the background (non-blocking)
+    refreshActiveOrders();
   } catch (err) {
     console.error('Refresh APP_DATA failed:', err);
-    renderHome(); // fallback to existing cached data
+    renderHome();
     renderReadyAlerts();
     renderHomeActiveOrders();
   }
@@ -2593,6 +2595,9 @@ function showActiveOrders() {
 }
 
 async function loadActiveOrders() {
+  // Render from cached data immediately
+  renderActiveOrdersList();
+  // Then refresh in the background
   await refreshActiveOrders();
   renderActiveOrdersList();
 }
