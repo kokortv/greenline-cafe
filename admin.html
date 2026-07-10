@@ -1815,42 +1815,58 @@ function renderOrders() {
     return new Date(b.created_at) - new Date(a.created_at);
   });
 
-  div.innerHTML = '';
+  // Determine which columns have any data across all rows
+  const hasWaiter = sorted.some(function(o) { return o.waiter_name; });
+  const hasGuests = sorted.some(function(o) { return o.guests && o.guests > 0; });
+  const hasPayment = sorted.some(function(o) { return o.payment_method; });
+  const hasDate = true; // always show date
+  const hasTotal = true; // always show total
+
+  let html = '<table style="width:100%;border-collapse:collapse;">';
+  html += '<thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);">';
+  html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Заказ</th>';
+  if (hasGuests) html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Гостей</th>';
+  if (hasWaiter) html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Официант</th>';
+  if (hasPayment) html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Оплата</th>';
+  html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Создан</th>';
+  html += '<th style="padding:10px;text-align:right;white-space:nowrap;">Сумма</th>';
+  html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Статус</th>';
+  html += '<th style="padding:10px;text-align:center;white-space:nowrap;"></th>';
+  html += '</tr></thead><tbody>';
+
   sorted.forEach(function(order) {
-    const itemsCount = order.items ? order.items.length : 0;
-    const row = document.createElement('div');
-    row.className = 'order-history-row ' + order.status;
-    // Highlight paused orders with yellow background
-    if (order.status === 'paused') {
-      row.style.background = '#fffde7';
-      row.style.borderLeft = '5px solid var(--warning)';
+    const rowStyle = order.status === 'paused' ? 'background:#fffde7;border-left:4px solid var(--warning);' : '';
+    const rowClass = order.status === 'paused' ? 'paused' : '';
+    html += '<tr class="' + rowClass + '" style="' + rowStyle + 'border-bottom:1px solid var(--border);">';
+    html += '<td style="padding:10px;font-weight:700;white-space:nowrap;">' + escapeHtml(formatTableLabel(order)) + '</td>';
+    if (hasGuests) html += '<td style="padding:10px;white-space:nowrap;">' + (order.guests || 0) + '</td>';
+    if (hasWaiter) html += '<td style="padding:10px;white-space:nowrap;">' + escapeHtml(order.waiter_name || '—') + '</td>';
+    if (hasPayment) {
+      let payLabel = '—';
+      if (order.payment_method === 'cash') payLabel = '💵 Наличные';
+      else if (order.payment_method === 'card') payLabel = '💳 Карта';
+      else if (order.payment_method === 'mixed') payLabel = '🔀 Смешанная';
+      html += '<td style="padding:10px;white-space:nowrap;">' + payLabel + '</td>';
     }
-    row.innerHTML =
-      '<div class="ohr-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
-      '<div class="ohr-cat">' + order.guests + ' чел.</div>' +
-      '<div class="ohr-cat">' + escapeHtml(order.waiter_name || '—') + '</div>' +
-      '<div class="ohr-cat">' +
-        (order.payment_method === 'cash' ? '💵 Наличные' :
-         order.payment_method === 'card' ? '💳 Карта' :
-         '—') +
-      '</div>' +
-      '<div class="ohr-time">' + formatDateTime(order.created_at) + '</div>' +
-      '<div class="ohr-total">' + formatMoney(order.total) + '</div>' +
-      '<div class="ohr-status">' +
-        (order.status === 'accepted' ?
-          '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
-         order.status === 'paused' ?
-          '<span class="pill pill-warning" style="background:#ff9800;color:white;"><span class="status-dot" style="background:white;"></span>⏸ Пауза</span>' :
-          '<span class="pill pill-success"><span class="status-dot completed"></span>Завершён</span>') +
-      '</div>' +
-      '<div class="ohr-actions">' +
-        '<button class="btn btn-outline" onclick="viewOrder(\'' + order.id + '\')">Просмотр</button>' +
-        (order.status === 'accepted' || order.status === 'paused' ?
-          '<button class="btn btn-success" onclick="withLoading(this, \'Завершаем...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">Завершить</button>' : '') +
-        '<button class="btn btn-danger" onclick="deleteOrderAdmin(\'' + order.id + '\')">Удалить</button>' +
-      '</div>';
-    div.appendChild(row);
+    html += '<td style="padding:10px;font-size:0.9rem;color:var(--text-muted);white-space:nowrap;">' + formatDateTime(order.created_at) + '</td>';
+    html += '<td style="padding:10px;text-align:right;font-weight:700;color:var(--primary);white-space:nowrap;">' + formatMoney(order.total) + '</td>';
+    html += '<td style="padding:10px;white-space:nowrap;">' +
+      (order.status === 'accepted' ?
+        '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
+       order.status === 'paused' ?
+        '<span class="pill pill-warning" style="background:#ff9800;color:white;"><span class="status-dot" style="background:white;"></span>⏸ Пауза</span>' :
+        '<span class="pill pill-success"><span class="status-dot completed"></span>Завершён</span>') +
+    '</td>';
+    html += '<td style="padding:10px;text-align:center;white-space:nowrap;">' +
+      '<button class="btn btn-outline" style="padding:6px 10px;" onclick="viewOrder(\'' + order.id + '\')">👁</button> ' +
+      (order.status === 'accepted' || order.status === 'paused' ?
+        '<button class="btn btn-success" style="padding:6px 10px;" onclick="withLoading(this, \'...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">✓</button> ' : '') +
+      '<button class="btn btn-danger" style="padding:6px 10px;" onclick="deleteOrderAdmin(\'' + order.id + '\')">✕</button>' +
+    '</td>';
+    html += '</tr>';
   });
+  html += '</tbody></table>';
+  div.innerHTML = html;
 }
 
 function clearFilters() {
@@ -1900,7 +1916,8 @@ async function viewOrder(orderId) {
         '<div><b>Официант:</b> ' + escapeHtml(order.waiter_name || '—') + '</div>' +
         '<div><b>Оплата:</b> ' +
           (order.payment_method === 'cash' ? '💵 Наличные' :
-           order.payment_method === 'card' ? '💳 Карта' : '—') +
+           order.payment_method === 'card' ? '💳 Карта' :
+           order.payment_method === 'mixed' ? '🔀 Смешанная' : '—') +
         '</div>' +
         '<div><b>Статус:</b> ' +
           (order.status === 'accepted' ? 'Принят' :
