@@ -147,6 +147,142 @@
   .sort-arrow { font-size: 0.75rem; opacity: 0.7; margin-left: 4px; }
   th[onclick]:hover .sort-arrow { opacity: 1; }
 
+  /* ============================================================
+     ADMIN SIDEBAR LAYOUT
+     ============================================================ */
+  .admin-layout {
+    display: flex;
+    gap: 0;
+    align-items: flex-start;
+  }
+  .admin-sidebar {
+    flex: none;
+    width: 220px;
+    background: #fff;
+    border-right: 1px solid var(--border);
+    min-height: calc(100vh - 60px);
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+    z-index: 10;
+  }
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+  }
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .sidebar-item:hover {
+    background: var(--bg);
+    color: var(--text);
+  }
+  .sidebar-item.active {
+    color: var(--primary);
+    border-left-color: var(--primary);
+    background: rgba(211, 47, 47, 0.05);
+  }
+  .sidebar-icon {
+    font-size: 1.1rem;
+    flex: none;
+  }
+  .sidebar-parent {
+    justify-content: space-between;
+  }
+  .sidebar-parent span:first-child {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sidebar-arrow {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .sidebar-subitems {
+    display: flex;
+    flex-direction: column;
+    padding-left: 28px;
+  }
+  .sidebar-subitem {
+    padding: 8px 16px;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-left: 2px solid var(--border);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+  }
+  .sidebar-subitem:hover {
+    color: var(--text);
+    background: var(--bg);
+  }
+  .sidebar-subitem.active {
+    color: var(--primary);
+    border-left-color: var(--primary);
+    font-weight: 600;
+  }
+  .admin-content {
+    flex: 1;
+    min-width: 0;
+    padding: 16px 20px;
+  }
+  /* Mobile sidebar toggle button (hidden on desktop) */
+  .sidebar-toggle {
+    display: none;
+    position: fixed;
+    top: 60px;
+    left: 12px;
+    z-index: 100;
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  }
+
+  /* Mobile responsive — sidebar becomes an overlay */
+  @media (max-width: 768px) {
+    .admin-sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 260px;
+      height: 100vh;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+      z-index: 200;
+    }
+    .admin-sidebar.open {
+      transform: translateX(0);
+    }
+    .sidebar-toggle {
+      display: block;
+    }
+    .admin-content {
+      padding: 50px 12px 20px;
+    }
+  }
+
   /* Replenish button — circular green with plus sign */
   .replenish-btn:hover { background: #1b5e20 !important; transform: scale(1.05); }
   .replenish-btn:active { transform: scale(0.95); }
@@ -289,16 +425,53 @@
 </div>
 
 <main class="app-main" id="app-main" style="display:none;">
-  <div class="tabs admin-tabs">
-    <button class="tab active" data-tab="orders" onclick="switchTab('orders')">Заказы</button>
-    <button class="tab" data-tab="menu" onclick="switchTab('menu')">Меню</button>
-    <button class="tab" data-tab="categories" onclick="switchTab('categories')">Категории</button>
-    <button class="tab" data-tab="staff" onclick="switchTab('staff')">Сотрудники</button>
-    <button class="tab" data-tab="sounds" onclick="switchTab('sounds')">Звуки</button>
-    <button class="tab" data-tab="stock" onclick="switchTab('stock')">Склад</button>
-    <button class="tab" data-tab="tables" onclick="switchTab('tables')">Столы</button>
-    <button class="tab" data-tab="settings" onclick="switchTab('settings')">Настройки</button>
-  </div>
+  <div class="admin-layout">
+    <!-- Sidebar navigation -->
+    <aside class="admin-sidebar" id="admin-sidebar">
+      <nav class="sidebar-nav">
+        <button class="sidebar-item active" data-tab="orders" onclick="switchTab('orders')">
+          <span class="sidebar-icon">📋</span> Заказы
+        </button>
+        <button class="sidebar-item" data-tab="menu" onclick="switchTab('menu')">
+          <span class="sidebar-icon">🍽</span> Меню
+        </button>
+        <button class="sidebar-item" data-tab="categories" onclick="switchTab('categories')">
+          <span class="sidebar-icon">📂</span> Категории
+        </button>
+        <button class="sidebar-item" data-tab="staff" onclick="switchTab('staff')">
+          <span class="sidebar-icon">👤</span> Сотрудники
+        </button>
+        <button class="sidebar-item" data-tab="sounds" onclick="switchTab('sounds')">
+          <span class="sidebar-icon">🔔</span> Звуки
+        </button>
+        <!-- Stock — parent with sub-items -->
+        <div class="sidebar-group" id="sidebar-group-stock">
+          <button class="sidebar-item sidebar-parent" data-tab="stock" onclick="switchTab('stock')">
+            <span class="sidebar-icon">📦</span> Склад
+            <span class="sidebar-arrow" id="stock-arrow">▼</span>
+          </button>
+          <div class="sidebar-subitems" id="stock-subitems">
+            <button class="sidebar-subitem active" data-stocksub="items" onclick="switchStockSub('items')">Товары</button>
+            <button class="sidebar-subitem" data-stocksub="deliveries" onclick="switchStockSub('deliveries')">Поставки</button>
+            <button class="sidebar-subitem" data-stocksub="suppliers" onclick="switchStockSub('suppliers')">Поставщики</button>
+            <button class="sidebar-subitem" data-stocksub="warehouses" onclick="switchStockSub('warehouses')">Склады</button>
+            <button class="sidebar-subitem" data-stocksub="accounts" onclick="switchStockSub('accounts')">Счета</button>
+          </div>
+        </div>
+        <button class="sidebar-item" data-tab="tables" onclick="switchTab('tables')">
+          <span class="sidebar-icon">🪑</span> Столы
+        </button>
+        <button class="sidebar-item" data-tab="settings" onclick="switchTab('settings')">
+          <span class="sidebar-icon">⚙️</span> Настройки
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Mobile sidebar toggle -->
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">☰ Меню</button>
+
+    <!-- Content area -->
+    <div class="admin-content">
 
   <!-- ORDERS TAB -->
   <div class="tab-content" id="tab-orders">
@@ -576,21 +749,13 @@
       </div>
     </div>
   </div>
-  <!-- STOCK TAB — main "Склад" with sub-tabs (Товары, Поставки, Поставщики, Счета, Склады) -->
+  <!-- STOCK TAB — main "Склад" with sub-content (navigation is in the sidebar) -->
   <div class="tab-content" id="tab-stock" style="display:none;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <h2 class="section-title" style="margin:0;">Склад</h2>
+      <h2 class="section-title" style="margin:0;" id="stock-section-title">Склад — Товары</h2>
       <button class="btn btn-primary" id="stock-refresh-btn" onclick="refreshStockSubTab()">↻ Обновить</button>
     </div>
-    <!-- Sub-tabs inside the Stock section -->
-    <div class="tabs" style="margin-bottom:16px;overflow-x:auto;white-space:nowrap;">
-      <button class="tab active" data-stocksub="items" onclick="switchStockSub('items')">Товары</button>
-      <button class="tab" data-stocksub="deliveries" onclick="switchStockSub('deliveries')">Поставки</button>
-      <button class="tab" data-stocksub="suppliers" onclick="switchStockSub('suppliers')">Поставщики</button>
-      <button class="tab" data-stocksub="warehouses" onclick="switchStockSub('warehouses')">Склады</button>
-      <button class="tab" data-stocksub="accounts" onclick="switchStockSub('accounts')">Счета</button>
-    </div>
-    <!-- Sub-tab contents -->
+    <!-- Sub-tab contents (navigation moved to sidebar) -->
     <div id="stocksub-items" class="stocksub-content">
       <div id="stock-report"></div>
     </div>
@@ -630,6 +795,9 @@
       <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
     </div>
   </div>
+
+    </div><!-- /.admin-content -->
+  </div><!-- /.admin-layout -->
 </main>
 
 <!-- Menu item modal -->
@@ -1098,23 +1266,63 @@ function startApp() {
 
 /* ---------- Tab switching ---------- */
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-  document.querySelector('[data-tab="' + name + '"]').classList.add('active');
+  // Update sidebar active state
+  document.querySelectorAll('.sidebar-item').forEach(function(t) { t.classList.remove('active'); });
+  const activeItem = document.querySelector('.sidebar-item[data-tab="' + name + '"]');
+  if (activeItem) activeItem.classList.add('active');
+  // Show/hide tab content
   document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
-  document.getElementById('tab-' + name).style.display = 'block';
+  const target = document.getElementById('tab-' + name);
+  if (target) target.style.display = 'block';
+  // Auto-expand the Stock sub-group when Stock is selected
+  if (name === 'stock') {
+    expandStockSidebar(true);
+    if (!window._currentStockSub) window._currentStockSub = 'items';
+    switchStockSub(window._currentStockSub);
+  } else {
+    // Optionally collapse the Stock sub-group when leaving Stock
+    // (keep it expanded so user can switch back quickly — comment out to collapse)
+    // expandStockSidebar(false);
+  }
   if (name === 'orders') { loadOrders(); startOrdersPolling(); }
   else { stopOrdersPolling(); }
   if (name === 'menu') renderMenuList();
   if (name === 'categories') renderCategoryList();
   if (name === 'staff') renderStaffList();
   if (name === 'sounds') updateSoundStatuses();
-  if (name === 'stock') {
-    // Default to "items" sub-tab when opening the Stock section
-    if (!window._currentStockSub) window._currentStockSub = 'items';
-    switchStockSub(window._currentStockSub);
-  }
   if (name === 'tables') loadTablesConfig();
   if (name === 'settings') renderQrMenuCategories();
+  // On mobile, close the sidebar after selecting a tab
+  closeSidebarOnMobile();
+}
+
+// Expand/collapse the Stock sub-items in the sidebar
+function expandStockSidebar(expand) {
+  const subitems = document.getElementById('stock-subitems');
+  const arrow = document.getElementById('stock-arrow');
+  if (!subitems) return;
+  if (expand) {
+    subitems.style.display = 'flex';
+    if (arrow) arrow.textContent = '▼';
+  } else {
+    subitems.style.display = 'none';
+    if (arrow) arrow.textContent = '▶';
+  }
+}
+
+// Toggle the sidebar open/closed (for mobile)
+function toggleSidebar() {
+  const sidebar = document.getElementById('admin-sidebar');
+  if (!sidebar) return;
+  sidebar.classList.toggle('open');
+}
+
+// Close the sidebar on mobile after selecting an item
+function closeSidebarOnMobile() {
+  const sidebar = document.getElementById('admin-sidebar');
+  if (sidebar && window.innerWidth <= 768) {
+    sidebar.classList.remove('open');
+  }
 }
 
 /* ---------- Orders auto-polling ---------- */
@@ -2682,22 +2890,37 @@ async function deleteCategory(id) {
 /* ---------- STOCK ---------- */
 // Switch between sub-tabs within the Stock section.
 // Sub-tab keys: items | deliveries | suppliers | warehouses | accounts
+// Updates the sidebar sub-item active state AND the section title.
 function switchStockSub(sub) {
   window._currentStockSub = sub;
-  // Toggle active state on the sub-tab buttons
-  document.querySelectorAll('[data-stocksub]').forEach(function(b) {
+  // Toggle active state on the sidebar sub-items
+  document.querySelectorAll('.sidebar-subitem').forEach(function(b) {
     b.classList.toggle('active', b.dataset.stocksub === sub);
   });
   // Show only the matching sub-tab content
   document.querySelectorAll('.stocksub-content').forEach(function(c) { c.style.display = 'none'; });
   const target = document.getElementById('stocksub-' + sub);
   if (target) target.style.display = 'block';
+  // Update the section title
+  const titleEl = document.getElementById('stock-section-title');
+  if (titleEl) {
+    const labels = {
+      items: 'Склад — Товары',
+      deliveries: 'Склад — Поставки',
+      suppliers: 'Склад — Поставщики',
+      warehouses: 'Склад — Склады',
+      accounts: 'Склад — Счета'
+    };
+    titleEl.textContent = labels[sub] || 'Склад';
+  }
   // Load data for the sub-tab
   if (sub === 'items') loadStockReport();
   if (sub === 'deliveries') loadDeliveriesList();
   if (sub === 'suppliers') loadSuppliersList();
   if (sub === 'warehouses') loadWarehousesList();
   if (sub === 'accounts') loadAccountsList();
+  // Close sidebar on mobile
+  closeSidebarOnMobile();
 }
 
 // Refresh the currently-visible sub-tab (called from the "↻ Обновить" button)
