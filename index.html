@@ -395,7 +395,7 @@
     overflow-y: auto;
     max-height: calc(100vh - 60px);
   }
-  /* Footer with total + accept button — fixed at bottom of the order screen */
+  /* Footer with total + accept button — fixed at bottom, centered */
   .order-footer {
     position: fixed;
     bottom: 0;
@@ -403,6 +403,7 @@
     right: 0;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 16px;
     padding: 12px 16px;
     background: #fff;
@@ -415,6 +416,10 @@
     font-weight: 800;
     color: var(--primary);
     white-space: nowrap;
+  }
+  .order-footer button {
+    flex: none;
+    min-width: 220px;
   }
   /* Active category button highlight */
   .main-cat-btn.selected {
@@ -2427,6 +2432,10 @@ function renderHomeActiveOrders() {
       (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' +
       items.length + ' поз. · ' + formatMoney(order.total) +
     '</div>';
+    // Order comment (if any)
+    if (order.waiter_note) {
+      html += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">💬 ' + escapeHtml(order.waiter_note) + '</div>';
+    }
     // Progress line
     if (cookingItems.length > 0) {
       html += '<div class="hoc-items">Готовность: <b>' + readyItems.length + '/' + cookingItems.length + '</b>' +
@@ -2620,6 +2629,7 @@ async function renderOrderDetail() {
             '</span>' +
           '</div>' +
         '</div>' +
+        (order.waiter_note ? '<div style="margin-top:8px;padding:8px;background:#fff8e1;border-radius:6px;font-size:0.9rem;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
       '</div>';
 
     const itemsDiv = document.getElementById('order-detail-items');

@@ -930,10 +930,6 @@
       <input type="checkbox" id="menu-cook" checked>
       <label for="menu-cook" style="margin:0;">Требует готовки (виден повару)</label>
     </div>
-    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
-      Снимите галочку для готовых товаров (вода, хлеб, соки, алкоголь) — они не появятся у повара.
-      Порядок товаров меняется перетаскиванием в списке.
-    </p>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('modal-menu')">Отмена</button>
       <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveMenuItem(); })">Сохранить</button>
@@ -1915,6 +1911,7 @@ async function viewOrder(orderId) {
         '<div><b>Создан:</b> ' + formatDateTime(order.created_at) + '</div>' +
         '<div><b>Завершён:</b> ' + (order.completed_at ? formatDateTime(order.completed_at) : '—') + '</div>' +
       '</div>' +
+      (order.waiter_note ? '<div style="margin-bottom:16px;padding:8px 12px;background:#fff8e1;border-radius:6px;font-size:0.9rem;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
       itemsHtml +
       '<div style="text-align:right;font-size:1.5rem;font-weight:800;color:var(--primary);">Итого: ' + formatMoney(order.total) + '</div>';
     openModal('modal-order');

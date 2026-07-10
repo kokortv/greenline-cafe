@@ -288,13 +288,14 @@ async function getOrders(status, waiterId) {
 
   orderQuery = orderQuery.order('created_at', { ascending: false }).limit(200);
 
+  // Fetch orders first
   const { data: orders, error: orderError } = await orderQuery;
   if (orderError) {
     console.error('getOrders error:', orderError);
     throw new Error(orderError.message);
   }
 
-  // Fetch items for these orders
+  // Fetch items for these orders IN PARALLEL with a single query
   const orderIds = (orders || []).map(function(o) { return o.id; });
   let items = [];
   if (orderIds.length > 0) {
@@ -321,6 +322,8 @@ async function getOrders(status, waiterId) {
       name_translation: it.name_translation || '',
       category_name: it.category_name || '',
       category_name_translation: it.category_name_translation || '',
+      modification_id: it.modification_id || '',
+      modification_name: it.modification_name || '',
       price: Number(it.price) || 0,
       quantity: Number(it.quantity) || 1,
       comment: it.comment || '',
@@ -341,22 +344,16 @@ async function getOrders(status, waiterId) {
 }
 
 async function getOrder(id) {
-  // Query order and items separately (avoid join issues)
-  const { data: orderData, error: orderError } = await _sb
-    .from('orders')
-    .select('*')
-    .eq('id', id)
-    .single();
-  if (orderError) throw new Error(orderError.message);
+  // Query order and items IN PARALLEL (2 requests at once, not sequentially)
+  const [orderResult, itemsResult] = await Promise.all([
+    _sb.from('orders').select('*').eq('id', id).single(),
+    _sb.from('order_items').select('*').eq('order_id', id)
+  ]);
+  if (orderResult.error) throw new Error(orderResult.error.message);
+  if (itemsResult.error) console.error('getOrder items error:', itemsResult.error);
 
-  const { data: itemsData, error: itemsError } = await _sb
-    .from('order_items')
-    .select('*')
-    .eq('order_id', id);
-  if (itemsError) console.error('getOrder items error:', itemsError);
-
-  const data = orderData;
-  data.items = (itemsData || []).map(function(it) {
+  const data = orderResult.data;
+  data.items = (itemsResult.data || []).map(function(it) {
     return {
       id: it.id,
       order_id: it.order_id,
@@ -365,6 +362,8 @@ async function getOrder(id) {
       name_translation: it.name_translation || '',
       category_name: it.category_name || '',
       category_name_translation: it.category_name_translation || '',
+      modification_id: it.modification_id || '',
+      modification_name: it.modification_name || '',
       price: Number(it.price) || 0,
       quantity: Number(it.quantity) || 1,
       comment: it.comment || '',
