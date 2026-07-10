@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 <style>
-  body { background: #1a1a1a; color: #f5f5f5; padding-bottom: 32px; }
+  body { background: #1a1a1a; color: #f5f5f5; }
   .app-header { background: #d32f2f; }
 
   .cook-layout {
@@ -660,7 +660,7 @@ function renderOrder() {
   }
 
   if (items.length === 0) {
-    html += '<div class="order-empty"><h2>В этом заказе нет блюд для готовки</h2><p>Только товары «без готовки» (напитки, хлеб и т.п.)</p></div>';
+    html += '<div class="order-empty"><h2>Нет блюд для готовки</h2></div>';
   } else {
     html += '<div class="cook-items">';
     items.forEach(function(item) {
@@ -701,9 +701,7 @@ function renderOrder() {
                 (categoryNameTranslation ? ' <span class="ci-cat-translation">/ ' + escapeHtml(categoryNameTranslation) + '</span>' : '') +
               '</div>' : ''
             ) +
-            '<div class="ci-name">' + escapeHtml(item.name) +
-              (item.modification_name ? ' <span style="color:var(--primary);font-weight:600;">· ' + escapeHtml(item.modification_name) + '</span>' : '') +
-            '</div>' +
+            '<div class="ci-name">' + escapeHtml(item.name) + '</div>' +
             (item.name_translation ?
               '<div class="ci-translation">' + escapeHtml(item.name_translation) + '</div>' : ''
             ) +

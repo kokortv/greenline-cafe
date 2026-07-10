@@ -528,6 +528,10 @@
     background: var(--success-light);
     animation: pulse-soft 2.5s infinite;
   }
+  .home-order-card.virtual-order {
+    background: #e3f2fd;
+    border-left-color: var(--info);
+  }
   @keyframes pulse-soft {
     0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
     50% { box-shadow: 0 4px 16px rgba(46,125,50,0.4); }
@@ -708,7 +712,7 @@
   <!-- ACTIVE ORDERS SCREEN -->
   <div class="screen" id="screen-orders">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showScreen('home')">← Домой</button>
+      <button class="btn btn-outline" onclick="showScreen('home')">← На главную</button>
       <h2 class="section-title" style="margin:0;">Принятые заказы</h2>
     </div>
     <div id="active-orders-list"></div>
@@ -717,7 +721,7 @@
   <!-- ORDER DETAIL SCREEN (modify existing) -->
   <div class="screen" id="screen-order-detail">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showActiveOrders()">← К заказам</button>
+      <button class="btn btn-outline" onclick="showScreen('home')">← На главную</button>
       <button class="btn btn-info" onclick="addMoreToOrder()">+ Добавить блюда</button>
     </div>
     <div id="order-detail-info"></div>
@@ -2423,6 +2427,8 @@ function renderHomeActiveOrders() {
 
     const card = document.createElement('div');
     card.className = 'home-order-card' + (allReady ? ' all-ready' : (hasReady ? ' has-ready' : ''));
+    // Virtual orders get a light blue background
+    if (order.table_type === 'virtual') card.classList.add('virtual-order');
     let html =
       '<div class="hoc-row1">' +
         '<div class="hoc-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
@@ -2430,7 +2436,7 @@ function renderHomeActiveOrders() {
       '</div>';
     html += '<div class="hoc-items">' +
       (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' +
-      items.length + ' поз. · ' + formatMoney(order.total) +
+      items.length + ' поз. · <span style="font-size:1.15rem;font-weight:800;color:var(--primary);">' + formatMoney(order.total) + '</span>' +
     '</div>';
     // Order comment (if any)
     if (order.waiter_note) {
@@ -2440,8 +2446,6 @@ function renderHomeActiveOrders() {
     if (cookingItems.length > 0) {
       html += '<div class="hoc-items">Готовность: <b>' + readyItems.length + '/' + cookingItems.length + '</b>' +
         (allReady ? ' ✅ всё готово — можно подавать!' : '') + '</div>';
-    } else {
-      html += '<div class="hoc-items">Только товары без готовки (напитки, хлеб и т.п.)</div>';
     }
     // List ready dishes if any (but not all — if all, just say "всё готово")
     if (hasReady && !allReady) {
@@ -2451,11 +2455,12 @@ function renderHomeActiveOrders() {
       html += '<div class="hoc-ready-list"><b>Готово к подаче:</b> ' + readyNames + '</div>';
     }
     // Actions — only 'accepted' orders reach here (paused are filtered out above)
-    // Disable "Завершить" if not all cooking items are ready
+    // Disable "Завершить" if not all items are served — UNLESS bar-only order
     const allServed = items.length > 0 && items.every(function(i) {
       return i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE';
     });
-    const canComplete = allServed;
+    const orderBarOnly = isOrderBarOnly(items);
+    const canComplete = allServed || orderBarOnly;
     let actions =
       '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>' +
       '<button class="btn btn-success' + (canComplete ? '' : ' disabled-btn') + '" ' +
@@ -2564,7 +2569,8 @@ function renderActiveOrdersList() {
     const allServed = items.length > 0 && items.every(function(i) {
       return i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE';
     });
-    const canComplete = allServed;
+    const orderBarOnly = isOrderBarOnly(items);
+    const canComplete = allServed || orderBarOnly;
     const card = document.createElement('div');
     card.className = 'order-card' + (isPaused ? ' paused' : '');
     card.style.cssText = isPaused ? 'border-left:5px solid var(--warning);background:#fffde7;' : '';
