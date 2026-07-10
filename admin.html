@@ -682,10 +682,8 @@
           </div>
         </div>
         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
-          Себестоимость — не меняется автоматически. Наценка указывается в процентах.
-          Введите <b>себестоимость + цену</b> → посчитается наценка.<br>
-          Введите <b>себестоимость + наценку</b> → посчитается цена.<br>
-          Введите <b>цену + наценку</b> → посчитается себестоимость.
+          Все три поля взаимосвязаны: <b>цена = себестоимость × (1 + наценка%)</b>.
+          Введите значение в любое поле — остальные пересчитаются автоматически.
         </p>
       </div>
 
@@ -2100,48 +2098,67 @@ function isPricingModeMods() {
 }
 
 // Recalculate single price fields. Markup is a PERCENTAGE (integer, no decimals).
-// Logic (per user spec):
-//   - User edits COST: do NOT change price or markup automatically.
-//   - User edits PRICE: if cost is set, recompute markup = round((price - cost) / cost * 100).
-//   - User edits MARKUP: if cost is set, recompute price = cost × (1 + markup/100).
-//     If cost is empty but price is set, recompute cost = price / (1 + markup/100).
+// Formula: price = cost × (1 + markup/100)
+// All three fields are interconnected — entering a value in any one of them
+// recalculates the others based on which other fields are already filled.
+//
+// Logic:
+//   - COST edited:
+//       • If markup is set (>0) → recompute price = cost × (1 + markup/100)
+//       • If markup is empty/0 → set price = cost, markup = 0
+//   - PRICE edited:
+//       • If cost is set → recompute markup = (price - cost) / cost × 100 (don't change cost)
+//       • If cost is empty but markup is set → recompute cost = price / (1 + markup/100)
+//   - MARKUP edited:
+//       • If cost is set → recompute price = cost × (1 + markup/100)
+//       • If cost is empty but price is set → recompute cost = price / (1 + markup/100)
 function recalcSinglePrice(changedField) {
   const costEl = document.getElementById('menu-cost');
   const markupEl = document.getElementById('menu-markup');
   const priceEl = document.getElementById('menu-price');
 
-  if (changedField === 'cost') {
-    // Don't auto-change anything — the user is just setting the base.
+  const cost = parseFloat(costEl.value) || 0;
+  const markup = parseFloat(markupEl.value) || 0;
+  const price = parseFloat(priceEl.value) || 0;
+
+  if (changedField === 'cost' && costEl.value !== '') {
+    // Cost was just edited.
+    if (markupEl.value !== '' && markup > 0) {
+      // Markup is set → recompute price = cost × (1 + markup/100)
+      priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
+    } else {
+      // No markup → price = cost, markup = 0
+      priceEl.value = cost.toFixed(2);
+      if (markupEl.value === '') markupEl.value = 0;
+      triggerVisualUpdate(markupEl);
+    }
+    triggerVisualUpdate(priceEl);
     return;
   }
 
   if (changedField === 'price' && priceEl.value !== '') {
-    // Price was just edited: derive markup from cost (if cost is set).
-    if (costEl.value !== '') {
-      const cost = parseFloat(costEl.value) || 0;
-      const price = parseFloat(priceEl.value) || 0;
-      if (cost > 0) {
-        const markup = ((price - cost) / cost) * 100;
-        // Round to integer — no decimals in markup
-        markupEl.value = Math.round(markup);
-        // Trigger a visual update — sometimes mobile browsers don't re-render
-        // the field until the next animation frame.
-        triggerVisualUpdate(markupEl);
-      }
+    // Price was just edited.
+    if (costEl.value !== '' && cost > 0) {
+      // Cost is set → recompute markup (don't change cost)
+      const newMarkup = ((price - cost) / cost) * 100;
+      markupEl.value = Math.round(newMarkup);
+      triggerVisualUpdate(markupEl);
+    } else if (markupEl.value !== '' && markup > 0) {
+      // No cost, but markup is set → recompute cost
+      costEl.value = (price / (1 + markup / 100)).toFixed(2);
+      triggerVisualUpdate(costEl);
     }
     return;
   }
 
   if (changedField === 'markup' && markupEl.value !== '') {
-    const markup = parseFloat(markupEl.value) || 0;
-    if (costEl.value !== '') {
-      // Cost is set → recompute price = cost × (1 + markup/100)
-      const cost = parseFloat(costEl.value) || 0;
+    // Markup was just edited.
+    if (costEl.value !== '' && cost > 0) {
+      // Cost is set → recompute price
       priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
       triggerVisualUpdate(priceEl);
-    } else if (priceEl.value !== '') {
-      // No cost, but price is set → derive cost = price / (1 + markup/100)
-      const price = parseFloat(priceEl.value) || 0;
+    } else if (priceEl.value !== '' && price > 0) {
+      // No cost, but price is set → recompute cost
       costEl.value = (price / (1 + markup / 100)).toFixed(2);
       triggerVisualUpdate(costEl);
     }
@@ -2215,11 +2232,11 @@ function addModificationRow(mod) {
 }
 
 // Recalculate cost/markup/price for a modification row
-// Markup is a PERCENTAGE (integer, no decimals) — same logic as recalcSinglePrice:
-//   - COST edited:  don't change anything (cost is just the base)
-//   - PRICE edited: if cost set, recompute markup = round((price - cost) / cost * 100)
-//   - MARKUP edited: if cost set, recompute price = cost × (1 + markup/100);
-//     else if price set, recompute cost = price / (1 + markup/100)
+// Markup is a PERCENTAGE (integer, no decimals). Same interconnected logic
+// as recalcSinglePrice — all three fields recompute each other:
+//   - COST edited: if markup set, recompute price; else price = cost, markup = 0
+//   - PRICE edited: if cost set, recompute markup; else if markup set, recompute cost
+//   - MARKUP edited: if cost set, recompute price; else if price set, recompute cost
 function recalcModPrice(input) {
   const row = input.closest('.modification-row');
   if (!row) return;
@@ -2228,34 +2245,48 @@ function recalcModPrice(input) {
   const priceEl = row.querySelector('.mod-price');
   const cls = input.className;
 
-  if (cls.indexOf('mod-cost') >= 0) {
-    // Cost edited — don't change anything automatically.
+  const cost = parseFloat(costEl.value) || 0;
+  const markup = parseFloat(markupEl.value) || 0;
+  const price = parseFloat(priceEl.value) || 0;
+
+  if (cls.indexOf('mod-cost') >= 0 && costEl.value !== '') {
+    // Cost was just edited.
+    if (markupEl.value !== '' && markup > 0) {
+      // Markup is set → recompute price
+      priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
+    } else {
+      // No markup → price = cost, markup = 0
+      priceEl.value = cost.toFixed(2);
+      if (markupEl.value === '') markupEl.value = 0;
+      triggerVisualUpdate(markupEl);
+    }
+    triggerVisualUpdate(priceEl);
     return;
   }
 
   if (cls.indexOf('mod-price') >= 0 && priceEl.value !== '') {
-    // Price edited — derive markup from cost (if cost is set).
-    if (costEl.value !== '') {
-      const cost = parseFloat(costEl.value) || 0;
-      const price = parseFloat(priceEl.value) || 0;
-      if (cost > 0) {
-        const markup = ((price - cost) / cost) * 100;
-        // Round to integer — no decimals in markup
-        markupEl.value = Math.round(markup);
-        triggerVisualUpdate(markupEl);
-      }
+    // Price edited.
+    if (costEl.value !== '' && cost > 0) {
+      // Cost is set → recompute markup (don't change cost)
+      const newMarkup = ((price - cost) / cost) * 100;
+      markupEl.value = Math.round(newMarkup);
+      triggerVisualUpdate(markupEl);
+    } else if (markupEl.value !== '' && markup > 0) {
+      // No cost, but markup is set → recompute cost
+      costEl.value = (price / (1 + markup / 100)).toFixed(2);
+      triggerVisualUpdate(costEl);
     }
     return;
   }
 
   if (cls.indexOf('mod-markup') >= 0 && markupEl.value !== '') {
-    const markup = parseFloat(markupEl.value) || 0;
-    if (costEl.value !== '') {
-      const cost = parseFloat(costEl.value) || 0;
+    // Markup edited.
+    if (costEl.value !== '' && cost > 0) {
+      // Cost is set → recompute price
       priceEl.value = (cost * (1 + markup / 100)).toFixed(2);
       triggerVisualUpdate(priceEl);
-    } else if (priceEl.value !== '') {
-      const price = parseFloat(priceEl.value) || 0;
+    } else if (priceEl.value !== '' && price > 0) {
+      // No cost, but price is set → recompute cost
       costEl.value = (price / (1 + markup / 100)).toFixed(2);
       triggerVisualUpdate(costEl);
     }
