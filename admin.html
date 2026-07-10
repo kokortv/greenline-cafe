@@ -597,7 +597,25 @@
         <input type="checkbox" id="set-sound">
         <label for="set-sound" style="margin:0;">Звуковые оповещения для официанта (когда блюдо готово)</label>
       </div>
-      <button class="btn btn-primary btn-lg" onclick="withLoading(this, 'Сохраняем...', function() { return saveSettings(); })" style="width:100%;">Сохранить настройки</button>
+      <div class="form-group checkbox-field">
+        <input type="checkbox" id="set-dish-comments" checked>
+        <label for="set-dish-comments" style="margin:0;">Показывать комментарии к блюдам в заказе</label>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;width:100%;">
+          Если включено — официант может оставить комментарий к каждой позиции (например, «без лука», «хорошо прожаренный»). Если выключено — поле комментария скрывается.
+        </p>
+      </div>
+
+      <h3 style="margin:16px 0 8px;font-size:1rem;">Категории «бар» (без подачи)</h3>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 8px;">
+        Если заказ содержит ТОЛЬКО позиции из этих категорий — его можно завершить сразу,
+        без отметки «подано». Подходит для бара, где блюда отдаются сразу.
+        Начните вводить название — система подскажет из существующих категорий.
+      </p>
+      <div id="bar-categories-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
+      <datalist id="bar-categories-datalist"></datalist>
+      <button type="button" class="btn btn-outline" style="width:100%;" onclick="addBarCategoryRow()">+ Добавить категорию</button>
+
+      <button class="btn btn-primary btn-lg" onclick="withLoading(this, 'Сохраняем...', function() { return saveSettings(); })" style="width:100%;margin-top:16px;">Сохранить настройки</button>
     </div>
 
     <!-- QR MENU FOR VISITORS -->
@@ -1358,7 +1376,75 @@ function populateSettingsForm() {
   document.getElementById('set-stock-threshold').value = APP_DATA.settings.stock_threshold || 5;
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
+  document.getElementById('set-dish-comments').checked = String(APP_DATA.settings.dish_comments) !== 'false';
+  renderBarCategoriesList();
   updateTranslationLangLabel();
+}
+
+// Bar categories (orders with only these categories can be completed without "served")
+// Stored in settings.bar_categories as a JSON array of category names.
+function renderBarCategoriesList() {
+  const listEl = document.getElementById('bar-categories-list');
+  if (!listEl) return;
+  let cats = [];
+  try {
+    cats = JSON.parse(APP_DATA.settings.bar_categories || '[]');
+  } catch (e) { cats = []; }
+  listEl.innerHTML = '';
+  if (cats.length === 0) {
+    addBarCategoryRow('');
+  } else {
+    cats.forEach(function(name) { addBarCategoryRow(name); });
+  }
+  // Populate the <datalist> with all category names for autocomplete
+  const datalist = document.getElementById('bar-categories-datalist');
+  if (datalist) {
+    datalist.innerHTML = '';
+    (APP_DATA.categories || []).forEach(function(c) {
+      const opt = document.createElement('option');
+      opt.value = c.name;
+      datalist.appendChild(opt);
+    });
+  }
+}
+
+function addBarCategoryRow(value) {
+  const listEl = document.getElementById('bar-categories-list');
+  if (!listEl) return;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'bar-category-input';
+  input.placeholder = 'Начните вводить название категории...';
+  input.value = value || '';
+  input.style.cssText = 'flex:1;padding:8px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;';
+  // Autocomplete: build a <datalist> with all category names (main + sub)
+  input.setAttribute('list', 'bar-categories-datalist');
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'btn btn-danger';
+  delBtn.style.cssText = 'padding:8px 12px;';
+  delBtn.textContent = '✕';
+  delBtn.title = 'Удалить';
+  delBtn.onclick = function() { row.remove(); };
+  row.appendChild(input);
+  row.appendChild(delBtn);
+  listEl.appendChild(row);
+}
+
+function collectBarCategories() {
+  const cats = [];
+  document.querySelectorAll('.bar-category-input').forEach(function(input) {
+    const v = (input.value || '').trim();
+    if (v) cats.push(v);
+  });
+  // Remove duplicates
+  const unique = [];
+  cats.forEach(function(c) {
+    if (unique.indexOf(c) === -1) unique.push(c);
+  });
+  return unique;
 }
 
 function updateTranslationLangLabel() {
@@ -1388,7 +1474,9 @@ async function saveSettings() {
     cash_register: document.getElementById('set-cash-register').value,
     stock_tracking: document.getElementById('set-stock-tracking').checked ? 'true' : 'false',
     stock_threshold: document.getElementById('set-stock-threshold').value,
-    sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false'
+    sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false',
+    dish_comments: document.getElementById('set-dish-comments').checked ? 'true' : 'false',
+    bar_categories: JSON.stringify(collectBarCategories())
   };
   try {
     await apiPost('saveSettings', { settings: settings });
