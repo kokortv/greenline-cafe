@@ -159,10 +159,90 @@
 
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
-<script src="common.js"></script>
+<script>
+// Minimal inline implementations — avoids loading common.js (which creates
+// a GoTrueClient that conflicts with the waiter app in another tab).
+var _sb_menu = null;
+var APP_DATA = null;
+
+function initSupabaseMenu() {
+  if (typeof window !== 'undefined' && window.supabase && CONFIG.SUPABASE_URL.indexOf('PASTE_YOUR') === -1) {
+    _sb_menu = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+  }
+}
+
+async function dbSelectMenu(table, filters) {
+  if (!_sb_menu) throw new Error('Supabase not initialized');
+  let query = _sb_menu.from(table).select('*');
+  if (filters) {
+    Object.keys(filters).forEach(function(k) {
+      var v = filters[k];
+      if (v !== undefined && v !== null && v !== '') query = query.eq(k, v);
+    });
+  }
+  var result = await query;
+  if (result.error) throw new Error(result.error.message);
+  return result.data || [];
+}
+
+async function loadAppDataMenu() {
+  var settings = await dbSelectMenu('settings');
+  var categories = await dbSelectMenu('categories');
+  var menu = await dbSelectMenu('menu');
+  var modifications = await dbSelectMenu('menu_modifications');
+  
+  var activeCats = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
+  var activeMenu = menu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
+  var activeMods = modifications.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
+  
+  var settingsObj = {};
+  settings.forEach(function(s) { settingsObj[s.key] = s.value; });
+  
+  // Group modifications by menu_id
+  var modsByMenu = {};
+  activeMods.forEach(function(mod) {
+    if (!modsByMenu[mod.menu_id]) modsByMenu[mod.menu_id] = [];
+    modsByMenu[mod.menu_id].push({
+      id: mod.id, name: mod.name, name_translation: mod.name_translation || '',
+      price: Number(mod.price) || 0, cost: Number(mod.cost) || 0,
+      markup: Number(mod.markup) || 0, sort: Number(mod.sort) || 0
+    });
+  });
+  Object.keys(modsByMenu).forEach(function(mid) {
+    modsByMenu[mid].sort(function(a, b) { return a.sort - b.sort; });
+  });
+  
+  var menuWithMods = activeMenu.map(function(m) {
+    return Object.assign({}, m, {
+      cost: Number(m.cost) || 0, markup: Number(m.markup) || 0,
+      has_modifications: m.has_modifications === true || m.has_modifications === 'true',
+      modifications: modsByMenu[m.id] || []
+    });
+  });
+  
+  APP_DATA = { settings: settingsObj, categories: activeCats, menu: menuWithMods };
+  return APP_DATA;
+}
+
+function formatMoneyMenu(amount) {
+  var n = Number(amount) || 0;
+  var cur = '₾';
+  if (APP_DATA && APP_DATA.settings && APP_DATA.settings.currency) cur = APP_DATA.settings.currency;
+  if (cur === 'PASTE_YOUR' || !cur) cur = '₾';
+  var hasDec = (n % 1) !== 0;
+  var formatted = hasDec ? n.toFixed(2) : Math.round(n).toString();
+  return formatted + ' ' + cur;
+}
+
+function escapeHtmlMenu(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
 <script>
 (function() {
-  initSupabase();
+  initSupabaseMenu();
   var selectedMainCat = null;
   var allMainCats = [];
   var itemsByCat = {};
@@ -274,7 +354,7 @@
       if (!selectedMainCat) { renderAllCategories(); }
       else { renderSingleCategory(selectedMainCat); }
     } catch (err) {
-      contentEl.innerHTML = '<div class="empty">Ошибка: ' + escapeHtml(err.message) + '</div>';
+      contentEl.innerHTML = '<div class="empty">Ошибка: ' + escapeHtmlMenu(err.message) + '</div>';
     }
   }
 
@@ -283,7 +363,7 @@
     var html = '<div class="cat-dropdown-item' + (!selectedMainCat ? ' active' : '') + '" onclick="selectMainCat(null)"><span>Выберите категорию меню</span>' + (!selectedMainCat ? '<span class="cdi-check">✓</span>' : '') + '</div>';
     allMainCats.forEach(function(cat) {
       var isActive = selectedMainCat && selectedMainCat.id === cat.id;
-      html += '<div class="cat-dropdown-item' + (isActive ? ' active' : '') + '" onclick="selectMainCat(\'' + cat.id + '\')"><span>' + escapeHtml(cat.name) + '</span>' + (isActive ? '<span class="cdi-check">✓</span>' : '') + '</div>';
+      html += '<div class="cat-dropdown-item' + (isActive ? ' active' : '') + '" onclick="selectMainCat(\'' + cat.id + '\')"><span>' + escapeHtmlMenu(cat.name) + '</span>' + (isActive ? '<span class="cdi-check">✓</span>' : '') + '</div>';
     });
     list.innerHTML = html;
   }
@@ -296,12 +376,12 @@
       var subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
       var directItems = itemsByCat[mc.id] || [];
       if (subs.length === 0 && directItems.length === 0) return;
-      html += '<div class="main-cat-title">' + escapeHtml(mc.name) + '</div>';
+      html += '<div class="main-cat-title">' + escapeHtmlMenu(mc.name) + '</div>';
       subs.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
       subs.forEach(function(sc) {
         var items = itemsByCat[sc.id] || [];
         if (items.length === 0) return;
-        html += '<div class="subcat-section-title" data-subcat-id="' + sc.id + '">' + escapeHtml(sc.name) + '</div>';
+        html += '<div class="subcat-section-title" data-subcat-id="' + sc.id + '">' + escapeHtmlMenu(sc.name) + '</div>';
         items.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
         items.forEach(function(item) { html += renderItem(item); });
       });
@@ -327,7 +407,7 @@
       var items = itemsByCat[sc.id] || [];
       if (items.length === 0) return;
       visibleSubs.push(sc);
-      tabsHtml += '<button class="subcat-tab" data-sub-id="' + sc.id + '">' + escapeHtml(sc.name) + '</button>';
+      tabsHtml += '<button class="subcat-tab" data-sub-id="' + sc.id + '">' + escapeHtmlMenu(sc.name) + '</button>';
     });
     if (directItems.length > 0 && subs.length > 0) {
       tabsHtml += '<button class="subcat-tab" data-sub-id="direct">Прочее</button>';
@@ -343,11 +423,11 @@
       });
     });
 
-    var html = '<div class="main-cat-title">' + escapeHtml(mc.name) + '</div>';
+    var html = '<div class="main-cat-title">' + escapeHtmlMenu(mc.name) + '</div>';
     subs.forEach(function(sc) {
       var items = itemsByCat[sc.id] || [];
       if (items.length === 0) return;
-      html += '<div class="subcat-section-title" id="sub-' + sc.id + '" data-subcat-id="' + sc.id + '">' + escapeHtml(sc.name) + '</div>';
+      html += '<div class="subcat-section-title" id="sub-' + sc.id + '" data-subcat-id="' + sc.id + '">' + escapeHtmlMenu(sc.name) + '</div>';
       items.sort(function(a, b) { return (Number(a.sort)||0)-(Number(b.sort)||0) || String(a.name).localeCompare(String(b.name)); });
       items.forEach(function(item) { html += renderItem(item); });
     });
@@ -365,12 +445,12 @@
     if (hasMods) {
       var modsHtml = '<div class="mi-mods">';
       item.modifications.forEach(function(mod) {
-        modsHtml += '<div class="mi-mod-row"><span>└ ' + escapeHtml(mod.name) + '</span><span class="mi-mod-price">' + escapeHtml(formatMoney(Number(mod.price) || 0)) + '</span></div>';
+        modsHtml += '<div class="mi-mod-row"><span>└ ' + escapeHtmlMenu(mod.name) + '</span><span class="mi-mod-price">' + escapeHtmlMenu(formatMoneyMenu(Number(mod.price) || 0)) + '</span></div>';
       });
       modsHtml += '</div>';
-      return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
+      return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtmlMenu(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escapeHtmlMenu(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
     }
-    return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escapeHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escapeHtml(formatMoney(Number(item.price) || 0)) + '</div></div>';
+    return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escapeHtmlMenu(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escapeHtmlMenu(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escapeHtmlMenu(formatMoneyMenu(Number(item.price) || 0)) + '</div></div>';
   }
 
   function setupScrollObserver() {
@@ -415,12 +495,12 @@
 
   async function init() {
     try {
-      await loadAppData();
+      await loadAppDataMenu();
       applyAppearance();
       document.getElementById('menu-restaurant-name').textContent = APP_DATA.settings.restaurant_name || 'Меню';
       render();
     } catch (err) {
-      document.getElementById('menu-content').innerHTML = '<div class="empty">Ошибка: ' + escapeHtml(err.message) + '</div>';
+      document.getElementById('menu-content').innerHTML = '<div class="empty">Ошибка: ' + escapeHtmlMenu(err.message) + '</div>';
     }
   }
   init();
