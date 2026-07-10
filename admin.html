@@ -1887,11 +1887,10 @@ async function viewOrder(orderId) {
       return nc && !(it.is_ready === true || it.is_ready === 'true');
     });
     const showReadyCol = cookEnabled && (hasReady || hasNotReady);
+    // "Подано" column: only show if cook is enabled (serving follows cooking)
+    // OR if at least one item is already served
     const hasServed = items.some(function(it) { return it.is_served === true || it.is_served === 'true'; });
-    const hasNotServed = items.some(function(it) {
-      return !(it.is_served === true || it.is_served === 'true');
-    });
-    const showServedCol = hasServed || hasNotServed;
+    const showServedCol = cookEnabled || hasServed;
     const hasComments = items.some(function(it) { return it.comment && it.comment.trim(); });
 
     let itemsHtml = '';
@@ -1924,9 +1923,9 @@ async function viewOrder(orderId) {
     }
     // Payment info with amounts
     let payInfo = '—';
-    if (order.payment_method === 'cash') payInfo = '💵 Наличные: ' + formatMoney(order.cash_amount || order.total);
-    else if (order.payment_method === 'card') payInfo = '💳 Карта: ' + formatMoney(order.card_amount || order.total);
-    else if (order.payment_method === 'mixed') payInfo = '🔀 Смешанная: 💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
+    if (order.payment_method === 'cash') payInfo = '💵 ' + formatMoney(order.cash_amount || order.total);
+    else if (order.payment_method === 'card') payInfo = '💳 ' + formatMoney(order.card_amount || order.total);
+    else if (order.payment_method === 'mixed') payInfo = '💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
 
     document.getElementById('ord-detail-content').innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
