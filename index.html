@@ -395,20 +395,23 @@
     overflow-y: auto;
     max-height: calc(100vh - 60px);
   }
-  .order-total-bar {
+  /* Footer with total + accept button — fixed at bottom of the order screen */
+  .order-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 0;
-    border-top: 2px solid var(--border);
-    margin-top: auto; /* push to bottom of flex column */
+    gap: 16px;
+    padding: 12px 16px;
     background: #fff;
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
+    border-top: 2px solid var(--border);
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+    z-index: 100;
   }
-  .order-total-amount {
-    font-size: 1.3rem;
+  .order-footer-total {
+    font-size: 1.4rem;
     font-weight: 800;
     color: var(--primary);
     white-space: nowrap;
@@ -435,6 +438,8 @@
       overflow: visible;
     }
   }
+  /* Add bottom padding so content isn't hidden behind the fixed footer */
+  #screen-order .order-layout { padding-bottom: 70px; }
 
   /* Mobile responsive tweaks for waiter page */
   @media (max-width: 768px) {
@@ -659,15 +664,9 @@
         <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Добавленные блюда</h3>
         <div id="order-cart-items" style="flex:1;overflow-y:auto;min-height:60px;"></div>
         <div style="margin:8px 0;">
-          <input type="text" id="order-comment" placeholder="Общий комментарий к заказу..." 
-            style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;"
-            onchange="state.orderComment = this.value;">
-        </div>
-        <div class="order-total-bar">
-          <div class="order-total-amount" id="order-total">0 ₾</div>
-          <button class="btn btn-success btn-lg" style="flex:1;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
-            ✓ ПРИНЯТЬ ЗАКАЗ
-          </button>
+          <textarea id="order-comment" rows="2" placeholder="Общий комментарий к заказу..." 
+            style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;"
+            onchange="state.orderComment = this.value;"></textarea>
         </div>
       </div>
       <!-- RIGHT: menu -->
@@ -675,6 +674,13 @@
         <div class="subcat-tabs" id="subcat-tabs"></div>
         <div class="grid grid-auto" id="menu-items"></div>
       </div>
+    </div>
+    <!-- FOOTER: total + accept button — fixed at bottom of the screen -->
+    <div class="order-footer">
+      <div class="order-footer-total" id="order-total">0 ₾</div>
+      <button class="btn btn-success btn-lg" style="flex:1;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
+        ✓ ПРИНЯТЬ ЗАКАЗ
+      </button>
     </div>
   </div>
 
@@ -2621,6 +2627,8 @@ async function renderOrderDetail() {
     if (!order.items || order.items.length === 0) {
       itemsDiv.innerHTML = '<div class="empty-state"><h3>В заказе нет позиций</h3></div>';
     } else {
+      // Compute bar-only status once before rendering items — if true, "Подано" buttons are hidden
+      const orderBarOnly = isOrderBarOnly(order.items || []);
       // Note: ready-item notifications + sound are handled centrally in
       // refreshActiveOrders() so we don't double-fire them here.
 
@@ -2660,11 +2668,14 @@ async function renderOrderDetail() {
                 '</div>'
             ) +
             '<div style="display:flex;gap:6px;">' +
-              (isServed
-                ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
-                : (isReady || !needsCooking || !state.cookEnabled
-                  ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
-                  : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+              (orderBarOnly
+                ? '' // bar-only order — no "Подано" button at all
+                : (isServed
+                  ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                  : (isReady || !needsCooking || !state.cookEnabled
+                    ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                    : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+                    )
                   )
               ) +
               (isServed
