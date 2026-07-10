@@ -1413,11 +1413,11 @@ function renderHome() {
 
 function selectTable(num, type, evt) {
   if (type === 'virtual') {
-    // Check if there are active orders for this virtual table
+    // Check if there are active OR paused orders for this virtual table
     const existingOrders = state.activeOrders.filter(function(o) {
       return o.table_type === 'virtual' &&
              String(o.table_number).indexOf(num) === 0 &&
-             o.status === 'accepted';
+             (o.status === 'accepted' || o.status === 'paused');
     });
     if (existingOrders.length > 0) {
       // Show a picker: existing orders + "new order" button
@@ -1698,6 +1698,14 @@ function selectMainCategory(cat) {
 
 function renderMenu() {
   const mainCat = state.mainCategory;
+  if (!mainCat) {
+    // No category selected yet — clear the menu area and show a prompt
+    const itemsDiv = document.getElementById('menu-items');
+    if (itemsDiv) itemsDiv.innerHTML = '<div class="empty-state"><h3>Выберите категорию</h3><p>Нажмите на категорию слева, чтобы увидеть блюда</p></div>';
+    const tabsDiv = document.getElementById('subcat-tabs');
+    if (tabsDiv) tabsDiv.innerHTML = '';
+    return;
+  }
   const subcats = APP_DATA.categories.filter(function(c) {
     return c.parent_id === mainCat.id;
   }).sort(function(a, b) {
@@ -2493,7 +2501,7 @@ function renderHomeActiveOrders() {
         '<div class="hoc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>';
     html += '<div class="hoc-items">' +
-      order.guests + ' чел. · '
+      order.guests + ' чел. · ' +
       items.length + ' поз. · <span style="font-size:1.15rem;font-weight:800;color:var(--primary);">' + formatMoney(order.total) + '</span>' +
     '</div>';
     // Order comment (if any)
@@ -2654,7 +2662,7 @@ function renderActiveOrdersList() {
         '<div class="oc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>' +
       '<div class="oc-items">' +
-        order.guests + ' чел. · '
+        order.guests + ' чел. · ' +
         itemsCount + ' поз. · готово ' + readyCount + '/' + itemsCount +
       '</div>' +
       '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;">' +
