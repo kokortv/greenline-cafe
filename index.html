@@ -582,7 +582,7 @@
   <div class="header-row header-bottom">
     <button class="badge shift-badge" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
-    <button class="badge" id="qr-menu-btn" style="display:none;font-size:1.1rem;padding:4px 10px;" onclick="showWaiterQrMenu()" title="QR-код меню">📱</button>
+    <button class="badge" id="qr-menu-btn" style="display:none;padding:4px 10px;font-weight:700;font-size:0.8rem;border-radius:50%;width:36px;height:36px;" onclick="showWaiterQrMenu()" title="QR-код меню">QR</button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -1143,8 +1143,7 @@ function showWaiterQrMenu() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
   overlay.innerHTML =
     '<div style="background:#fff;border-radius:12px;padding:24px;max-width:360px;width:100%;text-align:center;">' +
-      '<h3 style="margin:0 0 12px;">QR-код меню</h3>' +
-      '<p style="font-size:0.85rem;color:#666;margin:0 0 16px;">Покажите этот код посетителю</p>' +
+      '<h3 style="margin:0 0 16px;">QR-код меню</h3>' +
       '<img src="' + qrApiUrl + '" style="width:280px;height:280px;display:block;margin:0 auto 12px;" alt="QR">' +
       '<button class="btn btn-outline" style="width:100%;" onclick="document.getElementById(\'waiter-qr-overlay\').remove()">Закрыть</button>' +
     '</div>';

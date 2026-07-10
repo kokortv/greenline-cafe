@@ -635,13 +635,6 @@
         <input type="checkbox" id="set-dish-comments" checked>
         <label for="set-dish-comments" style="margin:0;">Показывать комментарии к блюдам в заказе</label>
       </div>
-      <div class="form-group checkbox-field">
-        <input type="checkbox" id="set-show-qr">
-        <label for="set-show-qr" style="margin:0;">Показать QR-меню у официантов</label>
-        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;width:100%;">
-          Если включено — у официанта рядом с именем появится иконка QR-кода. При нажатии покажется QR-код меню для посетителей.
-        </p>
-      </div>
 
       <h3 style="margin:16px 0 8px;font-size:1rem;">Категории «бар» (без подачи)</h3>
       <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 8px;">
@@ -833,6 +826,10 @@
       </script>
 
       <div id="qr-menu-categories" style="margin-top:16px;margin-bottom:16px;"></div>
+      <div class="form-group checkbox-field" style="margin-bottom:16px;">
+        <input type="checkbox" id="set-show-qr">
+        <label for="set-show-qr" style="margin:0;">Показать иконку QR-меню у официантов</label>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:10px;background:var(--bg);border-radius:8px;">
         <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(true)" style="font-size:0.9rem;">☑ Выбрать все</button>
         <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(false)" style="font-size:0.9rem;">☐ Снять все</button>
@@ -1413,7 +1410,6 @@ function populateSettingsForm() {
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
   document.getElementById('set-dish-comments').checked = String(APP_DATA.settings.dish_comments) !== 'false';
-  document.getElementById('set-show-qr').checked = String(APP_DATA.settings.show_qr_to_waiter) === 'true';
   renderBarCategoriesList();
   updateTranslationLangLabel();
 }
@@ -1513,7 +1509,6 @@ async function saveSettings() {
     stock_threshold: document.getElementById('set-stock-threshold').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false',
     dish_comments: document.getElementById('set-dish-comments').checked ? 'true' : 'false',
-    show_qr_to_waiter: document.getElementById('set-show-qr').checked ? 'true' : 'false',
     bar_categories: JSON.stringify(collectBarCategories())
   };
   try {
@@ -1592,6 +1587,8 @@ function loadQrMenuAppearance() {
   document.getElementById('qr-menu-color-price-text').value = priceColor;
   document.getElementById('qr-menu-color-header').value = headerColor;
   document.getElementById('qr-menu-color-header-text').value = headerColor;
+  // Show QR to waiter checkbox
+  document.getElementById('set-show-qr').checked = String(s.show_qr_to_waiter) === 'true';
 }
 
 // Save the QR-menu appearance settings to Supabase, then generate the QR code.
@@ -1600,7 +1597,8 @@ async function saveAndGenerateQrMenu() {
     qr_menu_subtitle: document.getElementById('qr-menu-subtitle').value,
     qr_menu_footer: document.getElementById('qr-menu-footer').value,
     qr_menu_color_price: document.getElementById('qr-menu-color-price').value,
-    qr_menu_color_header: document.getElementById('qr-menu-color-header').value
+    qr_menu_color_header: document.getElementById('qr-menu-color-header').value,
+    show_qr_to_waiter: document.getElementById('set-show-qr').checked ? 'true' : 'false'
   };
   try {
     await apiPost('saveSettings', { settings: settings });
