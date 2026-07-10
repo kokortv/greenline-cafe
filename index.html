@@ -401,13 +401,23 @@
     gap: 12px;
     padding: 10px 0;
     border-top: 2px solid var(--border);
-    margin-top: 8px;
+    margin-top: auto; /* push to bottom of flex column */
+    background: #fff;
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
   }
   .order-total-amount {
     font-size: 1.3rem;
     font-weight: 800;
     color: var(--primary);
     white-space: nowrap;
+  }
+  /* Active category button highlight */
+  .main-cat-btn.selected {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
   }
   /* On phones — single column */
   @media (max-width: 768px) {
@@ -647,7 +657,12 @@
         <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Тип заказа</h3>
         <div class="grid grid-4" id="main-cats"></div>
         <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Добавленные блюда</h3>
-        <div id="order-cart-items" style="flex:1;overflow-y:auto;min-height:100px;"></div>
+        <div id="order-cart-items" style="flex:1;overflow-y:auto;min-height:60px;"></div>
+        <div style="margin:8px 0;">
+          <input type="text" id="order-comment" placeholder="Общий комментарий к заказу..." 
+            style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;"
+            onchange="state.orderComment = this.value;">
+        </div>
         <div class="order-total-bar">
           <div class="order-total-amount" id="order-total">0 ₾</div>
           <button class="btn btn-success btn-lg" style="flex:1;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
@@ -878,6 +893,7 @@ let state = {
   mainCategory: null,
   currentSubcat: null,
   cart: [],            // {menu_item_id, name, price, quantity, comment, needs_cooking}
+  orderComment: '',    // general comment for the whole order
   currentOrderId: null,
   activeOrders: [],
   knownReadyItemIds: new Set(),  // item IDs we already notified the waiter about (so we don't beep twice)
@@ -1261,23 +1277,32 @@ function isOrderBarOnly(items) {
   if (barCats.length === 0) return false;
   const barCatsLower = barCats.map(function(c) { return String(c).toLowerCase().trim(); });
   for (const it of items) {
-    let catName = it.category_name || '';
-    if (!catName && it.menu_item_id && APP_DATA && APP_DATA.menu) {
+    // Collect ALL possible category names for this item: subcategory name,
+    // parent category name, and the stored category_name from the order item.
+    // Then check if ANY of them matches a bar category.
+    const names = new Set();
+    // 1. Stored category_name (usually the subcategory name)
+    if (it.category_name) names.add(it.category_name.toLowerCase());
+    // 2. Look up via menu_item_id → menu.category_id → category (sub + parent)
+    if (it.menu_item_id && APP_DATA && APP_DATA.menu) {
       const dish = APP_DATA.menu.find(function(m) { return m.id === it.menu_item_id; });
       if (dish && dish.category_id && APP_DATA.categories) {
         const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
         if (cat) {
-          catName = cat.name;
+          names.add(cat.name.toLowerCase());
           if (cat.parent_id) {
             const parent = APP_DATA.categories.find(function(c) { return c.id === cat.parent_id; });
-            if (parent) {
-              if (barCatsLower.indexOf(cat.name.toLowerCase()) >= 0 || barCatsLower.indexOf(parent.name.toLowerCase()) >= 0) continue;
-            }
+            if (parent) names.add(parent.name.toLowerCase());
           }
         }
       }
     }
-    if (barCatsLower.indexOf(catName.toLowerCase()) < 0) return false;
+    // Check if ANY of the collected names matches a bar category
+    let isBar = false;
+    for (const name of names) {
+      if (barCatsLower.indexOf(name) >= 0) { isBar = true; break; }
+    }
+    if (!isBar) return false;
   }
   return true;
 }
@@ -1375,6 +1400,7 @@ function selectTable(num, type, evt) {
   state.selectedTabId = null;
   state.selectedTabName = null;
   state.cart = [];
+  state.orderComment = '';
   state.guests = 1;
   state.mainCategory = null;
   state.currentSubcat = null;
@@ -1385,7 +1411,6 @@ function selectTable(num, type, evt) {
 // Open the order screen — sets up the split-view layout
 function openOrderScreen() {
   showScreen('order');
-  // Update the context label
   const ctxEl = document.getElementById('order-context');
   if (ctxEl) {
     let label = '';
@@ -1394,8 +1419,9 @@ function openOrderScreen() {
     else label = 'Столик ' + state.selectedTable;
     ctxEl.textContent = label;
   }
-  // Render guests + main categories + cart
   document.getElementById('guests-value').textContent = state.guests;
+  const commentEl = document.getElementById('order-comment');
+  if (commentEl) commentEl.value = state.orderComment || '';
   renderMainCats();
   renderOrderCart();
 }
@@ -1419,6 +1445,7 @@ function renderMainCats() {
 // Cancel new order — go back to tables
 function cancelNewOrder() {
   state.cart = [];
+  state.orderComment = '';
   state.selectedTable = null;
   state.selectedTableType = null;
   state.selectedTabId = null;
@@ -1487,6 +1514,7 @@ function confirmVirtualOrder() {
   state.selectedVirtualBase = virtualName;
   state.selectedVirtualLabel = label;
   state.cart = [];
+  state.orderComment = '';
   state.guests = 1;
   state.mainCategory = null;
   state.currentSubcat = null;
@@ -2062,6 +2090,7 @@ async function clearCart() {
   const ok = await confirmDialog('Очистить корзину?', 'Очистить корзину', 'Очистить', 'Отмена', 'btn-danger');
   if (!ok) return;
   state.cart = [];
+  state.orderComment = '';
   renderCartPanel();
   renderCartItems();
 }
@@ -2116,7 +2145,8 @@ async function acceptOrder() {
       main_category_name: state.mainCategory.name,
       items: state.cart,
       waiter_id: state.currentUser.id,
-      waiter_name: state.currentUser.name
+      waiter_name: state.currentUser.name,
+      waiter_note: state.orderComment || ''
     };
     const order = await apiPost('createOrder', payload);
     const displayLabel = state.selectedTabId
@@ -2124,6 +2154,7 @@ async function acceptOrder() {
       : (state.selectedTableType === 'virtual' ? (state.selectedVirtualLabel || state.selectedVirtualBase) : 'столик ' + state.selectedTable);
     showToast('Заказ для ' + displayLabel + ' принят!', 'success');
     state.cart = [];
+  state.orderComment = '';
     state.selectedTable = null;
     state.selectedTableType = null;
     state.selectedTabId = null;
@@ -2852,7 +2883,8 @@ function addMoreToOrder() {
   }
   state.mainCategory = mainCat;
   state.currentSubcat = null;
-  state.cart = []; // temporary cart for additions
+  state.cart = [];
+  state.orderComment = ''; // temporary cart for additions
   showScreen('menu');
   // Override the accept handler
   // (the menu screen works the same way; we'll redirect the cart-accept to add-to-existing-order)
@@ -2892,6 +2924,7 @@ async function addToExistingOrder() {
       });
     }
     state.cart = [];
+  state.orderComment = '';
     state.addingToOrder = false;
     state.mainCategory = null;
     state.currentSubcat = null;

@@ -414,6 +414,7 @@ async function createOrder(orderData) {
     created_at: now,
     waiter_id: orderData.waiter_id || '',
     waiter_name: orderData.waiter_name || '',
+    waiter_note: orderData.waiter_note || '',
     payment_method: ''
   };
 
