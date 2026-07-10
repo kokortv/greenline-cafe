@@ -1863,6 +1863,8 @@ async function apiPost(action, body) {
       return await createOrder(body);
     case 'updateOrderStatus':
       return await updateOrderStatus(body.order_id, body.status, body.payment_method);
+    case 'updateOrderNote':
+      return await dbUpdate('orders', body.order_id, { waiter_note: body.note || '' });
     case 'addItemToOrder':
       return await addItemToOrder(body);
     case 'updateItemQuantity':

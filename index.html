@@ -2676,6 +2676,21 @@ function renderActiveOrdersList() {
 }
 
 /* ---------- ORDER DETAIL ---------- */
+// Update order note (waiter_note) — can be edited even after the order is accepted
+async function updateOrderNote(orderId, note) {
+  try {
+    await apiPost('updateOrderNote', { order_id: orderId, note: note });
+    // Update local state
+    if (state.currentOrder) state.currentOrder.waiter_note = note;
+    // Update in activeOrders array too
+    const ao = state.activeOrders.find(function(o) { return o.id === orderId; });
+    if (ao) ao.waiter_note = note;
+    showToast('Комментарий обновлён', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
 function openOrderDetail(orderId) {
   state.currentOrderId = orderId;
   showScreen('order-detail');
@@ -2703,7 +2718,11 @@ async function renderOrderDetail() {
             '</span>' +
           '</div>' +
         '</div>' +
-        (order.waiter_note ? '<div style="margin-top:8px;padding:8px;background:#fff8e1;border-radius:6px;font-size:0.9rem;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
+        '<div style="margin-top:8px;">' +
+          '<textarea id="order-detail-note" rows="2" placeholder="Комментарий к заказу..." ' +
+            'style="width:100%;padding:8px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:' + (order.waiter_note ? '#fff8e1' : '#fff') + ';" ' +
+            'onchange="updateOrderNote(\'' + order.id + '\', this.value)">' + escapeHtml(order.waiter_note || '') + '</textarea>' +
+        '</div>' +
       '</div>';
 
     const itemsDiv = document.getElementById('order-detail-items');

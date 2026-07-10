@@ -683,3 +683,23 @@ tbody tr:hover { background: #fafafa; }
   pointer-events: none;
   filter: grayscale(0.3);
 }
+
+/* ============================================================
+   PRICES — never wrap number and currency to separate lines
+   ============================================================ */
+.ci-price,
+.cart-total,
+.cart-total-display .amount,
+.order-footer-total,
+.order-total-amount,
+.payment-option .po-amount,
+.tc-total,
+.ohr-total,
+.menu-price,
+.menu-row .menu-price,
+.mod-price,
+.mod-pick-row .mi-mod-price,
+.di-total,
+.menu-item-card .item-price {
+  white-space: nowrap !important;
+}
