@@ -1466,7 +1466,7 @@ function showVirtualOrderPicker(virtualName, orders) {
     html += '<div class="mod-pick-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="openOrderDetail(\'' + o.id + '\');closeModificationPicker();">' +
       '<div><div style="font-size:1rem;font-weight:600;">' + escapeHtml(formatTableLabel(o)) + '</div>' +
       '<div style="font-size:0.85rem;color:var(--text-muted);">' + itemsLabel + '</div></div>' +
-      '<span style="font-weight:700;color:var(--primary);">' + formatMoney(o.total) + '</span>' +
+      '<span style="font-weight:700;color:var(--primary);white-space:nowrap;flex:none;margin-left:8px;">' + formatMoney(o.total) + '</span>' +
     '</div>';
   });
   html += '</div>';
@@ -2670,6 +2670,7 @@ function renderActiveOrdersList() {
       '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;white-space:nowrap;">' +
         formatMoney(total) +
       '</div>' +
+      (order.waiter_note ? '<div style="font-size:0.85rem;color:var(--warning);margin-bottom:8px;">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
       '<div class="oc-actions">' + actions + '</div>';
     div.appendChild(card);
   });
@@ -2714,14 +2715,9 @@ async function renderOrderDetail() {
           '</div>' +
           '<div style="text-align:right;">' +
             '<span class="pill pill-warning">' +
-              '<span class="status-dot accepted"></span>' + (order.status === 'accepted' ? 'Принят' : order.status) +
+              '<span class="status-dot accepted"></span>' + (order.status === 'accepted' ? 'Принят' : (order.status === 'paused' ? 'На паузе' : order.status)) +
             '</span>' +
           '</div>' +
-        '</div>' +
-        '<div style="margin-top:8px;">' +
-          '<textarea id="order-detail-note" rows="2" placeholder="Комментарий к заказу..." ' +
-            'style="width:100%;padding:8px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:' + (order.waiter_note ? '#fff8e1' : '#fff') + ';" ' +
-            'onchange="updateOrderNote(\'' + order.id + '\', this.value)">' + escapeHtml(order.waiter_note || '') + '</textarea>' +
         '</div>' +
       '</div>';
 
@@ -2800,6 +2796,15 @@ async function renderOrderDetail() {
         itemsDiv.appendChild(card);
       });
     }
+
+    // Order comment — editable textarea, placed BELOW the items list
+    const noteDiv = document.createElement('div');
+    noteDiv.style.cssText = 'margin-top:12px;';
+    noteDiv.innerHTML =
+      '<textarea id="order-detail-note" rows="2" placeholder="Комментарий к заказу..." ' +
+        'style="width:100%;padding:8px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:' + (order.waiter_note ? '#fff8e1' : '#fff') + ';" ' +
+        'onchange="updateOrderNote(\'' + order.id + '\', this.value)">' + escapeHtml(order.waiter_note || '') + '</textarea>';
+    itemsDiv.appendChild(noteDiv);
 
     document.getElementById('order-detail-total').textContent = formatMoney(order.total);
 
