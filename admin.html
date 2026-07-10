@@ -1616,8 +1616,14 @@ async function deleteOrderAdmin(orderId) {
 }
 
 /* ---------- MENU ---------- */
+// populateCategoryFilter rebuilds the <select> options for the menu category
+// filter. Crucially, it preserves the currently-selected value across the
+// rebuild — so adding/deleting/moving items (which trigger this function)
+// does NOT reset the user's active filter.
 function populateCategoryFilter() {
   const sel = document.getElementById('filter-menu-cat');
+  // Remember the currently-selected value before we wipe the options
+  const prevValue = sel.value;
   sel.innerHTML = '<option value="">Все</option>';
   // Option to find items with no category at all
   const noCat = document.createElement('option');
@@ -1643,6 +1649,14 @@ function populateCategoryFilter() {
     });
     sel.appendChild(og);
   });
+  // Restore the previously-selected value if it still exists in the new list
+  // (it might not, if the user just deleted that category — in which case
+  // fall back to "Все").
+  let valueStillExists = false;
+  Array.from(sel.options).forEach(function(opt) {
+    if (opt.value === prevValue) valueStillExists = true;
+  });
+  sel.value = valueStillExists ? prevValue : '';
 }
 
 function renderMenuList() {
