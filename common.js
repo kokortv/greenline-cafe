@@ -41,21 +41,26 @@ async function dbSelect(table, filters) {
     console.error('dbSelect error:', table, error.message, error);
     throw new Error(error.message);
   }
-  console.log('dbSelect', table, '→', (data || []).length, 'rows');
   return data || [];
 }
 
 async function dbInsert(table, record) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { error } = await _sb.from(table).insert(record);
-  if (error) throw new Error(error.message);
-  return record;
+  const { data, error } = await _sb.from(table).insert(record).select();
+  if (error) {
+    console.error('dbInsert error:', table, error.message, error.details, error.hint, record);
+    throw new Error(error.message + (error.hint ? ' (подсказка: ' + error.hint + ')' : ''));
+  }
+  return data && data.length > 0 ? data[0] : record;
 }
 
 async function dbInsertBatch(table, records) {
   if (!_sb) throw new Error('Supabase not initialized');
-  const { error } = await _sb.from(table).insert(records);
-  if (error) throw new Error(error.message);
+  const { data, error } = await _sb.from(table).insert(records);
+  if (error) {
+    console.error('dbInsertBatch error:', table, error.message, error.details, error.hint, records);
+    throw new Error(error.message + (error.hint ? ' (подсказка: ' + error.hint + ')' : ''));
+  }
   return records;
 }
 
@@ -69,7 +74,10 @@ async function dbUpdate(table, id, updates) {
     .update(updates)
     .eq('id', id)
     .select();
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('dbUpdate error:', table, id, error.message, error.details, error.hint, updates);
+    throw new Error(error.message + (error.hint ? ' (подсказка: ' + error.hint + ')' : ''));
+  }
   if (!data || data.length === 0) {
     throw new Error('Update failed: no rows matched id=' + id + ' (check RLS policies for table "' + table + '")');
   }
@@ -151,27 +159,97 @@ async function loadAppData(force) {
   if (APP_DATA && !force) return APP_DATA;
 
   // Load all reference data in parallel (no is_active filter — filter on client)
-  const [settings, categories, menu, users] = await Promise.all([
+  const [settings, categories, menu, users, modifications, tables, suppliers, warehouses, accounts, deliveries, deliveryItems] = await Promise.all([
     dbSelect('settings'),
     dbSelect('categories'),
     dbSelect('menu'),
-    dbSelect('users')
+    dbSelect('users'),
+    dbSelect('menu_modifications'),
+    dbSelect('tables'),
+    dbSelect('suppliers'),
+    dbSelect('warehouses'),
+    dbSelect('accounts'),
+    dbSelect('deliveries'),
+    dbSelect('delivery_items')
   ]);
-
-  console.log('loadAppData: settings=', settings.length, 'categories=', categories.length, 'menu=', menu.length, 'users=', users.length);
 
   // Filter active items on client side
   const activeCategories = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
   const activeMenu = menu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
   const activeUsers = users.filter(function(u) { return u.is_active === true || u.is_active === 'true'; });
+  const activeModifications = modifications.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
+  const activeTables = tables.filter(function(t) { return t.is_active === true || t.is_active === 'true'; });
 
   const settingsObj = {};
   settings.forEach(function(s) { settingsObj[s.key] = s.value; });
 
+  // Group modifications by menu_id for easy access
+  const modsByMenu = {};
+  activeModifications.forEach(function(mod) {
+    if (!modsByMenu[mod.menu_id]) modsByMenu[mod.menu_id] = [];
+    modsByMenu[mod.menu_id].push({
+      id: mod.id,
+      menu_id: mod.menu_id,
+      name: mod.name,
+      name_translation: mod.name_translation || '',
+      price: Number(mod.price) || 0,
+      cost: Number(mod.cost) || 0,
+      markup: Number(mod.markup) || 0,
+      sort: Number(mod.sort) || 0
+    });
+  });
+  // Sort each menu's modifications by sort
+  Object.keys(modsByMenu).forEach(function(mid) {
+    modsByMenu[mid].sort(function(a, b) { return a.sort - b.sort; });
+  });
+
+  // Attach modifications to their menu items
+  const menuWithMods = activeMenu.map(function(m) {
+    return Object.assign({}, m, {
+      cost: Number(m.cost) || 0,
+      markup: Number(m.markup) || 0,
+      has_modifications: m.has_modifications === true || m.has_modifications === 'true',
+      modifications: modsByMenu[m.id] || []
+    });
+  });
+
+  // Normalize tables: split into numbered and virtual, sorted by `sort` then number/name
+  const normalizedTables = activeTables.map(function(t) {
+    return {
+      id: t.id,
+      type: t.type,
+      number: t.number !== null && t.number !== undefined ? Number(t.number) : null,
+      label: t.label || '',
+      sort: Number(t.sort) || 0
+    };
+  });
+  const numberedTables = normalizedTables
+    .filter(function(t) { return t.type === 'numbered'; })
+    .sort(function(a, b) { return (a.number || 0) - (b.number || 0); });
+  const virtualTables = normalizedTables
+    .filter(function(t) { return t.type === 'virtual'; })
+    .sort(function(a, b) { return a.sort - b.sort; });
+
+  // For backward compatibility: keep table_count and virtual_tables in settings
+  // (some legacy code may still reference them), but the canonical source is APP_DATA.tables
+  settingsObj.table_count = String(numberedTables.length);
+  settingsObj.virtual_tables = virtualTables.map(function(t) { return t.label; }).join(',');
+
   APP_DATA = {
     settings: settingsObj,
     categories: activeCategories,
-    menu: activeMenu,
+    menu: menuWithMods,
+    modifications: activeModifications,
+    tables: {
+      all: normalizedTables,
+      numbered: numberedTables,
+      virtual: virtualTables
+    },
+    suppliers: suppliers.filter(function(s) { return s.is_active === true || s.is_active === 'true'; }),
+    warehouses: warehouses.filter(function(w) { return w.is_active === true || w.is_active === 'true'; }),
+    accounts: accounts.filter(function(a) { return a.is_active === true || a.is_active === 'true'; }),
+    deliveries: deliveries, // all deliveries, including historic — don't filter
+    delivery_items: deliveryItems,
     users: activeUsers.map(function(u) {
       return {
         id: u.id,
@@ -351,6 +429,8 @@ async function createOrder(orderData) {
       name_translation: it.name_translation || '',
       category_name: it.category_name || '',
       category_name_translation: it.category_name_translation || '',
+      modification_id: it.modification_id || '',
+      modification_name: it.modification_name || '',
       price: Number(it.price) || 0,
       quantity: Number(it.quantity) || 1,
       comment: it.comment || '',
@@ -391,6 +471,8 @@ async function addItemToOrder(itemData) {
     name_translation: itemData.name_translation || '',
     category_name: itemData.category_name || '',
     category_name_translation: itemData.category_name_translation || '',
+    modification_id: itemData.modification_id || '',
+    modification_name: itemData.modification_name || '',
     price: Number(itemData.price) || 0,
     quantity: Number(itemData.quantity) || 1,
     comment: itemData.comment || '',
@@ -567,8 +649,7 @@ async function closeShift(waiterId) {
   if (shifts.length === 0) throw new Error('Нет открытой смены');
   const shift = shifts[0];
 
-  // SAFETY: block close if there are active (non-completed) orders by this
-  // waiter — EXCEPT virtual orders and tabs, which can span shifts.
+  // SAFETY: block close if there are active (non-completed) orders — EXCEPT virtual/tab
   const activeOrders = await dbSelect('orders', { waiter_id: waiterId, status: 'accepted' });
   const blockingOrders = activeOrders.filter(function(o) {
     return o.table_type !== 'virtual' && o.table_type !== 'tab';
@@ -637,6 +718,483 @@ async function getActiveShift(waiterId) {
   return { shift: shift, current_cash: currentCash, cook_enabled: cookEnabled };
 }
 
+/* ---------- Tables ---------- */
+// Check if there are any open shifts across all waiters.
+// Table configuration changes are blocked while at least one shift is open,
+// to prevent breaking in-flight orders / shift reports.
+async function hasOpenShifts() {
+  const shifts = await dbSelect('shifts', { status: 'open' });
+  return shifts.length > 0;
+}
+
+// Get the current tables configuration (numbered + virtual).
+// Returns: { numbered: [...], virtual: [...], open_shifts: bool }
+async function getTablesConfig() {
+  const allTables = await dbSelect('tables');
+  const active = allTables.filter(function(t) { return t.is_active === true || t.is_active === 'true'; });
+  const numbered = active
+    .filter(function(t) { return t.type === 'numbered'; })
+    .map(function(t) {
+      return {
+        id: t.id,
+        type: 'numbered',
+        number: t.number !== null && t.number !== undefined ? Number(t.number) : null,
+        label: t.label || '',
+        sort: Number(t.sort) || 0
+      };
+    })
+    .sort(function(a, b) { return (a.number || 0) - (b.number || 0); });
+  const virtual = active
+    .filter(function(t) { return t.type === 'virtual'; })
+    .map(function(t) {
+      return {
+        id: t.id,
+        type: 'virtual',
+        number: null,
+        label: t.label || '',
+        sort: Number(t.sort) || 0
+      };
+    })
+    .sort(function(a, b) { return a.sort - b.sort; });
+  const openShifts = await hasOpenShifts();
+  return { numbered: numbered, virtual: virtual, open_shifts: openShifts };
+}
+
+// Save the tables configuration. Blocked if any shift is open.
+// Inputs:
+//   numberedCount: int — how many numbered tables (1..N)
+//   numberedLabels: { [number]: string } — custom labels per number (optional)
+//   virtual: [{ label: string }] — virtual tables (id assigned automatically)
+async function saveTablesConfig(config) {
+  // SAFETY: never allow table changes while any shift is open
+  if (await hasOpenShifts()) {
+    throw new Error('Невозможно изменить столы: есть открытые смены. Сначала закройте все смены.');
+  }
+
+  // Validate input
+  const numberedCount = parseInt(config.numbered_count, 10) || 0;
+  if (numberedCount < 0 || numberedCount > 500) {
+    throw new Error('Количество столиков должно быть от 0 до 500');
+  }
+  const virtualList = Array.isArray(config.virtual) ? config.virtual : [];
+  for (const v of virtualList) {
+    if (!v.label || !String(v.label).trim()) {
+      throw new Error('У виртуального столика должно быть название');
+    }
+  }
+
+  // Get existing tables so we can preserve ids where possible
+  const existing = await dbSelect('tables');
+  const existingNumbered = existing.filter(function(t) { return t.type === 'numbered'; });
+  const existingVirtual = existing.filter(function(t) { return t.type === 'virtual'; });
+
+  // Mark all existing tables as inactive first (we'll re-activate the ones we want)
+  // This preserves history — old orders still reference table_number/table_type
+  // directly, and we don't lose the table rows in case we want to re-activate.
+  for (const t of existing) {
+    if (t.is_active === true || t.is_active === 'true') {
+      try {
+        await dbUpdate('tables', t.id, { is_active: false });
+      } catch (e) {
+        console.warn('Failed to deactivate table', t.id, e.message);
+      }
+    }
+  }
+
+  // Re-activate / create numbered tables 1..N
+  const numberedLabels = config.numbered_labels || {};
+  for (let i = 1; i <= numberedCount; i++) {
+    const id = 'tbl_num_' + i;
+    const label = String(numberedLabels[i] || '').trim();
+    // Try to find an existing row with this id (could be active or inactive)
+    const existingRow = existingNumbered.find(function(t) { return t.id === id; });
+    if (existingRow) {
+      await dbUpdate('tables', id, { is_active: true, number: i, label: label, sort: i, type: 'numbered' });
+    } else {
+      await dbInsert('tables', {
+        id: id,
+        type: 'numbered',
+        number: i,
+        label: label,
+        is_active: true,
+        sort: i,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  // Re-activate / create virtual tables
+  for (let i = 0; i < virtualList.length; i++) {
+    const v = virtualList[i];
+    const id = 'tbl_vir_' + (i + 1);
+    const label = String(v.label).trim();
+    const existingRow = existingVirtual.find(function(t) { return t.id === id; });
+    if (existingRow) {
+      await dbUpdate('tables', id, { is_active: true, label: label, sort: i + 1, type: 'virtual', number: null });
+    } else {
+      await dbInsert('tables', {
+        id: id,
+        type: 'virtual',
+        number: null,
+        label: label,
+        is_active: true,
+        sort: i + 1,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  return { ok: true, numbered: numberedCount, virtual: virtualList.length };
+}
+
+/* ---------- Suppliers / Warehouses / Accounts ---------- */
+// These are simple CRUD wrappers. Each record has an `id`, a name, optional
+// extra fields, and `is_active` (we never hard-delete — just deactivate, so
+// historical deliveries still reference the right supplier/warehouse/account).
+
+async function saveSupplier(data) {
+  const id = data.id || 'sup_' + Date.now().toString(36);
+  const existing = await dbSelect('suppliers', { id: id });
+  const record = {
+    name: (data.name || '').trim(),
+    phone: (data.phone || '').trim(),
+    address: (data.address || '').trim(),
+    comment: (data.comment || '').trim(),
+    is_active: data.is_active !== false
+  };
+  if (existing.length > 0) {
+    return await dbUpdate('suppliers', id, record);
+  } else {
+    record.id = id;
+    return await dbInsert('suppliers', record);
+  }
+}
+
+async function deleteSupplier(id) {
+  // Soft-delete: just mark as inactive so historical deliveries still work
+  return await dbUpdate('suppliers', id, { is_active: false });
+}
+
+async function saveWarehouse(data) {
+  const id = data.id || 'wh_' + Date.now().toString(36);
+  const existing = await dbSelect('warehouses', { id: id });
+  const record = {
+    name: (data.name || '').trim(),
+    comment: (data.comment || '').trim(),
+    is_active: data.is_active !== false
+  };
+  if (existing.length > 0) {
+    return await dbUpdate('warehouses', id, record);
+  } else {
+    record.id = id;
+    return await dbInsert('warehouses', record);
+  }
+}
+
+async function deleteWarehouse(id) {
+  return await dbUpdate('warehouses', id, { is_active: false });
+}
+
+async function saveAccount(data) {
+  const id = data.id || 'acc_' + Date.now().toString(36);
+  const existing = await dbSelect('accounts', { id: id });
+  const record = {
+    name: (data.name || '').trim(),
+    currency: data.currency || '₾',
+    type: data.type || 'cash', // cash | card | bank
+    initial_balance: Number(data.initial_balance) || 0,
+    is_active: data.is_active !== false
+  };
+  if (existing.length > 0) {
+    return await dbUpdate('accounts', id, record);
+  } else {
+    record.id = id;
+    return await dbInsert('accounts', record);
+  }
+}
+
+async function deleteAccount(id) {
+  return await dbUpdate('accounts', id, { is_active: false });
+}
+
+/* ---------- Deliveries ---------- */
+// A delivery is a header (date, supplier, warehouse, account, paid/unpaid,
+// total) plus a list of items. Each item links to a menu_item_id (or has a
+// free-form name), with pack/quantity/unit_price/total_price.
+//
+// Saving a delivery does NOT automatically update menu.stock — that's a
+// separate decision per item (the UI offers "apply to stock" checkboxes).
+// The replenishStock() RPC is used when applying.
+
+// Get the next delivery number from the settings counter
+async function getNextDeliveryNumber() {
+  const cur = await getSetting('delivery_number_seq');
+  let n = parseInt(cur, 10);
+  if (isNaN(n)) n = 1;
+  await saveSettingsToDB({ delivery_number_seq: String(n + 1) });
+  return n;
+}
+
+// Get a single delivery with its items, joined with names for display
+async function getDelivery(deliveryId) {
+  const deliveries = await dbSelect('deliveries', { id: deliveryId });
+  if (deliveries.length === 0) throw new Error('Поставка не найдена');
+  const delivery = deliveries[0];
+  const items = await dbSelect('delivery_items', { delivery_id: deliveryId });
+  items.sort(function(a, b) { return (Number(a.sort) || 0) - (Number(b.sort) || 0); });
+  delivery.items = items;
+  return delivery;
+}
+
+// Get all deliveries with their items. Sorted by delivery_date desc.
+async function getAllDeliveries() {
+  const deliveries = await dbSelect('deliveries');
+  const items = await dbSelect('delivery_items');
+  // Group items by delivery_id
+  const itemsByDelivery = {};
+  items.forEach(function(it) {
+    if (!itemsByDelivery[it.delivery_id]) itemsByDelivery[it.delivery_id] = [];
+    itemsByDelivery[it.delivery_id].push({
+      id: it.id,
+      menu_item_id: it.menu_item_id || '',
+      name: it.name,
+      pack: it.pack || '',
+      quantity: Number(it.quantity) || 0,
+      unit: it.unit || 'шт',
+      unit_price: Number(it.unit_price) || 0,
+      total_price: Number(it.total_price) || 0,
+      sort: Number(it.sort) || 0
+    });
+  });
+  // Attach items to deliveries and sort
+  const result = deliveries.map(function(d) {
+    return {
+      id: d.id,
+      number: d.number,
+      delivery_date: d.delivery_date,
+      supplier_id: d.supplier_id || '',
+      supplier_name: d.supplier_name || '',
+      warehouse_id: d.warehouse_id || '',
+      warehouse_name: d.warehouse_name || '',
+      account_id: d.account_id || '',
+      account_name: d.account_name || '',
+      is_paid: d.is_paid === true || d.is_paid === 'true',
+      paid_amount: Number(d.paid_amount) || 0,
+      total_amount: Number(d.total_amount) || 0,
+      status: d.status || 'received',
+      comment: d.comment || '',
+      items: (itemsByDelivery[d.id] || []).sort(function(a, b) { return a.sort - b.sort; })
+    };
+  });
+  result.sort(function(a, b) {
+    return new Date(b.delivery_date) - new Date(a.delivery_date);
+  });
+  return result;
+}
+
+// Get all deliveries that contain a specific menu_item_id — used in the
+// stock report's "Поставки" link next to each item.
+async function getDeliveriesForMenuItem(menuItemId) {
+  const all = await getAllDeliveries();
+  return all.filter(function(d) {
+    return d.items.some(function(it) { return it.menu_item_id === menuItemId; });
+  }).map(function(d) {
+    // Filter items to only those for this menu item
+    return Object.assign({}, d, {
+      items: d.items.filter(function(it) { return it.menu_item_id === menuItemId; })
+    });
+  });
+}
+
+// Save a delivery (insert or update) with all its items.
+// Items list replaces the existing items for this delivery.
+async function saveDelivery(data) {
+  const id = data.id || 'del_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+
+  // Look up supplier/warehouse/account names (so the delivery has them frozen
+  // in case the referenced record is later deactivated)
+  let supplierName = data.supplier_name || '';
+  if (data.supplier_id && !supplierName) {
+    const sup = await dbSelect('suppliers', { id: data.supplier_id });
+    if (sup.length > 0) supplierName = sup[0].name;
+  }
+  let warehouseName = data.warehouse_name || '';
+  if (data.warehouse_id && !warehouseName) {
+    const wh = await dbSelect('warehouses', { id: data.warehouse_id });
+    if (wh.length > 0) warehouseName = wh[0].name;
+  }
+  let accountName = data.account_name || '';
+  if (data.account_id && !accountName) {
+    const acc = await dbSelect('accounts', { id: data.account_id });
+    if (acc.length > 0) accountName = acc[0].name;
+  }
+
+  // Calculate total from items
+  const items = Array.isArray(data.items) ? data.items : [];
+  const total = items.reduce(function(s, it) {
+    return s + (Number(it.total_price) || (Number(it.quantity) * Number(it.unit_price)) || 0);
+  }, 0);
+
+  // Determine if this is a new delivery (need to assign a number)
+  const existing = await dbSelect('deliveries', { id: id });
+  let number = data.number;
+  if (!number && existing.length === 0) {
+    number = await getNextDeliveryNumber();
+  } else if (!number && existing.length > 0) {
+    number = existing[0].number;
+  }
+
+  // Determine paid status
+  const paidAmount = Number(data.paid_amount) || 0;
+  let isPaid, status;
+  if (paidAmount >= total) {
+    isPaid = true; status = 'received';
+  } else if (paidAmount > 0) {
+    isPaid = false; status = 'partial';
+  } else {
+    isPaid = false; status = 'unpaid';
+  }
+
+  const record = {
+    number: number,
+    delivery_date: data.delivery_date || new Date().toISOString(),
+    supplier_id: data.supplier_id || '',
+    supplier_name: supplierName,
+    warehouse_id: data.warehouse_id || '',
+    warehouse_name: warehouseName,
+    account_id: data.account_id || '',
+    account_name: accountName,
+    is_paid: isPaid,
+    paid_amount: paidAmount,
+    total_amount: total,
+    status: status,
+    comment: data.comment || ''
+  };
+
+  if (existing.length > 0) {
+    await dbUpdate('deliveries', id, record);
+  } else {
+    record.id = id;
+    record.created_at = new Date().toISOString();
+    await dbInsert('deliveries', record);
+  }
+
+  // Replace items: delete all existing items for this delivery, then insert the new ones
+  const existingItems = await dbSelect('delivery_items', { delivery_id: id });
+  for (const it of existingItems) {
+    try { await dbDelete('delivery_items', it.id); } catch (e) {
+      console.warn('Failed to delete delivery item', it.id, e.message);
+    }
+  }
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it.name && !it.menu_item_id) continue;
+    const itemName = it.name || '';
+    // If no name but menu_item_id is set, look up the menu item name
+    let finalName = itemName;
+    if (!finalName && it.menu_item_id) {
+      const menuItems = await dbSelect('menu', { id: it.menu_item_id });
+      if (menuItems.length > 0) finalName = menuItems[0].name;
+    }
+    const qty = Number(it.quantity) || 0;
+    const unitPrice = Number(it.unit_price) || 0;
+    const totalPrice = Number(it.total_price) || (qty * unitPrice);
+    const itemId = 'dit_' + Date.now().toString(36) + '_' + i + '_' + Math.random().toString(36).substr(2, 4);
+    await dbInsert('delivery_items', {
+      id: itemId,
+      delivery_id: id,
+      menu_item_id: it.menu_item_id || '',
+      name: finalName,
+      pack: it.pack || '',
+      quantity: qty,
+      unit: it.unit || 'шт',
+      unit_price: unitPrice,
+      total_price: totalPrice,
+      sort: i,
+      created_at: new Date().toISOString()
+    });
+  }
+
+  // Optionally apply items to stock (if data.apply_to_stock is true)
+  if (data.apply_to_stock === true) {
+    for (const it of items) {
+      if (!it.menu_item_id) continue;
+      const qty = Number(it.quantity) || 0;
+      if (qty <= 0) continue;
+      try {
+        await dbIncrementStock(it.menu_item_id, qty);
+      } catch (e) {
+        console.warn('Failed to apply stock for', it.menu_item_id, e.message);
+      }
+    }
+  }
+
+  return { id: id, number: number, total: total };
+}
+
+// Delete a delivery and all its items
+async function deleteDelivery(deliveryId) {
+  const items = await dbSelect('delivery_items', { delivery_id: deliveryId });
+  for (const it of items) {
+    try { await dbDelete('delivery_items', it.id); } catch (e) {}
+  }
+  return await dbDelete('deliveries', deliveryId);
+}
+
+/* ---------- Menu modifications ---------- */
+// Syncs the modifications list for a menu item:
+//  - inserts/updates the ones passed in
+//  - deletes the ones NOT in the list (i.e. removed in the UI)
+async function saveMenuModifications(menuId, modifications) {
+  if (!_sb) throw new Error('Supabase not initialized');
+  // Get current modifications for this menu item
+  const existing = await dbSelect('menu_modifications', { menu_id: menuId });
+  const existingIds = existing.map(function(m) { return m.id; });
+  const passedIds = modifications.map(function(m) { return m.id; }).filter(Boolean);
+
+  // Delete modifications that are no longer in the list
+  const toDelete = existingIds.filter(function(id) { return passedIds.indexOf(id) === -1; });
+  for (const id of toDelete) {
+    try { await dbDelete('menu_modifications', id); } catch (e) {
+      console.warn('Failed to delete modification', id, e.message);
+    }
+  }
+
+  // Insert / update each passed modification
+  for (let i = 0; i < modifications.length; i++) {
+    const m = modifications[i];
+    const mId = m.id || 'mod_' + Date.now().toString(36) + '_' + i + '_' + Math.random().toString(36).substr(2, 4);
+    const record = {
+      menu_id: menuId,
+      name: (m.name || '').trim(),
+      name_translation: m.name_translation || '',
+      price: Number(m.price) || 0,
+      cost: Number(m.cost) || 0,
+      markup: Number(m.markup) || 0,
+      sort: i,
+      is_active: m.is_active !== false
+    };
+    if (!record.name) continue; // skip empty
+    if (existingIds.indexOf(mId) >= 0) {
+      try {
+        await dbUpdate('menu_modifications', mId, record);
+      } catch (e) {
+        // If update failed because row doesn't actually exist (stale id), insert instead
+        if (e.message && e.message.indexOf('no rows matched') >= 0) {
+          record.id = mId;
+          await dbInsert('menu_modifications', record);
+        } else {
+          throw e;
+        }
+      }
+    } else {
+      record.id = mId;
+      await dbInsert('menu_modifications', record);
+    }
+  }
+  return { ok: true, count: modifications.length };
+}
+
 /* ---------- Stock ---------- */
 async function deductStock(items) {
   const stockTracking = String(await getSetting('stock_tracking')) === 'true';
@@ -668,6 +1226,11 @@ async function getStockReport() {
   const allMenu = await dbSelect('menu');
   const menu = allMenu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
 
+  // Get all categories (to look up category names by id)
+  const categories = await dbSelect('categories');
+  const catById = {};
+  categories.forEach(function(c) { catById[c.id] = c; });
+
   // Get all order items for consumption calculation
   const { data: allItems } = await _sb
     .from('order_items')
@@ -691,23 +1254,52 @@ async function getStockReport() {
     if (created >= monthAgo) consumption[mid].month += qty;
   });
 
+  // Get all delivery items (for the "Поставки" link / count / total)
+  const allDeliveries = await dbSelect('deliveries');
+  const allDeliveryItems = await dbSelect('delivery_items');
+  const deliveryStats = {}; // menu_item_id → { count, total }
+  allDeliveryItems.forEach(function(dit) {
+    const mid = dit.menu_item_id;
+    if (!mid) return;
+    if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0 };
+    deliveryStats[mid].count += 1;
+    deliveryStats[mid].total += Number(dit.total_price) || 0;
+  });
+
   const items = menu.map(function(m) {
     const stock = Number(m.stock) || 0;
     const cons = consumption[m.id] || { day: 0, week: 0, month: 0, total: 0 };
+    const cost = Number(m.cost) || 0;
+    // Look up the category name (use parent → child format if it's a subcategory)
+    let categoryName = '';
+    if (m.category_id && catById[m.category_id]) {
+      const cat = catById[m.category_id];
+      if (cat.parent_id && catById[cat.parent_id]) {
+        categoryName = catById[cat.parent_id].name + ' → ' + cat.name;
+      } else {
+        categoryName = cat.name;
+      }
+    }
+    const dStats = deliveryStats[m.id] || { count: 0, total: 0 };
     return {
       id: m.id,
       name: m.name,
+      category_id: m.category_id || '',
+      category_name: categoryName,
       sort: Number(m.sort) || 0,
       stock: stock,
+      cost: cost,
+      stock_value: stock * cost, // остаток × себестоимость
       consumed_day: cons.day,
       consumed_week: cons.week,
       consumed_month: cons.month,
       consumed_total: cons.total,
+      deliveries_count: dStats.count,
+      deliveries_total: dStats.total,
       low_stock: stockTracking && stock <= threshold
     };
   });
   // Sort by sort field, then by name — keeps the order stable across reloads
-  // (otherwise PostgreSQL may return rows in different physical order after updates)
   items.sort(function(a, b) {
     const sa = Number(a.sort) || 0;
     const sb = Number(b.sort) || 0;
@@ -720,9 +1312,7 @@ async function getStockReport() {
 
 /* ---------- Auth (login) ---------- */
 async function loginWithPassword(userId, password) {
-  console.log('loginWithPassword: userId=', userId);
   const users = await dbSelect('users', { id: userId });
-  console.log('loginWithPassword: found users=', users.length, users);
   if (users.length === 0) throw new Error('Пользователь не найден');
   const user = users[0];
 
@@ -882,6 +1472,82 @@ function closeModal(id) {
   if (el) el.classList.remove('open');
 }
 
+/* ---------- Custom confirm dialog ---------- */
+// Replaces window.confirm() with a styled in-app modal.
+// Usage:  const ok = await confirmDialog('Удалить?', 'Подтвердите удаление', 'Удалить', 'Отмена');
+//         if (ok) { ... }
+let _confirmDialogPromise = null;
+function confirmDialog(message, title, okText, cancelText, okClass) {
+  // If a confirm dialog is already open, reject the new one to avoid stacking
+  if (_confirmDialogPromise) return _confirmDialogPromise;
+
+  return new Promise(function(resolve) {
+    // Remove any existing dialog
+    const existing = document.getElementById('confirm-dialog-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-dialog-overlay';
+    overlay.style.cssText =
+      'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText =
+      'background:#fff;border-radius:12px;padding:24px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.25);';
+    let html = '';
+    if (title) {
+      html += '<h3 style="margin:0 0 8px;font-size:1.1rem;font-weight:700;color:var(--text);">' + escapeHtml(title) + '</h3>';
+    }
+    html += '<p style="margin:0 0 20px;font-size:1rem;color:var(--text);line-height:1.5;">' + escapeHtml(message) + '</p>';
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;">';
+    html += '<button type="button" class="btn btn-outline" id="confirm-dialog-cancel" style="min-width:96px;padding:10px 16px;">' + escapeHtml(cancelText || 'Отмена') + '</button>';
+    html += '<button type="button" class="btn ' + (okClass || 'btn-danger') + '" id="confirm-dialog-ok" style="min-width:96px;padding:10px 16px;">' + escapeHtml(okText || 'OK') + '</button>';
+    html += '</div>';
+    modal.innerHTML = html;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Animate in
+    modal.style.transform = 'scale(0.95)';
+    modal.style.opacity = '0';
+    modal.style.transition = 'transform 0.15s, opacity 0.15s';
+    requestAnimationFrame(function() {
+      modal.style.transform = 'scale(1)';
+      modal.style.opacity = '1';
+    });
+
+    function closeDialog(result) {
+      modal.style.transform = 'scale(0.95)';
+      modal.style.opacity = '0';
+      setTimeout(function() {
+        overlay.remove();
+        _confirmDialogPromise = null;
+        resolve(result);
+      }, 150);
+    }
+
+    document.getElementById('confirm-dialog-ok').onclick = function() { closeDialog(true); };
+    document.getElementById('confirm-dialog-cancel').onclick = function() { closeDialog(false); };
+    // Close on backdrop click
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeDialog(false);
+    });
+    // Close on Escape
+    const escHandler = function(e) {
+      if (e.key === 'Escape') {
+        closeDialog(false);
+        document.removeEventListener('keydown', escHandler);
+      } else if (e.key === 'Enter') {
+        closeDialog(true);
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+    // Focus the OK button after a tiny delay
+    setTimeout(function() { document.getElementById('confirm-dialog-ok').focus(); }, 100);
+  });
+}
+
 /* ---------- Format ---------- */
 function formatTableLabel(order) {
   if (!order) return '';
@@ -902,6 +1568,22 @@ function formatMoney(amount, currency) {
   const hasDec = (n % 1) !== 0;
   const formatted = hasDec ? n.toFixed(2) : Math.round(n).toString();
   return formatted + ' ' + cur;
+}
+
+// Format a markup percentage: 50 -> "50%", 12.5 -> "12.5%"
+function formatPercent(value) {
+  const n = Number(value) || 0;
+  const hasDec = (n % 1) !== 0;
+  return (hasDec ? n.toFixed(1) : Math.round(n).toString()) + '%';
+}
+
+// Calculate effective markup percentage from cost and price.
+// Returns 0 if cost == price (or cost == 0).
+function calcMarkupPercent(cost, price) {
+  cost = Number(cost) || 0;
+  price = Number(price) || 0;
+  if (cost === 0 || cost === price) return 0;
+  return ((price - cost) / cost) * 100;
 }
 
 function formatTime(iso) {
@@ -1123,6 +1805,14 @@ async function apiGet(action, params) {
       return await getActiveShift(params.waiter_id);
     case 'getStockReport':
       return await getStockReport();
+    case 'getTablesConfig':
+      return await getTablesConfig();
+    case 'getAllDeliveries':
+      return { deliveries: await getAllDeliveries() };
+    case 'getDelivery':
+      return await getDelivery(params.id);
+    case 'getDeliveriesForMenuItem':
+      return { deliveries: await getDeliveriesForMenuItem(params.menu_item_id) };
     case 'getTabs': {
       let tabs = await dbSelect('tabs');
       if (params.status && params.status !== 'all') {
@@ -1236,25 +1926,42 @@ async function apiPost(action, body) {
     case 'saveMenuItem': {
       const mId = body.id || 'm_' + Date.now().toString(36);
       const existing = await dbSelect('menu', { id: mId });
+      const hasMods = body.has_modifications === true;
       const record = {
         category_id: body.category_id || '',
         name: body.name,
         name_translation: body.name_translation || '',
         price: Number(body.price) || 0,
+        cost: Number(body.cost) || 0,
+        markup: Number(body.markup) || 0,
         needs_cooking: body.needs_cooking === true,
         sort: body.sort || 0,
         is_active: body.is_active !== false,
-        stock: body.stock !== undefined ? Number(body.stock) : 0
+        stock: body.stock !== undefined ? Number(body.stock) : 0,
+        has_modifications: hasMods
       };
+      let result;
       if (existing.length > 0) {
-        return await dbUpdate('menu', mId, record);
+        result = await dbUpdate('menu', mId, record);
       } else {
         record.id = mId;
-        return await dbInsert('menu', record);
+        result = await dbInsert('menu', record);
       }
+      // Save modifications if provided (only when has_modifications=true,
+      // but we still process the list either way to allow cleanup)
+      if (Array.isArray(body.modifications)) {
+        await saveMenuModifications(mId, body.modifications);
+      }
+      return result;
     }
-    case 'deleteMenuItem':
+    case 'deleteMenuItem': {
+      // First delete all modifications of this menu item
+      const mods = await dbSelect('menu_modifications', { menu_id: body.id });
+      for (const m of mods) {
+        try { await dbDelete('menu_modifications', m.id); } catch (e) {}
+      }
       return await dbDelete('menu', body.id);
+    }
     case 'saveUser': {
       const uId = body.id || 'u_' + Date.now().toString(36);
       const existing = await dbSelect('users', { id: uId });
@@ -1279,6 +1986,24 @@ async function apiPost(action, body) {
       return await setPassword(body.user_id, body.new_password, body.plaintext);
     case 'replenishStock':
       return await replenishStock(body.menu_item_id, body.quantity);
+    case 'saveTablesConfig':
+      return await saveTablesConfig(body);
+    case 'saveSupplier':
+      return await saveSupplier(body);
+    case 'deleteSupplier':
+      return await deleteSupplier(body.id);
+    case 'saveWarehouse':
+      return await saveWarehouse(body);
+    case 'deleteWarehouse':
+      return await deleteWarehouse(body.id);
+    case 'saveAccount':
+      return await saveAccount(body);
+    case 'deleteAccount':
+      return await deleteAccount(body.id);
+    case 'saveDelivery':
+      return await saveDelivery(body);
+    case 'deleteDelivery':
+      return await deleteDelivery(body.id);
     case 'reorderMenu': {
       const items = body.items || [];
       for (const it of items) {

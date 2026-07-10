@@ -364,48 +364,20 @@
     color: var(--text);
   }
 
-  body.has-cart-panel { padding-bottom: 90px; }
+  /* Consistent bottom padding on all waiter screens so buttons never stick
+     to the bottom edge of the screen. When the cart panel is visible, add
+     extra space to accommodate it. */
+  body { padding-bottom: 32px; }
+  body.has-cart-panel { padding-bottom: 110px; }
 
-  /* ============================================================
-     SPLIT-VIEW LAYOUT for tablets (≥769px)
-     On tablets and desktops, show the table-selection screen on the left
-     and the menu on the right — so the waiter can see both at once.
-     On phones (≤768px), keep the original full-screen navigation.
-     ============================================================ */
+  /* SPLIT-VIEW for tablets (≥769px): tables on left, menu on right */
   @media (min-width: 769px) {
-    /* The two screens we want side-by-side */
-    body.split-view #screen-home,
-    body.split-view #screen-menu {
-      display: block !important;
-    }
-    body.split-view #screen-home {
-      width: 340px;
-      flex: none;
-      border-right: 2px solid var(--border);
-      padding: 12px;
-      overflow-y: auto;
-      max-height: calc(100vh - 60px);
-      position: sticky;
-      top: 0;
-    }
-    body.split-view #screen-menu {
-      flex: 1;
-      padding: 12px 16px;
-    }
-    /* On split-view, hide the "← Назад" button in the menu screen (no need) */
-    body.split-view #screen-menu .btn-outline[onclick*="showScreen('home')"] {
-      display: none;
-    }
-    /* Cart panel should stick to the bottom of the menu (right) side */
-    body.split-view #screen-menu .cart-panel {
-      position: sticky;
-      bottom: 0;
-    }
-    /* Wrap the two screens in a flex container — we do this by making body a flex */
-    body.split-view {
-      display: flex;
-      align-items: flex-start;
-    }
+    body.split-view #screen-home, body.split-view #screen-menu { display: block !important; }
+    body.split-view #screen-home { width: 340px; flex: none; border-right: 2px solid var(--border); padding: 12px; overflow-y: auto; max-height: calc(100vh - 60px); position: sticky; top: 0; }
+    body.split-view #screen-menu { flex: 1; padding: 12px 16px; }
+    body.split-view #screen-menu .btn-outline[onclick*="showScreen('home')"] { display: none; }
+    body.split-view #screen-menu .cart-panel { position: sticky; bottom: 0; }
+    body.split-view { display: flex; align-items: flex-start; }
   }
 
   /* Mobile responsive tweaks for waiter page */
@@ -768,6 +740,26 @@
   </div>
 </div>
 
+<!-- Open shift modal -->
+<div class="modal-backdrop" id="modal-shift-open">
+  <div class="modal">
+    <h2>Открытие смены</h2>
+    <p style="margin-bottom:12px;color:var(--text-muted);">Подсчитайте наличные в кассе и введите сумму, чтобы начать смену.</p>
+    <div class="form-group">
+      <label>Наличные в кассе на начало смены</label>
+      <input type="number" id="shift-open-cash" min="0" step="0.01" placeholder="0" autofocus
+             onkeydown="if(event.key==='Enter'){event.preventDefault();confirmOpenShift();}">
+    </div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px;">
+      <button class="btn btn-primary btn-lg" id="confirm-open-shift-btn" style="width:100%;"
+              onclick="withLoading(this, 'Открываем...', function() { return confirmOpenShift(); })">
+        Открыть смену
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('modal-shift-open')" style="width:100%;">Отмена</button>
+    </div>
+  </div>
+</div>
+
 <!-- Payment method modal -->
 <div class="modal-backdrop" id="modal-payment">
   <div class="modal">
@@ -1038,10 +1030,20 @@ function handleShiftClick() {
 }
 
 async function openShift() {
-  // Ask waiter to count and enter the starting cash
-  const cashStr = prompt('Введите сумму наличных в кассе на начало смены:', String(state.currentCash || 0));
-  if (cashStr === null) return;
-  const openingCash = Number(cashStr) || 0;
+  // Open the in-app modal (replaces the old browser prompt()).
+  // Pre-fill with the current cash register value so the waiter can adjust it.
+  const cashInput = document.getElementById('shift-open-cash');
+  if (cashInput) {
+    cashInput.value = String(state.currentCash || 0);
+  }
+  openModal('modal-shift-open');
+  // Focus the input after a tiny delay
+  setTimeout(function() { if (cashInput) cashInput.focus(); }, 50);
+}
+
+async function confirmOpenShift() {
+  const cashInput = document.getElementById('shift-open-cash');
+  const openingCash = cashInput ? (Number(cashInput.value) || 0) : 0;
   try {
     const result = await apiPost('openShift', {
       waiter_id: state.currentUser.id,
@@ -1051,6 +1053,7 @@ async function openShift() {
     _activeShift = result;
     state.currentCash = openingCash;
     showToast('Смена открыта. В кассе: ' + formatMoney(result.opening_cash), 'success');
+    closeModal('modal-shift-open');
     updateShiftButton();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
@@ -1058,19 +1061,17 @@ async function openShift() {
 }
 
 async function showCloseShiftModal() {
-  // Preview the shift summary before closing
   const summaryDiv = document.getElementById('shift-summary');
   summaryDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Считаем статистику...</p>';
   openModal('modal-shift-close');
   try {
-    // Check for active (non-completed) orders by this waiter — blocking close
-    // EXCEPT virtual orders (table_type='virtual'), which may span shifts.
+    // Check for active (non-completed) orders — blocking close
+    // EXCEPT virtual orders and tabs, which may span shifts.
     const activeData = await apiGet('getOrders', { status: 'accepted', waiter_id: state.currentUser.id });
     const blockingOrders = (activeData.orders || []).filter(function(o) {
       return o.table_type !== 'virtual' && o.table_type !== 'tab';
     });
     if (blockingOrders.length > 0) {
-      // Build a list of blocking orders for display
       let listHtml = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">';
       blockingOrders.forEach(function(o) {
         listHtml += '<div style="padding:8px;background:#fff;border-radius:6px;border:1px solid var(--border);">' +
@@ -1085,27 +1086,13 @@ async function showCloseShiftModal() {
           'Сначала завершите их (или переведите на паузу). ' +
           'Виртуальные заказы могут переходить между сменами и не блокируют закрытие.' +
         '</div>' +
-        '<h3 style="margin:0 0 8px;font-size:1rem;">Незавершённые заказы:</h3>' +
-        listHtml;
-      // Disable the "Закрыть смену" button
+        '<h3 style="margin:0 0 8px;font-size:1rem;">Незавершённые заказы:</h3>' + listHtml;
       const closeBtn = document.getElementById('confirm-close-shift-btn');
-      if (closeBtn) {
-        closeBtn.disabled = true;
-        closeBtn.style.opacity = '0.4';
-        closeBtn.style.cursor = 'not-allowed';
-        closeBtn.textContent = 'Сначала завершите заказы';
-      }
+      if (closeBtn) { closeBtn.disabled = true; closeBtn.style.opacity = '0.4'; closeBtn.style.cursor = 'not-allowed'; closeBtn.textContent = 'Сначала завершите заказы'; }
       return;
     }
-    // Re-enable the close button (in case it was disabled before)
     const closeBtn = document.getElementById('confirm-close-shift-btn');
-    if (closeBtn) {
-      closeBtn.disabled = false;
-      closeBtn.style.opacity = '';
-      closeBtn.style.cursor = '';
-      closeBtn.textContent = 'Закрыть смену';
-    }
-    // Get stats from completed orders since shift opened
+    if (closeBtn) { closeBtn.disabled = false; closeBtn.style.opacity = ''; closeBtn.style.cursor = ''; closeBtn.textContent = 'Закрыть смену'; }
     const data = await apiGet('getOrders', { status: 'completed', waiter_id: state.currentUser.id });
     const openedAt = _activeShift.opened_at;
     const orders = (data.orders || []).filter(function(o) {
@@ -1169,44 +1156,27 @@ async function refreshAppDataAndRender() {
 
 /* ---------- Screen navigation ---------- */
 function showScreen(name) {
-  // If leaving the order-detail screen, flush any pending quantity changes
   const wasOnOrderDetail = document.getElementById('screen-order-detail').classList.contains('active');
   if (wasOnOrderDetail && name !== 'order-detail') {
-    if (_qtySyncTimer) {
-      clearTimeout(_qtySyncTimer);
-      _qtySyncTimer = null;
-    }
-    flushQtyChanges(); // send accumulated changes to server
+    if (_qtySyncTimer) { clearTimeout(_qtySyncTimer); _qtySyncTimer = null; }
+    flushQtyChanges();
   }
-  // Split-view on tablets: when showing the menu, also keep the home screen
-  // (table selection) visible on the left. On phones, behave as before.
+  // Split-view on tablets: show home + menu side by side
   const isTablet = window.innerWidth >= 769;
   if (isTablet && (name === 'menu' || name === 'home')) {
-    // Activate split-view: show BOTH home and menu, side by side
     document.body.classList.add('split-view');
     document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
     document.getElementById('screen-home').classList.add('active');
     document.getElementById('screen-menu').classList.add('active');
   } else {
-    // Normal full-screen mode
     document.body.classList.remove('split-view');
     document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
     const target = document.getElementById('screen-' + name);
     if (target) target.classList.add('active');
   }
-  // Stop item-readiness polling when leaving order detail
-  if (name !== 'order-detail') {
-    stopOrderPolling();
-  }
-  if (name === 'home') {
-    // Refresh APP_DATA so admin changes (currency, menu, categories) are picked up
-    refreshAppDataAndRender();
-    startBadgePolling();
-  }
-  if (name === 'orders') {
-    stopBadgePolling();
-    loadActiveOrders();
-  }
+  if (name !== 'order-detail') { stopOrderPolling(); }
+  if (name === 'home') { refreshAppDataAndRender(); startBadgePolling(); }
+  if (name === 'orders') { stopBadgePolling(); loadActiveOrders(); }
   if (name === 'order-detail') {
     stopBadgePolling();
     startOrderPolling();
@@ -1229,28 +1199,26 @@ function formatItemLabel(item) {
       if (cat && cat.parent_id) categoryName = cat.name || '';
     }
   }
+  let label = '';
   if (categoryName) {
-    return '<span class="ci-cat-badge">' + escapeHtml(categoryName) + '</span> ' + escapeHtml(item.name);
+    label = '<span class="ci-cat-badge">' + escapeHtml(categoryName) + '</span> ' + escapeHtml(item.name);
+  } else {
+    label = escapeHtml(item.name);
   }
-  return escapeHtml(item.name);
+  // Append modification if present
+  if (item.modification_name) {
+    label += ' <span style="color:var(--primary);font-weight:600;">· ' + escapeHtml(item.modification_name) + '</span>';
+  }
+  return label;
 }
 
-// Check whether an order consists ONLY of bar-category items.
-// If so, the "served" step can be skipped — the order can be completed immediately.
-// Bar categories are configured in admin settings (settings.bar_categories, JSON array of names).
-// We check by looking up each item's category (via menu_item_id → menu.category_id → category.name)
-// and matching against the bar-categories list (also including parent category names).
+// Check if order is bar-only (all items from bar categories) — can skip "served"
 function isOrderBarOnly(items) {
   if (!items || items.length === 0) return false;
-  // Parse bar categories from settings
   let barCats = [];
-  try {
-    barCats = JSON.parse(APP_DATA.settings.bar_categories || '[]');
-  } catch (e) { barCats = []; }
-  if (barCats.length === 0) return false; // no bar categories configured → bar-check disabled
-  // Normalize to lowercase for case-insensitive matching
+  try { barCats = JSON.parse(APP_DATA.settings.bar_categories || '[]'); } catch (e) { barCats = []; }
+  if (barCats.length === 0) return false;
   const barCatsLower = barCats.map(function(c) { return String(c).toLowerCase().trim(); });
-  // For each item, determine its category name (sub + parent)
   for (const it of items) {
     let catName = it.category_name || '';
     if (!catName && it.menu_item_id && APP_DATA && APP_DATA.menu) {
@@ -1259,35 +1227,35 @@ function isOrderBarOnly(items) {
         const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
         if (cat) {
           catName = cat.name;
-          // Also consider the parent category name
           if (cat.parent_id) {
             const parent = APP_DATA.categories.find(function(c) { return c.id === cat.parent_id; });
             if (parent) {
-              // Check both the subcategory name and the parent name
-              const subLower = cat.name.toLowerCase();
-              const parentLower = parent.name.toLowerCase();
-              if (barCatsLower.indexOf(subLower) >= 0 || barCatsLower.indexOf(parentLower) >= 0) {
-                continue; // this item is a bar item
-              }
+              if (barCatsLower.indexOf(cat.name.toLowerCase()) >= 0 || barCatsLower.indexOf(parent.name.toLowerCase()) >= 0) continue;
             }
           }
         }
       }
     }
-    const catLower = catName.toLowerCase();
-    if (barCatsLower.indexOf(catLower) < 0) {
-      return false; // found a non-bar item
-    }
+    if (barCatsLower.indexOf(catName.toLowerCase()) < 0) return false;
   }
-  return true; // all items are bar items
+  return true;
 }
 
 function renderHome() {
-  // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other
-  const tableCount = Number(APP_DATA.settings.table_count) || 20;
+  // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other.
+  // Tables are now sourced from APP_DATA.tables.numbered (each may have an optional
+  // custom label). Fall back to settings.table_count for backward compatibility.
+  const numberedTables = (APP_DATA.tables && APP_DATA.tables.numbered) || [];
+  const tableCount = numberedTables.length > 0
+    ? numberedTables.length
+    : (Number(APP_DATA.settings.table_count) || 0);
   const tableGrid = document.getElementById('table-grid');
   tableGrid.innerHTML = '';
   for (let i = 1; i <= tableCount; i++) {
+    // Look up the custom label for this table number (if any)
+    const tableInfo = numberedTables.find(function(t) { return t.number === i; });
+    const customLabel = tableInfo && tableInfo.label ? tableInfo.label : '';
+    const displayName = customLabel || String(i);
     const hasOrder = state.activeOrders.some(function(o) {
       return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered');
     });
@@ -1302,11 +1270,11 @@ function renderHome() {
     if (lockedByOther) { cls += ' locked-by-other'; label = ts.waiter_name ? '⨉ ' + ts.waiter_name : '⨉ занят'; }
     if (isSelected) { cls += ' selected'; label = '✓ выбран'; }
     btn.className = cls;
-    btn.innerHTML = i + '<span class="table-label">' + label + '</span>';
+    btn.innerHTML = escapeHtml(displayName) + '<span class="table-label">' + label + '</span>';
     if (lockedByOther) {
       btn.disabled = true;
       btn.onclick = function() {
-        showToast('Столик №' + i + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
+        showToast('Столик ' + escapeHtml(displayName) + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
       };
     } else {
       btn.onclick = function(e) { selectTable(i, 'numbered', e); };
@@ -1318,7 +1286,13 @@ function renderHome() {
   // exclusive sense. Each click opens a NEW virtual order, so multiple can
   // be open in parallel. We just show a small badge with the count of active
   // orders for each, so the waiter has situational awareness.
-  const virtualNames = (APP_DATA.settings.virtual_tables || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  // Sourced from APP_DATA.tables.virtual, with fallback to settings.virtual_tables.
+  let virtualNames = [];
+  if (APP_DATA.tables && APP_DATA.tables.virtual && APP_DATA.tables.virtual.length > 0) {
+    virtualNames = APP_DATA.tables.virtual.map(function(t) { return t.label; }).filter(Boolean);
+  } else {
+    virtualNames = (APP_DATA.settings.virtual_tables || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  }
   const virtualSection = document.getElementById('virtual-tables-section');
   const virtualGrid = document.getElementById('virtual-table-grid');
   if (virtualNames.length > 0) {
@@ -1642,18 +1616,201 @@ function renderMenu() {
   items.forEach(function(item) {
     const card = document.createElement('div');
     card.className = 'menu-item-card';
+    const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+    const priceLabel = hasMods
+      ? 'от ' + formatMoney(minModPrice(item))
+      : formatMoney(item.price);
     card.innerHTML =
-      '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
-      '<div class="item-price">' + formatMoney(item.price) + '</div>' +
-      '<button class="item-add-btn">+ Добавить</button>';
-    card.querySelector('.item-add-btn').onclick = function() { addToCart(item); };
+      '<div class="item-name">' + escapeHtml(item.name) +
+        (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
+      '</div>' +
+      '<div class="item-price">' + priceLabel + '</div>' +
+      '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
+    card.querySelector('.item-add-btn').onclick = function() {
+      if (hasMods) {
+        showModificationPicker(item);
+      } else {
+        addToCart(item);
+      }
+    };
     itemsDiv.appendChild(card);
   });
 
   renderCartPanel();
 }
 
-function addToCart(item) {
+function minModPrice(item) {
+  if (!item.modifications || item.modifications.length === 0) return item.price || 0;
+  return item.modifications.reduce(function(min, m) {
+    return Math.min(min, Number(m.price) || 0);
+  }, Infinity);
+}
+
+// Show a modal/bottom-sheet with the list of modifications for a menu item.
+// The picker stays open after a selection so the user can pick multiple
+// different modifications or pick the same one multiple times.
+// Each modification row also has a "−" button to remove a mistakenly
+// added item from the cart without closing the picker.
+// Close the picker by clicking the ✕ button, "Готово" button, or by
+// clicking on the backdrop (the dark overlay area outside the white sheet).
+function showModificationPicker(item) {
+  // Remove any existing picker
+  const existing = document.getElementById('mod-picker-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'mod-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:0;';
+
+  const sheet = document.createElement('div');
+  sheet.style.cssText = 'background:#fff;width:100%;max-width:600px;border-radius:16px 16px 0 0;padding:16px;max-height:80vh;overflow-y:auto;animation:slideUp 0.2s ease-out;';
+
+  // Header: title + close button + counter of total picked
+  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+  html += '<h3 style="margin:0;font-size:1.1rem;">' + escapeHtml(item.name) + '</h3>';
+  html += '<button class="btn btn-outline" style="padding:4px 10px;font-size:1.1rem;" onclick="closeModificationPicker()">✕</button>';
+  html += '</div>';
+  html += '<div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Нажмите «+» чтобы добавить, «−» чтобы убрать. Можно выбрать несколько разных или один несколько раз.</div>';
+  // Counter line (updated after each pick)
+  html += '<div id="mod-picker-counter" style="font-size:0.9rem;color:var(--primary);font-weight:600;margin-bottom:8px;">Добавлено: 0</div>';
+  html += '<div id="mod-picker-list" style="display:flex;flex-direction:column;gap:8px;">';
+  item.modifications.forEach(function(mod) {
+    html += '<div class="mod-pick-row" data-mod-id="' + mod.id + '" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">';
+    html += '<div style="flex:1;min-width:0;">';
+    html += '<div style="font-size:1rem;font-weight:600;">' + escapeHtml(mod.name) + '</div>';
+    html += '<div class="mod-pick-count" style="font-size:0.85rem;color:var(--primary);font-weight:700;margin-top:2px;display:none;">×0</div>';
+    html += '</div>';
+    // Price + stepper (+ / −) — square buttons with rounded corners
+    html += '<div style="display:flex;align-items:center;gap:8px;flex:none;">';
+    html += '<span style="font-weight:700;color:var(--primary);">' + formatMoney(mod.price) + '</span>';
+    html += '<button type="button" class="btn btn-outline mod-remove-btn" title="Убрать из корзины" ' +
+      'style="width:36px;height:36px;padding:0;border-radius:6px;font-size:1.3rem;font-weight:700;color:var(--danger);display:flex;align-items:center;justify-content:center;line-height:1;" ' +
+      'onclick="event.stopPropagation();removeModificationFromCart(\'' + item.id + '\', \'' + mod.id + '\')">−</button>';
+    html += '<button type="button" class="btn mod-add-btn" title="Добавить в корзину" ' +
+      'style="width:36px;height:36px;padding:0;border-radius:6px;border:none;background:var(--success);color:#fff;font-size:1.4rem;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;" ' +
+      'onclick="event.stopPropagation();pickModification(\'' + item.id + '\', \'' + mod.id + '\')">+</button>';
+    html += '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  // "Done" button at the bottom
+  html += '<button class="btn btn-primary" style="margin-top:12px;width:100%;" onclick="closeModificationPicker()">Готово</button>';
+
+  sheet.innerHTML = html;
+  overlay.appendChild(sheet);
+  // Close on backdrop click (clicking on the dark area outside the sheet)
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) closeModificationPicker();
+  });
+  // Prevent clicks inside the sheet from bubbling up to the overlay
+  sheet.addEventListener('click', function(e) { e.stopPropagation(); });
+  document.body.appendChild(overlay);
+
+  // Initialize counts based on current cart state (in case picker is reopened)
+  updateModificationPickerCounts(item.id);
+}
+
+// Close the modification picker
+function closeModificationPicker() {
+  const overlay = document.getElementById('mod-picker-overlay');
+  if (overlay) overlay.remove();
+}
+
+// Add a modification to the cart (called from the picker's "+" button).
+// The picker stays open after each pick.
+function pickModification(itemId, modId) {
+  const item = APP_DATA.menu.find(function(m) { return m.id === itemId; });
+  if (!item) return;
+  const mod = (item.modifications || []).find(function(m) { return m.id === modId; });
+  if (!mod) return;
+  // Add to cart with modification (picker stays open)
+  addToCart(item, mod);
+
+  // Brief green flash on the row
+  const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + modId + '"]');
+  if (row) {
+    const prevBg = row.style.background;
+    row.style.transition = 'background-color 0.3s';
+    row.style.background = '#c8e6c9';
+    setTimeout(function() { row.style.background = prevBg; }, 400);
+  }
+
+  // Refresh all counts and the total counter
+  updateModificationPickerCounts(itemId);
+}
+
+// Remove one unit of a modification from the cart (called from the picker's "−" button).
+// Only removes if such an item exists in the cart.
+function removeModificationFromCart(itemId, modId) {
+  // Find the cart entry for this item + modification
+  const idx = state.cart.findIndex(function(c) {
+    return c.menu_item_id === itemId && c.modification_id === modId;
+  });
+  if (idx < 0) return; // nothing to remove
+  // Decrement quantity; remove the entry if it reaches 0
+  const entry = state.cart[idx];
+  entry.quantity -= 1;
+  if (entry.quantity <= 0) {
+    state.cart.splice(idx, 1);
+  }
+  // Re-render the cart panel (bottom bar with total)
+  renderCartPanel();
+
+  // Brief red flash on the row
+  const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + modId + '"]');
+  if (row) {
+    const prevBg = row.style.background;
+    row.style.transition = 'background-color 0.3s';
+    row.style.background = '#ffcdd2';
+    setTimeout(function() { row.style.background = prevBg; }, 400);
+  }
+
+  // Refresh counts and the total counter
+  updateModificationPickerCounts(itemId);
+  // Beep to confirm removal (lower pitch than add)
+  beep(440, 60, 0.1);
+}
+
+// Refresh the per-modification counts and the total counter in the picker
+function updateModificationPickerCounts(itemId) {
+  // Update each row's count badge
+  const item = APP_DATA.menu.find(function(m) { return m.id === itemId; });
+  if (!item) return;
+  (item.modifications || []).forEach(function(mod) {
+    const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + mod.id + '"]');
+    if (!row) return;
+    const countEl = row.querySelector('.mod-pick-count');
+    const inCart = state.cart.reduce(function(s, c) {
+      return (c.menu_item_id === itemId && c.modification_id === mod.id) ? s + c.quantity : s;
+    }, 0);
+    if (inCart > 0) {
+      countEl.textContent = '×' + inCart;
+      countEl.style.display = 'block';
+    } else {
+      countEl.style.display = 'none';
+      countEl.textContent = '×0';
+    }
+    // Disable the "−" button if there's nothing to remove for this mod
+    const removeBtn = row.querySelector('.mod-remove-btn');
+    if (removeBtn) removeBtn.disabled = (inCart === 0);
+  });
+  // Update the total counter
+  const counterEl = document.getElementById('mod-picker-counter');
+  if (counterEl) {
+    const totalPicked = state.cart.reduce(function(s, c) {
+      return c.menu_item_id === itemId && c.modification_id ? s + c.quantity : s;
+    }, 0);
+    counterEl.textContent = 'Добавлено: ' + totalPicked;
+  }
+}
+
+function addToCart(item, modification) {
+  // If a modification is provided, the cart item is uniquely identified by
+  // (menu_item_id + modification_id). Otherwise, by menu_item_id alone.
+  const modId = modification ? modification.id : '';
+  const modName = modification ? modification.name : '';
+  const unitPrice = modification ? Number(modification.price) : Number(item.price);
+
   // Check stock if tracking is enabled
   if (APP_DATA.settings.stock_tracking === 'true' || APP_DATA.settings.stock_tracking === true) {
     const stock = Number(item.stock) || 0;
@@ -1661,7 +1818,7 @@ function addToCart(item) {
       return c.menu_item_id === item.id ? s + c.quantity : s;
     }, 0);
     if (stock <= inCart) {
-      showToast('Нет в наличии: ' + item.name + ' (осталось ' + stock + ' шт.)', 'error');
+      showToast('Нет в наличии: ' + item.name + (modName ? ' (' + modName + ')' : '') + ' (осталось ' + stock + ' шт.)', 'error');
       return;
     }
     const threshold = Number(APP_DATA.settings.stock_threshold) || 5;
@@ -1669,31 +1826,37 @@ function addToCart(item) {
       showToast('Внимание: ' + item.name + ' — осталось ' + (stock - inCart) + ' шт.', 'warning');
     }
   }
-  const existing = state.cart.find(function(c) { return c.menu_item_id === item.id; });
+
+  // Find the subcategory for this item. We only care about REAL subcategories
+  // (those with a parent_id). If the item is attached directly to a main
+  // category (e.g. "Breakfast" with no subcategory) or has no category at all,
+  // we leave category_name empty — the cook will just see the dish name.
+  let categoryName = '';
+  let categoryNameTranslation = '';
+  if (item.category_id) {
+    const cat = APP_DATA.categories.find(function(c) { return c.id === item.category_id; });
+    if (cat && cat.parent_id) {
+      categoryName = cat.name || '';
+      categoryNameTranslation = cat.name_translation || '';
+    }
+  }
+
+  // Look for an existing cart entry with the same modification
+  const existing = state.cart.find(function(c) {
+    return c.menu_item_id === item.id && (c.modification_id || '') === modId;
+  });
   if (existing) {
     existing.quantity += 1;
   } else {
-    // Find the subcategory for this item. We only care about REAL subcategories
-    // (those with a parent_id). If the item is attached directly to a main
-    // category (e.g. "Breakfast" with no subcategory) or has no category at all,
-    // we leave category_name empty — the cook will just see the dish name.
-    let categoryName = '';
-    let categoryNameTranslation = '';
-    if (item.category_id) {
-      const cat = APP_DATA.categories.find(function(c) { return c.id === item.category_id; });
-      if (cat && cat.parent_id) {
-        // It's a real subcategory — include its name + translation
-        categoryName = cat.name || '';
-        categoryNameTranslation = cat.name_translation || '';
-      }
-    }
     state.cart.push({
       menu_item_id: item.id,
       name: item.name,
       name_translation: item.name_translation || '',
       category_name: categoryName,
       category_name_translation: categoryNameTranslation,
-      price: Number(item.price),
+      modification_id: modId,
+      modification_name: modName,
+      price: unitPrice,
       quantity: 1,
       comment: '',
       needs_cooking: item.needs_cooking === true || item.needs_cooking === 'true' ||
@@ -1761,6 +1924,10 @@ function renderCartItems() {
     } else {
       nameLine = escapeHtml(item.name);
     }
+    // Append modification name if present
+    if (item.modification_name) {
+      nameLine += '<div style="font-size:0.85rem;color:var(--primary);font-weight:600;margin-top:2px;">⚙ ' + escapeHtml(item.modification_name) + '</div>';
+    }
     const card = document.createElement('div');
     card.className = 'cart-item';
     card.innerHTML =
@@ -1773,9 +1940,7 @@ function renderCartItems() {
         '<input type="number" value="' + item.quantity + '" onchange="setCartQty(' + idx + ', Number(this.value))">' +
         '<button onclick="changeCartQty(' + idx + ', 1)">+</button>' +
       '</div>';
-    // Show comment field only if the setting is enabled (default: on)
-    const commentsEnabled = String(APP_DATA.settings.dish_comments) !== 'false';
-    if (commentsEnabled) {
+    if (String(APP_DATA.settings.dish_comments) !== 'false') {
       card.innerHTML += '<div class="ci-comment">' +
         '<input type="text" placeholder="' + (item.needs_cooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment) + '" ' +
         'onchange="setCartComment(' + idx + ', this.value)">' +
@@ -1790,8 +1955,9 @@ function setCartComment(idx, val) {
   if (state.cart[idx]) state.cart[idx].comment = val;
 }
 
-function clearCart() {
-  if (!confirm('Очистить корзину?')) return;
+async function clearCart() {
+  const ok = await confirmDialog('Очистить корзину?', 'Очистить корзину', 'Очистить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   state.cart = [];
   renderCartPanel();
   renderCartItems();
@@ -2156,7 +2322,14 @@ function renderHomeActiveOrders() {
 }
 
 async function pauseOrderById(orderId) {
-  if (!confirm('Поставить заказ на паузу? Он уйдёт с главного экрана, но будет виден в списке активных заказов (кнопка справа сверху).')) return;
+  const ok = await confirmDialog(
+    'Поставить заказ на паузу? Он уйдёт с главного экрана, но будет виден в списке активных заказов (кнопка справа сверху).',
+    'Пауза заказа',
+    'На паузу',
+    'Отмена',
+    'btn-primary'
+  );
+  if (!ok) return;
   try {
     await apiPost('pauseOrder', { order_id: orderId });
     showToast('Заказ на паузе — найдёте его в списке активных заказов', 'info');
@@ -2367,9 +2540,9 @@ async function renderOrderDetail() {
             '</div>' +
           '</div>' +
           (isServed
-            ? '' // no comment field if already served
+            ? ''
             : (String(APP_DATA.settings.dish_comments) === 'false'
-                ? '' // comments disabled in settings
+                ? ''
                 : '<div class="ci-comment">' +
                     '<input type="text" placeholder="' + (needsCooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment || '') + '" ' +
                     'onchange="updateOrderItemComment(\'' + item.id + '\', this.value)">' +
@@ -2388,9 +2561,6 @@ async function renderOrderDetail() {
     const detNotServed = detItems.filter(function(i) {
       return !(i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE');
     });
-    // Bar-only check: if every item in this order belongs to a "bar category"
-    // (configured in admin settings), then "served" is not required — the
-    // order can be completed immediately.
     const isBarOnly = isOrderBarOnly(detItems);
     const completeBtns = document.querySelectorAll('#screen-order-detail .btn-success');
     completeBtns.forEach(function(btn) {
@@ -2467,7 +2637,8 @@ async function changeOrderItemQty(itemId, delta) {
   const newQty = Number(item.quantity) + delta;
   if (newQty <= 0) {
     // Remove — this needs server confirmation
-    if (!confirm('Удалить позицию из заказа?')) return;
+    const ok = await confirmDialog('Удалить позицию из заказа?', 'Удаление позиции', 'Удалить', 'Отмена', 'btn-danger');
+    if (!ok) return;
     // Optimistic: remove from local state + DOM
     order.items = order.items.filter(function(i) { return i.id !== itemId; });
     const cardEl = document.querySelector('.cart-item[data-item-id="' + itemId + '"]');
@@ -2517,7 +2688,8 @@ function recalcOrderTotal() {
 }
 
 async function removeOrderItem(itemId) {
-  if (!confirm('Удалить позицию из заказа?')) return;
+  const ok = await confirmDialog('Удалить позицию из заказа?', 'Удаление позиции', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
   try {
     const updatedOrder = await apiPost('removeItemFromOrder', { item_id: itemId });
     if (updatedOrder) {
@@ -2608,6 +2780,8 @@ async function addToExistingOrder() {
         name_translation: item.name_translation || '',
         category_name: item.category_name || '',
         category_name_translation: item.category_name_translation || '',
+        modification_id: item.modification_id || '',
+        modification_name: item.modification_name || '',
         price: item.price,
         quantity: item.quantity,
         comment: item.comment,
@@ -2652,8 +2826,7 @@ async function completeOrderById(orderId) {
     await refreshActiveOrders();
     return;
   }
-  // Check: ALL items must be SERVED before completing the order,
-  // UNLESS the order is bar-only (configured in admin settings).
+  // Check: ALL items must be SERVED before completing, UNLESS bar-only order
   const items = order.items || [];
   const notServed = items.filter(function(i) {
     return !(i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE');
@@ -2771,7 +2944,8 @@ async function confirmCompleteOrder() {
 }
 
 async function cancelOrder() {
-  if (!confirm('Отменить заказ полностью? Он будет удалён.')) return;
+  const ok = await confirmDialog('Отменить заказ полностью? Он будет удалён.', 'Отмена заказа', 'Отменить заказ', 'Оставить', 'btn-danger');
+  if (!ok) return;
   try {
     await apiPost('deleteOrder', { order_id: state.currentOrderId });
     showToast('Заказ отменён', 'info');
