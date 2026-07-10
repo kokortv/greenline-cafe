@@ -54,16 +54,21 @@
   }
   .header-spacer { height: 64px; }
 
+  /* Fixed subcat tabs: sit right below header when at top, slide up to top:0 when header hides */
   .subcat-tabs-bar {
-    position: sticky; top: 0; z-index: 40;
-    background: rgba(255,255,255,0.9);
+    position: fixed; top: 64px; left: 0; right: 0; z-index: 50;
+    background: rgba(255,255,255,0.92);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     display: flex; gap: 6px; padding: 10px 12px; overflow-x: auto;
     -webkit-overflow-scrolling: touch; border-bottom: 1px solid var(--vm-border);
     scrollbar-width: none;
+    transition: top 0.3s ease, transform 0.3s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
   }
+  .subcat-tabs-bar.header-hidden { top: 0; }
   .subcat-tabs-bar::-webkit-scrollbar { display: none; }
   .subcat-tabs-bar.is-hidden { display: none; }
+  .subcat-tabs-spacer { height: 0; transition: height 0.2s ease; }
   .subcat-tab {
     flex: none; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem;
     font-weight: 600; color: var(--vm-muted); background: var(--vm-bg);
@@ -81,7 +86,7 @@
     font-size: 1.2rem; font-weight: 700; color: var(--vm-text);
     margin: 18px 0 10px; padding: 8px 14px; border-radius: 8px;
     background: var(--vm-card-bg); border-left: 4px solid var(--vm-accent);
-    scroll-margin-top: 56px;
+    scroll-margin-top: 70px;
   }
   .menu-item {
     display: flex; justify-content: space-between; align-items: flex-start;
@@ -150,6 +155,7 @@
 <div class="header-spacer"></div>
 
 <div class="subcat-tabs-bar is-hidden" id="subcat-tabs-bar"></div>
+<div class="subcat-tabs-spacer" id="subcat-tabs-spacer"></div>
 
 <div id="menu-content" class="menu-section">
   <div class="loading">Загрузка меню...</div>
@@ -253,14 +259,29 @@ function toggleTheme() {
 // ===== HEADER SCROLL =====
 function setupScroll() {
   var headerEl = document.getElementById('menu-header');
+  var tabsBar = document.getElementById('subcat-tabs-bar');
   window.addEventListener('scroll', function() {
     var y = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
     if (y <= 0) {
       headerEl.classList.remove('is-hidden');
+      tabsBar.classList.remove('header-hidden');
     } else if (y > 10) {
       headerEl.classList.add('is-hidden');
+      tabsBar.classList.add('header-hidden');
     }
   }, false);
+}
+
+// Keep subcat-tabs-spacer height in sync with tabs bar visibility
+function syncTabsSpacer() {
+  var tabsBar = document.getElementById('subcat-tabs-bar');
+  var spacer = document.getElementById('subcat-tabs-spacer');
+  if (!spacer) return;
+  if (tabsBar.classList.contains('is-hidden')) {
+    spacer.style.height = '0px';
+  } else {
+    spacer.style.height = '50px';
+  }
 }
 
 // ===== DROPDOWN =====
@@ -284,16 +305,20 @@ function scrollToSubcat(subId) {
   var el = document.getElementById('sub-' + subId);
   if (!el) return;
   _scrollingToSubcat = true; // pause observer during programmatic scroll
+  // Force header hide + tabs to top immediately so the scroll target math is stable
+  var headerEl = document.getElementById('menu-header');
+  var tabsBar = document.getElementById('subcat-tabs-bar');
+  headerEl.classList.add('is-hidden');
+  tabsBar.classList.add('header-hidden');
   setTimeout(function() {
     var rect = el.getBoundingClientRect();
     var y = window.pageYOffset || document.documentElement.scrollTop || 0;
-    var tabsBar = document.getElementById('subcat-tabs-bar');
     var tabsH = tabsBar.classList.contains('is-hidden') ? 0 : 50;
-    var top = rect.top + y - tabsH - 6;
+    var top = rect.top + y - tabsH - 8;
     window.scrollTo({ top: top, behavior: 'smooth' });
     // Re-enable observer after scroll settles
-    setTimeout(function() { _scrollingToSubcat = false; }, 500);
-  }, 80);
+    setTimeout(function() { _scrollingToSubcat = false; }, 600);
+  }, 120);
 }
 
 // ===== RENDER =====
@@ -310,6 +335,7 @@ function renderCategoryDropdown() {
 function renderAllCategories() {
   document.getElementById('bottom-cat-text').textContent = 'Выберите категорию меню';
   document.getElementById('subcat-tabs-bar').classList.add('is-hidden');
+  syncTabsSpacer();
   var html = '';
   allMainCats.forEach(function(mc) {
     var subs = APP_DATA.categories.filter(function(c) { return c.parent_id === mc.id; });
@@ -355,6 +381,7 @@ function renderSingleCategory(mc) {
   var tabsBar = document.getElementById('subcat-tabs-bar');
   tabsBar.innerHTML = tabsHtml;
   tabsBar.classList.toggle('is-hidden', visibleSubs.length === 0);
+  syncTabsSpacer();
 
   // Attach click handlers — direct, no IIFE
   var tabs = tabsBar.querySelectorAll('.subcat-tab');
