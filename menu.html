@@ -76,7 +76,7 @@
   }
   .subcat-tab.active { background: var(--vm-accent); color: #fff; border-color: var(--vm-accent); }
 
-  .menu-section { padding: 0 14px 90px; }
+  .menu-section { padding: 0 14px 110px; }
   .main-cat-title {
     font-size: 1.5rem; font-weight: 800; margin: 20px 0 14px;
     padding: 12px 16px; border-radius: 10px; background: var(--vm-accent);
@@ -103,14 +103,21 @@
 
   .bottom-cat-bar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    border-top: 1px solid var(--vm-border); padding: 12px 16px;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    font-size: 1rem; font-weight: 600; cursor: pointer; color: var(--vm-text);
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+    background: var(--vm-accent);
+    color: #fff;
+    padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font-size: 1.05rem; font-weight: 700; cursor: pointer;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.18);
+    letter-spacing: 0.2px;
   }
-  .bottom-cat-bar .bcb-arrow { font-size: 0.7rem; color: var(--vm-muted); }
+  .bottom-cat-bar .bcb-icon { font-size: 1.2rem; }
+  .bottom-cat-bar .bcb-arrow { font-size: 0.85rem; opacity: 0.85; animation: bcbBounce 1.6s ease-in-out infinite; }
+  @keyframes bcbBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  [data-theme="dark"] .bottom-cat-bar { background: var(--vm-accent); color: #fff; }
 
   .category-dropdown {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -164,7 +171,7 @@
 <div class="menu-footer" id="menu-footer" style="display:none;"></div>
 
 <div class="bottom-cat-bar" id="bottom-cat-bar">
-  <span>☰</span>
+  <span class="bcb-icon">☰</span>
   <span id="bottom-cat-text">Выберите категорию меню</span>
   <span class="bcb-arrow">▲</span>
 </div>
@@ -310,11 +317,32 @@ function scrollToSubcat(subId) {
   var tabsBar = document.getElementById('subcat-tabs-bar');
   headerEl.classList.add('is-hidden');
   tabsBar.classList.add('header-hidden');
+
+  // Immediately highlight the clicked tab — don't wait for the observer,
+  // because the section might land just outside the observer's detection zone.
+  document.querySelectorAll('.subcat-tab').forEach(function(t) { t.classList.remove('active'); });
+  var clickedTab = document.querySelector('.subcat-tab[data-sub-id="' + subId + '"]');
+  if (clickedTab) {
+    clickedTab.classList.add('active');
+    // Scroll the tab bar horizontally so the active tab is visible
+    var tabLeft = clickedTab.offsetLeft;
+    var tabRight = tabLeft + clickedTab.offsetWidth;
+    var barLeft = tabsBar.scrollLeft;
+    var barRight = barLeft + tabsBar.offsetWidth;
+    if (tabLeft < barLeft) {
+      tabsBar.scrollTo({ left: tabLeft - 10, behavior: 'smooth' });
+    } else if (tabRight > barRight) {
+      tabsBar.scrollTo({ left: tabRight - tabsBar.offsetWidth + 10, behavior: 'smooth' });
+    }
+  }
+
   setTimeout(function() {
     var rect = el.getBoundingClientRect();
     var y = window.pageYOffset || document.documentElement.scrollTop || 0;
     var tabsH = tabsBar.classList.contains('is-hidden') ? 0 : 50;
-    var top = rect.top + y - tabsH - 8;
+    // Offset = tabs bar height + 14px buffer so the section lands well inside
+    // the IntersectionObserver's detection band (rootMargin top -60px).
+    var top = rect.top + y - tabsH - 14;
     window.scrollTo({ top: top, behavior: 'smooth' });
     // Re-enable observer after scroll settles
     setTimeout(function() { _scrollingToSubcat = false; }, 600);
