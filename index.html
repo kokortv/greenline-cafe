@@ -3279,13 +3279,18 @@ async function confirmCompleteOrder() {
   }
   const orderId = _pendingCompleteOrderId;
   const method = _selectedPaymentMethod;
-  // For mixed payment, validate that the amounts match the total
-  if (method === 'mixed') {
-    const cash = Number(document.getElementById('mixed-cash-amount').value) || 0;
-    const card = Number(document.getElementById('mixed-card-amount').value) || 0;
-    const order = state.activeOrders.find(function(o) { return o.id === orderId; });
-    const total = Number(order?.total) || 0;
-    if (cash + card !== total) {
+  let cashAmount = 0, cardAmount = 0;
+  const order = state.activeOrders.find(function(o) { return o.id === orderId; });
+  const total = Number(order?.total) || 0;
+
+  if (method === 'cash') {
+    cashAmount = total;
+  } else if (method === 'card') {
+    cardAmount = total;
+  } else if (method === 'mixed') {
+    cashAmount = Number(document.getElementById('mixed-cash-amount').value) || 0;
+    cardAmount = Number(document.getElementById('mixed-card-amount').value) || 0;
+    if (cashAmount + cardAmount !== total) {
       showToast('Сумма наличных и карты должна равняться ' + formatMoney(total), 'warning');
       return;
     }
@@ -3294,7 +3299,9 @@ async function confirmCompleteOrder() {
     await apiPost('updateOrderStatus', {
       order_id: orderId,
       status: 'completed',
-      payment_method: method
+      payment_method: method,
+      cash_amount: cashAmount,
+      card_amount: cardAmount
     });
     const methodLabel = method === 'cash' ? 'наличные' : (method === 'card' ? 'карта' : 'смешанная');
     showToast('Заказ завершён (' + methodLabel + ')', 'success');

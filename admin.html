@@ -1815,49 +1815,46 @@ function renderOrders() {
     return new Date(b.created_at) - new Date(a.created_at);
   });
 
-  // Determine which columns have any data across all rows
-  const hasWaiter = sorted.some(function(o) { return o.waiter_name; });
+  // Determine which columns have any meaningful data (not empty, not dash)
+  const hasWaiter = sorted.some(function(o) { return o.waiter_name && o.waiter_name !== '—'; });
   const hasGuests = sorted.some(function(o) { return o.guests && o.guests > 0; });
-  const hasPayment = sorted.some(function(o) { return o.payment_method; });
-  const hasDate = true; // always show date
-  const hasTotal = true; // always show total
+  const hasPayment = sorted.some(function(o) { return o.payment_method && o.payment_method !== ''; });
 
-  let html = '<table style="width:100%;border-collapse:collapse;">';
-  html += '<thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);">';
-  html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Заказ</th>';
-  if (hasGuests) html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Гостей</th>';
-  if (hasWaiter) html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Официант</th>';
-  if (hasPayment) html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Оплата</th>';
-  html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Создан</th>';
-  html += '<th style="padding:10px;text-align:right;white-space:nowrap;">Сумма</th>';
-  html += '<th style="padding:10px;text-align:left;white-space:nowrap;">Статус</th>';
-  html += '<th style="padding:10px;text-align:center;white-space:nowrap;"></th>';
+  let html = '<table style="width:100%;border-collapse:collapse;table-layout:auto;">';
+  html += '<thead><tr style="background:var(--primary);color:#fff;">';
+  html += '<th style="padding:10px;text-align:left;">Заказ</th>';
+  if (hasGuests) html += '<th style="padding:10px;text-align:left;">Гостей</th>';
+  if (hasWaiter) html += '<th style="padding:10px;text-align:left;">Официант</th>';
+  if (hasPayment) html += '<th style="padding:10px;text-align:left;">Оплата</th>';
+  html += '<th style="padding:10px;text-align:left;">Создан</th>';
+  html += '<th style="padding:10px;text-align:right;">Сумма</th>';
+  html += '<th style="padding:10px;text-align:left;">Статус</th>';
+  html += '<th style="padding:10px;text-align:center;"></th>';
   html += '</tr></thead><tbody>';
 
   sorted.forEach(function(order) {
-    const rowStyle = order.status === 'paused' ? 'background:#fffde7;border-left:4px solid var(--warning);' : '';
-    const rowClass = order.status === 'paused' ? 'paused' : '';
-    html += '<tr class="' + rowClass + '" style="' + rowStyle + 'border-bottom:1px solid var(--border);">';
-    html += '<td style="padding:10px;font-weight:700;white-space:nowrap;">' + escapeHtml(formatTableLabel(order)) + '</td>';
-    if (hasGuests) html += '<td style="padding:10px;white-space:nowrap;">' + (order.guests || 0) + '</td>';
-    if (hasWaiter) html += '<td style="padding:10px;white-space:nowrap;">' + escapeHtml(order.waiter_name || '—') + '</td>';
+    const rowStyle = order.status === 'paused' ? 'background:#fffde7;' : '';
+    html += '<tr style="' + rowStyle + 'border-bottom:1px solid var(--border);">';
+    html += '<td style="padding:10px;font-weight:700;">' + escapeHtml(formatTableLabel(order)) + '</td>';
+    if (hasGuests) html += '<td style="padding:10px;">' + (order.guests || 0) + '</td>';
+    if (hasWaiter) html += '<td style="padding:10px;">' + escapeHtml(order.waiter_name || '—') + '</td>';
     if (hasPayment) {
       let payLabel = '—';
-      if (order.payment_method === 'cash') payLabel = '💵 Наличные';
-      else if (order.payment_method === 'card') payLabel = '💳 Карта';
-      else if (order.payment_method === 'mixed') payLabel = '🔀 Смешанная';
-      html += '<td style="padding:10px;white-space:nowrap;">' + payLabel + '</td>';
+      if (order.payment_method === 'cash') payLabel = '💵 ' + formatMoney(order.cash_amount || order.total);
+      else if (order.payment_method === 'card') payLabel = '💳 ' + formatMoney(order.card_amount || order.total);
+      else if (order.payment_method === 'mixed') payLabel = '💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
+      html += '<td style="padding:10px;">' + payLabel + '</td>';
     }
-    html += '<td style="padding:10px;font-size:0.9rem;color:var(--text-muted);white-space:nowrap;">' + formatDateTime(order.created_at) + '</td>';
-    html += '<td style="padding:10px;text-align:right;font-weight:700;color:var(--primary);white-space:nowrap;">' + formatMoney(order.total) + '</td>';
-    html += '<td style="padding:10px;white-space:nowrap;">' +
+    html += '<td style="padding:10px;font-size:0.9rem;color:var(--text-muted);">' + formatDateTime(order.created_at) + '</td>';
+    html += '<td style="padding:10px;text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(order.total) + '</td>';
+    html += '<td style="padding:10px;">' +
       (order.status === 'accepted' ?
         '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
        order.status === 'paused' ?
-        '<span class="pill pill-warning" style="background:#ff9800;color:white;"><span class="status-dot" style="background:white;"></span>⏸ Пауза</span>' :
+        '<span class="pill" style="background:#ff9800;color:white;">⏸ Пауза</span>' :
         '<span class="pill pill-success"><span class="status-dot completed"></span>Завершён</span>') +
     '</td>';
-    html += '<td style="padding:10px;text-align:center;white-space:nowrap;">' +
+    html += '<td style="padding:10px;text-align:center;">' +
       '<button class="btn btn-outline" style="padding:6px 10px;" onclick="viewOrder(\'' + order.id + '\')">👁</button> ' +
       (order.status === 'accepted' || order.status === 'paused' ?
         '<button class="btn btn-success" style="padding:6px 10px;" onclick="withLoading(this, \'...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">✓</button> ' : '') +
@@ -1881,18 +1878,34 @@ async function viewOrder(orderId) {
     // Show a short order number (last 6 chars of the ID) instead of the full ID
     const shortId = orderId.length > 6 ? orderId.substring(orderId.length - 6) : orderId;
     document.getElementById('ord-detail-id').textContent = '#' + shortId;
+    // Determine which item columns have real data (not just dashes)
+    const cookEnabled = String(APP_DATA.settings.cook_enabled) !== 'false';
+    const items = order.items || [];
+    const hasReady = cookEnabled && items.some(function(it) { return it.is_ready === true || it.is_ready === 'true'; });
+    const hasNotReady = cookEnabled && items.some(function(it) {
+      const nc = it.needs_cooking === true || it.needs_cooking === 'true' || it.needs_cooking === 'TRUE';
+      return nc && !(it.is_ready === true || it.is_ready === 'true');
+    });
+    const showReadyCol = cookEnabled && (hasReady || hasNotReady);
+    const hasServed = items.some(function(it) { return it.is_served === true || it.is_served === 'true'; });
+    const hasNotServed = items.some(function(it) {
+      return !(it.is_served === true || it.is_served === 'true');
+    });
+    const showServedCol = hasServed || hasNotServed;
+    const hasComments = items.some(function(it) { return it.comment && it.comment.trim(); });
+
     let itemsHtml = '';
-    if (order.items && order.items.length > 0) {
+    if (items.length > 0) {
       itemsHtml = '<table style="margin:12px 0;width:100%;table-layout:fixed;"><thead><tr>' +
         '<th style="width:30%;">Блюдо</th>' +
         '<th style="width:8%;">Кол-во</th>' +
         '<th style="width:13%;">Цена</th>' +
         '<th style="width:13%;">Сумма</th>' +
-        '<th style="width:10%;">Готово</th>' +
-        '<th style="width:10%;">Подано</th>' +
-        '<th style="width:16%;">Комментарий</th>' +
+        (showReadyCol ? '<th style="width:10%;">Готово</th>' : '') +
+        (showServedCol ? '<th style="width:10%;">Подано</th>' : '') +
+        (hasComments ? '<th style="width:16%;">Комментарий</th>' : '') +
         '</tr></thead><tbody>';
-      order.items.forEach(function(it) {
+      items.forEach(function(it) {
         var nameCell = escapeHtml(it.name) +
           (it.modification_name ? '<div style="font-size:0.8rem;color:var(--primary);font-weight:600;margin-top:2px;">⚙ ' + escapeHtml(it.modification_name) + '</div>' : '');
         itemsHtml += '<tr>' +
@@ -1900,25 +1913,27 @@ async function viewOrder(orderId) {
           '<td>' + it.quantity + '</td>' +
           '<td>' + formatMoney(it.price) + '</td>' +
           '<td>' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>' +
-          '<td>' + (it.is_ready ? '✓' : '—') + '</td>' +
-          '<td>' + (it.is_served ? '✓' : '—') + '</td>' +
-          '<td style="word-break:break-word;overflow-wrap:anywhere;">' + escapeHtml(it.comment || '') + '</td>' +
+          (showReadyCol ? '<td>' + (it.is_ready ? '✓' : '—') + '</td>' : '') +
+          (showServedCol ? '<td>' + (it.is_served ? '✓' : '—') + '</td>' : '') +
+          (hasComments ? '<td style="word-break:break-word;overflow-wrap:anywhere;">' + escapeHtml(it.comment || '') + '</td>' : '') +
         '</tr>';
       });
       itemsHtml += '</tbody></table>';
     } else {
       itemsHtml = '<p style="color:var(--text-muted);">В заказе нет позиций</p>';
     }
+    // Payment info with amounts
+    let payInfo = '—';
+    if (order.payment_method === 'cash') payInfo = '💵 Наличные: ' + formatMoney(order.cash_amount || order.total);
+    else if (order.payment_method === 'card') payInfo = '💳 Карта: ' + formatMoney(order.card_amount || order.total);
+    else if (order.payment_method === 'mixed') payInfo = '🔀 Смешанная: 💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
+
     document.getElementById('ord-detail-content').innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
         '<div><b>Заказ:</b> ' + escapeHtml(formatTableLabel(order)) + '</div>' +
         '<div><b>Гостей:</b> ' + order.guests + '</div>' +
         '<div><b>Официант:</b> ' + escapeHtml(order.waiter_name || '—') + '</div>' +
-        '<div><b>Оплата:</b> ' +
-          (order.payment_method === 'cash' ? '💵 Наличные' :
-           order.payment_method === 'card' ? '💳 Карта' :
-           order.payment_method === 'mixed' ? '🔀 Смешанная' : '—') +
-        '</div>' +
+        '<div><b>Оплата:</b> ' + payInfo + '</div>' +
         '<div><b>Статус:</b> ' +
           (order.status === 'accepted' ? 'Принят' :
            order.status === 'paused' ? '⏸ На паузе' :

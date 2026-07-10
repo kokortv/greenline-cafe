@@ -451,11 +451,22 @@ async function createOrder(orderData) {
   return await getOrder(orderId);
 }
 
-async function updateOrderStatus(orderId, status, paymentMethod) {
+async function updateOrderStatus(orderId, status, paymentMethod, cashAmount, cardAmount) {
   const updates = { status: status };
   if (status === 'completed') {
     updates.completed_at = new Date().toISOString();
     if (paymentMethod) updates.payment_method = paymentMethod;
+    // Store payment split amounts
+    if (paymentMethod === 'cash') {
+      updates.cash_amount = Number(cashAmount) || 0;
+      updates.card_amount = 0;
+    } else if (paymentMethod === 'card') {
+      updates.card_amount = Number(cardAmount) || 0;
+      updates.cash_amount = 0;
+    } else if (paymentMethod === 'mixed') {
+      updates.cash_amount = Number(cashAmount) || 0;
+      updates.card_amount = Number(cardAmount) || 0;
+    }
   }
   await dbUpdate('orders', orderId, updates);
   return await getOrder(orderId);
@@ -1867,7 +1878,7 @@ async function apiPost(action, body) {
     case 'createOrder':
       return await createOrder(body);
     case 'updateOrderStatus':
-      return await updateOrderStatus(body.order_id, body.status, body.payment_method);
+      return await updateOrderStatus(body.order_id, body.status, body.payment_method, body.cash_amount, body.card_amount);
     case 'updateOrderNote':
       return await dbUpdate('orders', body.order_id, { waiter_note: body.note || '' });
     case 'addItemToOrder':
