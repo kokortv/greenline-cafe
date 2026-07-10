@@ -1429,6 +1429,23 @@ function selectTable(num, type, evt) {
     }
     return;
   }
+  // Numbered table — check if it's already occupied by another waiter
+  const ts = state.tableStatuses.find(function(t) { return t.table === num && t.type === 'numbered'; });
+  if (ts && ts.status === 'other') {
+    showToast('Столик ' + num + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
+    return;
+  }
+  // Check if there's already an active order by THIS waiter on this table
+  const myExistingOrder = state.activeOrders.find(function(o) {
+    return Number(o.table_number) === num &&
+           (!o.table_type || o.table_type === 'numbered') &&
+           (o.status === 'accepted' || o.status === 'paused');
+  });
+  if (myExistingOrder) {
+    // Open the existing order instead of creating a new one
+    openOrderDetail(myExistingOrder.id);
+    return;
+  }
   state.selectedTable = num;
   state.selectedTableType = type || 'numbered';
   state.selectedTabId = null;
@@ -2484,10 +2501,11 @@ function renderHomeActiveOrders() {
   listDiv.innerHTML = '';
   sorted.forEach(function(order) {
     const items = order.items || [];
-    const cookingItems = items.filter(function(i) {
+    // Only count items as "cooking" if cook is enabled AND the item needs cooking
+    const cookingItems = (state.cookEnabled !== false) ? items.filter(function(i) {
       return i.needs_cooking === true || i.needs_cooking === 'true' ||
              i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
-    });
+    }) : [];
     const readyItems = cookingItems.filter(function(i) {
       return i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE';
     });
@@ -2629,12 +2647,12 @@ function renderActiveOrdersList() {
     const readyCount = order.items ? order.items.filter(function(i) { return i.is_ready; }).length : 0;
     const total = Number(order.total) || 0;
     const isPaused = order.status === 'paused';
-    // Check if all cooking items are ready
+    // Check if all cooking items are ready — only if cook is enabled
     const items = order.items || [];
-    const cookingItems = items.filter(function(i) {
+    const cookingItems = (state.cookEnabled !== false) ? items.filter(function(i) {
       return i.needs_cooking === true || i.needs_cooking === 'true' ||
              i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
-    });
+    }) : [];
     const notReadyCooking = cookingItems.filter(function(i) {
       return !(i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE');
     });
