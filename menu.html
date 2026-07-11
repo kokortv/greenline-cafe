@@ -8,6 +8,44 @@
 <link rel="stylesheet" href="styles.css">
 <style id="dynamic-menu-styles"></style>
 <style>
+  /* ===========================
+     BOOT LOADER — shown IMMEDIATELY on first paint, before any data is fetched.
+     Hides the brand-color header + content to avoid the "red flash" of the
+     default #d32f2f header bar with the "Меню" title before settings load.
+     Once initMenu() finishes, we remove the .booting class from <body>
+     and reveal the actual menu.
+     =========================== */
+  body.booting #menu-header,
+  body.booting #subcat-tabs-bar,
+  body.booting #subcat-tabs-spacer,
+  body.booting #menu-content,
+  body.booting #menu-footer,
+  body.booting #bottom-cat-bar,
+  body.booting .header-spacer { visibility: hidden !important; }
+  body.booting #menu-boot-splash { display: flex !important; }
+
+  #menu-boot-splash {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--vm-bg, #fafafa);
+    align-items: center; justify-content: center; flex-direction: column;
+    gap: 14px;
+    transition: opacity 0.3s ease;
+  }
+  #menu-boot-splash.done { opacity: 0; pointer-events: none; }
+  .boot-spinner {
+    width: 38px; height: 38px;
+    border: 3px solid var(--vm-border, #e0e0e0);
+    border-top-color: var(--vm-accent, #d32f2f);
+    border-radius: 50%;
+    animation: bootSpin 0.9s linear infinite;
+  }
+  @keyframes bootSpin { to { transform: rotate(360deg); } }
+  .boot-text {
+    color: var(--vm-muted, #666);
+    font-size: 0.92rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  }
   /* Override styles.css globals that break the menu page */
   html, body {
     height: auto !important;
@@ -108,8 +146,18 @@
   .mi-info { flex: 1; min-width: 0; }
   .mi-name { font-weight: 600; font-size: 1.05rem; color: var(--vm-text); }
   .mi-translation { font-size: 0.85rem; color: var(--vm-muted); margin-top: 2px; font-style: italic; }
-  .mi-mods { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 1rem; color: var(--vm-text); }
-  .mi-mod-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .mi-mods { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; font-size: 0.95rem; color: var(--vm-text); }
+  .mi-mod-row {
+    display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+    padding: 6px 10px; background: var(--vm-bg); border-radius: 6px;
+    border-left: 3px solid var(--vm-accent); margin-left: 4px;
+  }
+  .mi-mod-row .mi-mod-label { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+  .mi-mod-row .mi-mod-icon {
+    flex: none; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--vm-accent); display: inline-block;
+  }
+  .mi-mod-row .mi-mod-name { min-width: 0; flex: 1; word-break: break-word; }
   .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); white-space: nowrap; }
   .mi-price { font-size: 1.05rem; font-weight: 700; white-space: nowrap; flex: none; color: var(--vm-accent); }
 
@@ -161,7 +209,13 @@
   .empty { text-align: center; padding: 40px 16px; color: var(--vm-muted); }
 </style>
 </head>
-<body>
+<body class="booting">
+
+<!-- Boot splash: shown immediately on page load, hidden once data is ready -->
+<div id="menu-boot-splash">
+  <div class="boot-spinner"></div>
+  <div class="boot-text">Загрузка меню…</div>
+</div>
 
 <div class="menu-header" id="menu-header">
   <div id="menu-header-left-slot" class="menu-header-slot"></div>
@@ -200,6 +254,26 @@
 <script>
 // ===== Self-contained — NO common.js, NO IIFE, all global =====
 
+// Dynamic preconnect — start TLS handshake to the user's actual Supabase URL
+// as soon as config.js loads, before the heavy supabase.min.js finishes parsing.
+(function() {
+  try {
+    if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL) return;
+    var url = CONFIG.SUPABASE_URL;
+    if (url.indexOf('PASTE_YOUR') !== -1) return;
+    var head = document.head;
+    var pc = document.createElement('link');
+    pc.rel = 'preconnect';
+    pc.crossOrigin = 'anonymous';
+    pc.href = url;
+    head.appendChild(pc);
+    var dns = document.createElement('link');
+    dns.rel = 'dns-prefetch';
+    dns.href = url;
+    head.appendChild(dns);
+  } catch (e) { /* ignore */ }
+})();
+
 var _sb_menu = null;
 var APP_DATA = null;
 var selectedMainCat = null;
@@ -222,10 +296,17 @@ async function dbSelectMenu(table) {
 }
 
 async function loadAppDataMenu() {
-  var settings = await dbSelectMenu('settings');
-  var categories = await dbSelectMenu('categories');
-  var menu = await dbSelectMenu('menu');
-  var modifications = await dbSelectMenu('menu_modifications');
+  // Parallel fetch — ~3-4x faster than sequential awaits
+  var results = await Promise.all([
+    dbSelectMenu('settings'),
+    dbSelectMenu('categories'),
+    dbSelectMenu('menu'),
+    dbSelectMenu('menu_modifications')
+  ]);
+  var settings = results[0];
+  var categories = results[1];
+  var menu = results[2];
+  var modifications = results[3];
   var s = {};
   settings.forEach(function(x) { s[x.key] = x.value; });
   var activeCats = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
@@ -457,7 +538,7 @@ function renderItem(item) {
   if (hasMods) {
     var modsHtml = '<div class="mi-mods">';
     item.modifications.forEach(function(mod) {
-      modsHtml += '<div class="mi-mod-row"><span>└ ' + escHtml(mod.name) + '</span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
+      modsHtml += '<div class="mi-mod-row"><span class="mi-mod-label"><span class="mi-mod-icon"></span><span class="mi-mod-name">' + escHtml(mod.name) + '</span></span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
     });
     modsHtml += '</div>';
     return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
@@ -583,6 +664,19 @@ async function initMenu() {
     setupScroll();
   } catch (err) {
     document.getElementById('menu-content').innerHTML = '<div class="empty">Ошибка: ' + escHtml(err.message) + '</div>';
+  } finally {
+    // Reveal the menu — fade out the boot splash, then remove the booting class.
+    // Always runs (success or error) so the user never gets stuck on the splash.
+    var splash = document.getElementById('menu-boot-splash');
+    if (splash) {
+      splash.classList.add('done');
+      setTimeout(function() {
+        document.body.classList.remove('booting');
+        if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
+      }, 320);
+    } else {
+      document.body.classList.remove('booting');
+    }
   }
 }
 
