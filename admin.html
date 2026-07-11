@@ -319,6 +319,65 @@
   .replenish-btn:active { transform: scale(0.95); }
   .replenish-btn:disabled { background: var(--text-muted) !important; cursor: not-allowed; transform: none; }
 
+  /* ============================================================
+     STOCK TABLE — clean column layout with no overflow overlap
+     ============================================================ */
+  .stock-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .stock-table thead { display: table; width: 100%; table-layout: fixed; }
+  .stock-table tbody { display: table; width: 100%; table-layout: fixed; }
+  /* Column widths sum = 100% (no empty gutter, no overflow) */
+  .stock-table th.st-th-name,   .stock-table td.st-td-name   { width: 24%; }
+  .stock-table th.st-th-cat,    .stock-table td.st-td-cat    { width: 17%; }
+  .stock-table th.st-th-num,    .stock-table td.st-td-num    { width: 11%; text-align: right; }
+  .stock-table th.st-th-center, .stock-table td.st-td-center { width: 11%; text-align: center; }
+  .stock-table th.st-th-action, .stock-table td.st-td-action { width: 15%; padding: 6px 4px; }
+
+  .stock-table th {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.92rem;
+    padding: 10px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .stock-table th.st-th-num    { text-align: right; }
+  .stock-table th.st-th-center { text-align: center; }
+
+  .stock-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    /* OVERRIDE global th,td { white-space: nowrap } from styles.css
+       — these cells MUST wrap long text instead of overflowing. */
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.3;
+  }
+  .stock-table tbody tr:last-child td { border-bottom: none; }
+  .stock-table tbody tr:hover { background: #fafafa; }
+
+  /* Proportional font shrinking for long cell text.
+     Applied via class added in renderStockRow() based on text length. */
+  .stock-table .st-font-l  { font-size: 0.95rem; }
+  .stock-table .st-font-m  { font-size: 0.85rem; }
+  .stock-table .st-font-s  { font-size: 0.78rem; line-height: 1.25; }
+  .stock-table .st-font-xs { font-size: 0.72rem; line-height: 1.2; }
+  /* Category column is always a touch smaller — it's secondary info */
+  .stock-table td.st-td-cat { color: var(--text-muted); }
+
   /* Mobile responsive for admin */
   @media (max-width: 768px) {
     .menu-row { flex-wrap: wrap; gap: 8px; }
@@ -343,6 +402,16 @@
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .user-row { flex-wrap: wrap; gap: 8px; }
     .user-row .user-name { min-width: 100%; }
+    /* Stock table on mobile: keep the table-layout intact with horizontal scroll,
+       DON'T collapse to nowrap (would re-introduce overlap). */
+    .stock-table { display: block; overflow-x: auto; white-space: normal; }
+    .stock-table thead, .stock-table tbody { display: table; width: 100%; table-layout: fixed; }
+    /* Tighter column widths on mobile to keep useful columns visible */
+    .stock-table th.st-th-name,   .stock-table td.st-td-name   { width: 30%; }
+    .stock-table th.st-th-cat,    .stock-table td.st-td-cat    { width: 20%; }
+    .stock-table th.st-th-num,    .stock-table td.st-td-num    { width: 12%; }
+    .stock-table th.st-th-center, .stock-table td.st-td-center { width: 12%; }
+    .stock-table th.st-th-action, .stock-table td.st-td-action { width: 14%; }
   }
   @media (max-width: 480px) {
     .stats-grid { grid-template-columns: 1fr; }
@@ -475,18 +544,18 @@
         <button class="sidebar-item" data-tab="sounds" onclick="switchTab('sounds')">
           <span class="sidebar-icon">🔔</span> Звуки
         </button>
-        <!-- Stock — parent with sub-items -->
+        <!-- Stock — parent with sub-items. Subitems are hidden by default and only shown when Stock is opened. -->
         <div class="sidebar-group" id="sidebar-group-stock">
           <button class="sidebar-item sidebar-parent" data-tab="stock" onclick="switchTab('stock')">
             <span class="sidebar-icon">📦</span> Склад
-            <span class="sidebar-arrow" id="stock-arrow">▼</span>
+            <span class="sidebar-arrow" id="stock-arrow">▶</span>
           </button>
-          <div class="sidebar-subitems" id="stock-subitems">
-            <button class="sidebar-subitem active" data-stocksub="items" onclick="switchStockSub('items')">Товары</button>
-            <button class="sidebar-subitem" data-stocksub="deliveries" onclick="switchStockSub('deliveries')">Поставки</button>
-            <button class="sidebar-subitem" data-stocksub="suppliers" onclick="switchStockSub('suppliers')">Поставщики</button>
-            <button class="sidebar-subitem" data-stocksub="warehouses" onclick="switchStockSub('warehouses')">Склады</button>
-            <button class="sidebar-subitem" data-stocksub="accounts" onclick="switchStockSub('accounts')">Счета</button>
+          <div class="sidebar-subitems" id="stock-subitems" style="display:none;">
+            <button class="sidebar-subitem active" data-stocksub="items" onclick="openStockSub('items')">Товары</button>
+            <button class="sidebar-subitem" data-stocksub="deliveries" onclick="openStockSub('deliveries')">Поставки</button>
+            <button class="sidebar-subitem" data-stocksub="suppliers" onclick="openStockSub('suppliers')">Поставщики</button>
+            <button class="sidebar-subitem" data-stocksub="warehouses" onclick="openStockSub('warehouses')">Склады</button>
+            <button class="sidebar-subitem" data-stocksub="accounts" onclick="openStockSub('accounts')">Счета</button>
           </div>
         </div>
         <button class="sidebar-item" data-tab="tables" onclick="switchTab('tables')">
@@ -773,113 +842,148 @@
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h2 class="section-title" style="margin:0;">QR-код меню для посетителей</h2>
     </div>
-    <div class="settings-card">
-      <p style="margin-bottom:12px;">
-        Сгенерируйте QR-код для публичного меню. Посетитель наведёт камеру телефона и увидит меню с ценами —
-        без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
-      </p>
+    <p style="margin-bottom:16px;color:var(--text-muted);font-size:0.92rem;line-height:1.5;">
+      Сгенерируйте QR-код для публичного меню. Посетитель наведёт камеру телефона и увидит меню с ценами —
+      без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
+    </p>
 
-      <h3 style="margin:16px 0 8px;font-size:1rem;">Оформление меню</h3>
-      <div class="form-group">
+    <!-- ====== Card 1: Text content ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📝</span> Текстовые элементы</h3>
+      <div class="form-group" style="margin-bottom:12px;">
         <label>Текст под названием ресторана (подзаголовок)</label>
         <input type="text" id="qr-menu-subtitle" placeholder="Например: Добро пожаловать! или телефон для брони">
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin:0;">
         <label>Текст внизу меню (подвал)</label>
         <textarea id="qr-menu-footer" rows="3" placeholder="Например: Спасибо за визит! Адрес: г. Тбилиси, ул. ... Тел: +995 ... Часы работы: 10:00 — 23:00"></textarea>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-group">
-          <label>Цвет цен, заголовков и фона шапки</label>
+    </div>
+
+    <!-- ====== Card 2: Colors ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">🎨</span> Цвета оформления</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="form-group" style="margin:0;">
+          <label>Цвет цен и акцентов</label>
           <div style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-            <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-price').value = this.value;">
+            <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
+            <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;min-width:0;">
           </div>
-          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
-            Этот цвет используется для: цен, заголовков категорий и фона шапки вверху меню.
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
+            Цены, активные вкладки, кнопка категорий внизу
           </p>
         </div>
-        <div class="form-group">
-          <label>Цвет заголовков категорий</label>
+        <div class="form-group" style="margin:0;">
+          <label>Цвет шапки меню</label>
           <div style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-            <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;" oninput="document.getElementById('qr-menu-color-header').value = this.value;">
+            <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
+            <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;min-width:0;">
           </div>
-          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
-            Цвет заголовков главных категорий (и линии под ними). По умолчанию такой же, как у цен.
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
+            Полоса вверху страницы с названием ресторана
           </p>
         </div>
       </div>
-      <script>
-        (function() {
-          const pairs = [
-            ['qr-menu-color-price', 'qr-menu-color-price-text'],
-            ['qr-menu-color-header', 'qr-menu-color-header-text'],
-            ['qr-menu-color-circle', 'qr-menu-color-circle-text']
-          ];
-          pairs.forEach(function(p) {
-            const picker = document.getElementById(p[0]);
-            const text = document.getElementById(p[1]);
-            if (!picker || !text) return;
-            picker.addEventListener('input', function() { text.value = picker.value; updateCirclePreview(); });
-            text.addEventListener('input', function() { picker.value = text.value; updateCirclePreview(); });
-          });
-          const textInput = document.getElementById('qr-menu-circle-text');
-          if (textInput) textInput.addEventListener('input', updateCirclePreview);
-        })();
-      </script>
+    </div>
 
-      <h3 style="margin:20px 0 8px;font-size:1rem;">Кружок-значок в шапке меню</h3>
-      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;">
-        Короткий текст в круглом значке рядом с названием ресторана. Подходит для скидок («−20%»), акции, WiFi-пароля и т.п. Текст автоматически уменьшается, чтобы поместиться в круг.
+    <!-- ====== Card 3: Circle badge ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 6px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">⭕</span> Кружок-значок в шапке</h3>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;line-height:1.5;">
+        Короткий текст в круглом значке рядом с названием ресторана. Подходит для скидок («−20%»), акции, WiFi-пароля. Текст автоматически уменьшается под размер кружка.
       </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:14px;align-items:end;">
         <div class="form-group" style="margin:0;">
           <label>Текст в кружке</label>
-          <input type="text" id="qr-menu-circle-text" placeholder="Например: −20%  или  WiFi  или  24/7" maxlength="20">
+          <input type="text" id="qr-menu-circle-text" placeholder="−20% / WiFi / 24/7" maxlength="20">
         </div>
         <div class="form-group" style="margin:0;">
           <label>Цвет фона кружка</label>
           <div style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="qr-menu-color-circle" value="#ffd600" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-            <input type="text" id="qr-menu-color-circle-text" value="#ffd600" style="flex:1;font-family:monospace;">
+            <input type="color" id="qr-menu-color-circle" value="#ffd600" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
+            <input type="text" id="qr-menu-color-circle-text" value="#ffd600" style="flex:1;font-family:monospace;min-width:0;">
           </div>
         </div>
         <div class="form-group" style="margin:0;">
-          <label style="display:block;margin-bottom:4px;">Предпросмотр</label>
-          <div id="circle-preview-wrap" style="display:flex;align-items:center;justify-content:center;width:60px;height:60px;">
+          <label style="display:block;margin-bottom:4px;font-size:0.85rem;">Превью</label>
+          <div id="circle-preview-wrap" style="display:flex;align-items:center;justify-content:center;width:64px;height:64px;background:var(--bg);border-radius:8px;border:1px dashed var(--border);">
             <div id="circle-preview" style="width:48px;height:48px;border-radius:50%;background:#ffd600;color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;text-align:center;line-height:1;padding:4px;box-sizing:border-box;word-break:break-word;overflow:hidden;">—</div>
           </div>
         </div>
       </div>
-      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">
-        Оставьте поле «Текст в кружке» пустым, чтобы значок не отображался в меню.
+      <p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;line-height:1.4;">
+        Оставьте поле «Текст» пустым, чтобы значок не отображался.
       </p>
+    </div>
 
-      <div id="qr-menu-categories" style="margin-top:16px;margin-bottom:16px;"></div>
+    <!-- ====== Card 4: Categories ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📂</span> Категории в меню</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px;background:var(--bg);border-radius:8px;">
+        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(true)" style="font-size:0.9rem;">☑ Выбрать все</button>
+        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(false)" style="font-size:0.9rem;">☐ Снять все</button>
+      </div>
+      <div id="qr-menu-categories"></div>
+    </div>
+
+    <!-- ====== Card 5: Waiter QR toggle + Save button ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">⚙️</span> Дополнительно</h3>
       <div class="form-group checkbox-field" style="margin-bottom:16px;">
         <input type="checkbox" id="set-show-qr">
         <label for="set-show-qr" style="margin:0;">Показать иконку QR-меню у официантов</label>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:10px;background:var(--bg);border-radius:8px;">
-        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(true)" style="font-size:0.9rem;">☑ Выбрать все</button>
-        <button class="btn btn-outline" type="button" onclick="selectAllQrCategories(false)" style="font-size:0.9rem;">☐ Снять все</button>
-        <button class="btn btn-primary" type="button" onclick="saveAndGenerateQrMenu()" style="margin-left:auto;">💾 Сохранить и сгенерировать QR-код</button>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn btn-primary" type="button" onclick="saveAndGenerateQrMenu()" style="font-size:1rem;padding:10px 20px;">💾 Сохранить и сгенерировать QR-код</button>
       </div>
-      <div id="qr-menu-result" style="display:none;">
-        <div style="background:#fff;padding:16px;border-radius:8px;display:inline-block;border:1px solid var(--border);">
-          <img id="qr-menu-image" alt="QR-код меню" style="display:block;width:280px;height:280px;">
+    </div>
+
+    <!-- ====== Card 6: Generated QR code ====== -->
+    <div id="qr-menu-result" class="settings-card" style="display:none;margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📱</span> Готовый QR-код</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
+        <div style="background:#fff;padding:16px;border-radius:8px;display:inline-block;border:1px solid var(--border);flex:none;">
+          <img id="qr-menu-image" alt="QR-код меню" style="display:block;width:240px;height:240px;">
         </div>
-        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
-          <a id="qr-menu-link" href="#" target="_blank" style="color:var(--primary);word-break:break-all;"></a>
+        <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:10px;">
+          <a id="qr-menu-link" href="#" target="_blank" style="color:var(--primary);word-break:break-all;font-size:0.88rem;padding:8px 10px;background:var(--bg);border-radius:6px;"></a>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-outline" type="button" onclick="downloadQrMenuImage()">⬇ Скачать QR-код (PNG)</button>
-            <button class="btn btn-outline" type="button" onclick="openVisitorMenuInNewTab()">↗ Открыть меню в новой вкладке</button>
-            <button class="btn btn-outline" type="button" onclick="printQrMenu()">🖨 Печать QR-кода</button>
+            <button class="btn btn-outline" type="button" onclick="downloadQrMenuImage()">⬇ Скачать PNG</button>
+            <button class="btn btn-outline" type="button" onclick="openVisitorMenuInNewTab()">↗ Открыть меню</button>
+            <button class="btn btn-outline" type="button" onclick="printQrMenu()">🖨 Печать</button>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Color picker <-> hex text sync (all pairs) -->
+    <script>
+      // Wire color picker <-> hex text input pairs.
+      // NOTE: this script runs after all QR-menu elements are parsed.
+      (function() {
+        function wirePair(pickerId, textId, onChange) {
+          const picker = document.getElementById(pickerId);
+          const text = document.getElementById(textId);
+          if (!picker || !text) return;
+          picker.addEventListener('input', function() {
+            text.value = picker.value;
+            if (onChange) onChange();
+          });
+          text.addEventListener('input', function() {
+            picker.value = text.value;
+            if (onChange) onChange();
+          });
+        }
+        wirePair('qr-menu-color-price',  'qr-menu-color-price-text');
+        wirePair('qr-menu-color-header', 'qr-menu-color-header-text');
+        wirePair('qr-menu-color-circle', 'qr-menu-color-circle-text', updateCirclePreview);
+        const circleTextInput = document.getElementById('qr-menu-circle-text');
+        if (circleTextInput) circleTextInput.addEventListener('input', updateCirclePreview);
+        // Initial preview render
+        if (typeof updateCirclePreview === 'function') updateCirclePreview();
+      })();
+    </script>
   </div>
 
     </div><!-- /.admin-content -->
@@ -1370,15 +1474,14 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
   const target = document.getElementById('tab-' + name);
   if (target) target.style.display = 'block';
-  // Auto-expand the Stock sub-group when Stock is selected
+  // Auto-expand the Stock sub-group ONLY when Stock is selected; collapse when leaving
   if (name === 'stock') {
     expandStockSidebar(true);
     if (!window._currentStockSub) window._currentStockSub = 'items';
     switchStockSub(window._currentStockSub);
   } else {
-    // Optionally collapse the Stock sub-group when leaving Stock
-    // (keep it expanded so user can switch back quickly — comment out to collapse)
-    // expandStockSidebar(false);
+    // Collapse Stock sub-items when navigating to another section
+    expandStockSidebar(false);
   }
   if (name === 'orders') { loadOrders(); startOrdersPolling(); }
   else { stopOrdersPolling(); }
@@ -1387,9 +1490,21 @@ function switchTab(name) {
   if (name === 'staff') renderStaffList();
   if (name === 'sounds') updateSoundStatuses();
   if (name === 'tables') loadTablesConfig();
-  if (name === 'qrmenu') renderQrMenuCategories();
+  if (name === 'qrmenu') {
+    renderQrMenuCategories();
+    // Re-run circle preview in case settings changed
+    if (typeof updateCirclePreview === 'function') updateCirclePreview();
+  }
   // On mobile, close the sidebar after selecting a tab
   closeSidebarOnMobile();
+}
+
+// Click handler for Stock sub-items in the sidebar.
+// Always opens the Stock section first (in case user was elsewhere),
+// then switches to the chosen sub-tab.
+function openStockSub(sub) {
+  switchTab('stock');
+  switchStockSub(sub);
 }
 
 // Expand/collapse the Stock sub-items in the sidebar
@@ -3195,14 +3310,14 @@ async function loadStockReport() {
     if (!tracking) {
       html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
     }
-    html += '<table style="width:100%;table-layout:fixed;" id="stock-table"><thead><tr>';
-    html += '<th style="width:22%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'name\')">Название <span class="sort-arrow" id="sort-arrow-name"></span></th>';
-    html += '<th style="width:18%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'category_name\')">Категория <span class="sort-arrow" id="sort-arrow-category_name"></span></th>';
-    html += '<th style="width:9%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остатки <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
-    html += '<th style="width:11%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
-    html += '<th style="width:11%;cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
-    html += '<th style="width:10%;text-align:center;">Поставки</th>';
-    html += '<th style="width:11%;">Пополнить</th>';
+    html += '<table class="stock-table" id="stock-table"><thead><tr>';
+    html += '<th class="st-th-name" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'name\')">Название <span class="sort-arrow" id="sort-arrow-name"></span></th>';
+    html += '<th class="st-th-cat" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'category_name\')">Категория <span class="sort-arrow" id="sort-arrow-category_name"></span></th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остатки <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
+    html += '<th class="st-th-center">Поставки</th>';
+    html += '<th class="st-th-action">Пополнить</th>';
     html += '</tr></thead><tbody>';
     // Keep a reference to the items so sortStockBy() can re-render the body
     window._stockItems = items;
@@ -3226,28 +3341,38 @@ function renderStockRow(it, tracking) {
   const stockValue = Number(it.stock_value) || 0;
   const deliveriesCount = Number(it.deliveries_count) || 0;
   const hasDeliveries = deliveriesCount > 0;
+  // Helper: pick a font size class based on text length so long names shrink gracefully
+  function fontClass(s) {
+    const len = String(s || '').length;
+    if (len <= 18) return 'st-font-l';
+    if (len <= 30) return 'st-font-m';
+    if (len <= 50) return 'st-font-s';
+    return 'st-font-xs';
+  }
+  const nameClass = fontClass(it.name);
+  const catClass = fontClass(it.category_name);
   let row = '<tr' + lowClass + ' id="stock-row-' + it.id + '" data-stock="' + it.stock + '">';
   // Название
-  row += '<td style="word-break:break-word;">' + escapeHtml(it.name) + '</td>';
+  row += '<td class="st-td-name ' + nameClass + '">' + escapeHtml(it.name) + '</td>';
   // Категория
-  row += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(it.category_name || '—') + '</td>';
+  row += '<td class="st-td-cat ' + catClass + '">' + escapeHtml(it.category_name || '—') + '</td>';
   // Остатки
-  row += '<td class="stock-cell" style="' + stockColor + '">' + it.stock + '</td>';
+  row += '<td class="stock-cell st-td-num" style="' + stockColor + '">' + it.stock + '</td>';
   // Себестоимость
-  row += '<td style="text-align:right;color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
+  row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
   // Сумма = остаток × себестоимость
-  row += '<td style="text-align:right;font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
+  row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
   // Поставки — кликабельная ссылка если есть, серый текст если нет
   if (hasDeliveries) {
-    row += '<td style="text-align:center;">' +
+    row += '<td class="st-td-center">' +
       '<a href="#" style="color:var(--primary);font-weight:600;text-decoration:underline;" ' +
       'onclick="event.preventDefault();showDeliveriesForMenuItem(\'' + it.id + '\', ' + JSON.stringify(escapeHtml(it.name)) + ')">' +
       deliveriesCount + ' пост.</a></td>';
   } else {
-    row += '<td style="text-align:center;color:var(--text-muted);">—</td>';
+    row += '<td class="st-td-center" style="color:var(--text-muted);">—</td>';
   }
   // Пополнить
-  row += '<td style="padding:5px 4px;"><div style="display:flex;align-items:center;gap:4px;">' +
+  row += '<td class="st-td-action"><div style="display:flex;align-items:center;gap:4px;">' +
     '<input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" ' +
       'style="flex:1;min-width:0;padding:8px 4px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;text-align:center;" ' +
       'onkeydown="if(event.key===\'Enter\'){event.preventDefault();replenishFromInput(\'' + it.id + '\');}">' +

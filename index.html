@@ -583,6 +583,7 @@
     <button class="badge shift-badge" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
     <button class="badge" id="qr-menu-btn" style="display:none;padding:4px;font-weight:700;font-size:0.75rem;border-radius:50%;width:36px;height:36px;white-space:nowrap;flex:none;" onclick="showWaiterQrMenu()" title="QR-код меню">QR</button>
+    <div id="waiter-circle-badge" style="margin-right:10px;flex:none;width:34px;height:34px;border-radius:50%;background:#ffd600;color:#000;display:none;align-items:center;justify-content:center;font-weight:800;font-size:11px;text-align:center;line-height:1;padding:3px;box-sizing:border-box;word-break:break-word;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.25);border:2px solid rgba(255,255,255,0.5);" title=""></div>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -1061,6 +1062,8 @@ async function startApp() {
   // Show QR menu button if enabled in settings
   var qrBtn = document.getElementById('qr-menu-btn');
   if (qrBtn) qrBtn.style.display = (String(APP_DATA.settings.show_qr_to_waiter) === 'true') ? 'inline-flex' : 'none';
+  // Render circle badge next to logout button
+  applyWaiterCircleBadge();
   requestWakeLock();
   await initServiceWorker();
   if (APP_DATA.settings.sound_notifications !== 'false') {
@@ -1127,6 +1130,44 @@ function updateShiftButton() {
     btn.textContent = '🔴 Открыть смену';
     btn.style.background = 'rgba(244,67,54,0.3)';
   }
+}
+
+// Render the circle badge next to the waiter logout button (uses same QR-menu settings)
+function applyWaiterCircleBadge() {
+  var badge = document.getElementById('waiter-circle-badge');
+  if (!badge) return;
+  var s = (APP_DATA && APP_DATA.settings) ? APP_DATA.settings : {};
+  var text = (s.qr_menu_circle_text || '').trim();
+  if (!text) {
+    badge.style.display = 'none';
+    return;
+  }
+  badge.textContent = text;
+  var bg = s.qr_menu_color_circle || '#ffd600';
+  badge.style.background = bg;
+  badge.style.color = getContrastColorWaiter(bg);
+  // Auto-fit font size
+  var len = text.length;
+  var fontSize;
+  if (len <= 2) fontSize = 14;
+  else if (len === 3) fontSize = 12;
+  else if (len === 4) fontSize = 10;
+  else if (len <= 6) fontSize = 9;
+  else fontSize = 7;
+  badge.style.fontSize = fontSize + 'px';
+  badge.style.display = 'flex';
+  badge.title = text;
+}
+
+// Pick black or white text color based on background luminance
+function getContrastColorWaiter(hex) {
+  var h = String(hex || '').replace('#', '');
+  if (h.length !== 6) return '#000';
+  var r = parseInt(h.substr(0, 2), 16) / 255;
+  var g = parseInt(h.substr(2, 2), 16) / 255;
+  var b = parseInt(h.substr(4, 2), 16) / 255;
+  var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.55 ? '#000' : '#fff';
 }
 
 // Show QR code of the visitor menu in a modal
