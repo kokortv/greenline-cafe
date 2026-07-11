@@ -587,6 +587,7 @@
         <option value="accepted">Принятые</option>
         <option value="completed">Завершённые</option>
         <option value="paused">На паузе</option>
+        <option value="cancelled">Отменённые</option>
       </select>
       <label>Дата:</label>
       <input type="date" id="filter-date" onchange="loadOrders()">
@@ -2171,6 +2172,8 @@ function renderOrders() {
         '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
        order.status === 'paused' ?
         '<span class="pill" style="background:#ff9800;color:white;">⏸ Пауза</span>' :
+        order.status === 'cancelled' ?
+        '<span class="pill" style="background:var(--danger);color:white;" title="' + escapeHtml(order.cancel_reason || '') + '">✕ Отменён</span>' :
         '<span class="pill pill-success"><span class="status-dot completed"></span>Завершён</span>') +
     '</td>';
     html += '<td style="padding:10px;text-align:center;">' +
@@ -2213,27 +2216,41 @@ async function viewOrder(orderId) {
     const hasComments = items.some(function(it) { return it.comment && it.comment.trim(); });
 
     let itemsHtml = '';
+    const canEdit = order.status === 'accepted' || order.status === 'paused';
     if (items.length > 0) {
       itemsHtml = '<table style="margin:12px 0;width:100%;table-layout:fixed;"><thead><tr>' +
         '<th style="width:30%;">Блюдо</th>' +
-        '<th style="width:8%;">Кол-во</th>' +
+        '<th style="width:14%;">Кол-во</th>' +
         '<th style="width:13%;">Цена</th>' +
         '<th style="width:13%;">Сумма</th>' +
         (showReadyCol ? '<th style="width:10%;">Готово</th>' : '') +
         (showServedCol ? '<th style="width:10%;">Подано</th>' : '') +
         (hasComments ? '<th style="width:16%;">Комментарий</th>' : '') +
+        (canEdit ? '<th style="width:8%;">Действия</th>' : '') +
         '</tr></thead><tbody>';
       items.forEach(function(it) {
         var nameCell = escapeHtml(it.name) +
           (it.modification_name ? '<div style="font-size:0.8rem;color:var(--primary);font-weight:600;margin-top:2px;">⚙ ' + escapeHtml(it.modification_name) + '</div>' : '');
+        // Admin can edit quantity inline (only if order is accepted/paused)
+        var qtyCell;
+        if (canEdit) {
+          qtyCell = '<div style="display:flex;align-items:center;gap:4px;">' +
+            '<button class="btn btn-outline" style="padding:2px 6px;font-size:0.85rem;" onclick="adminChangeItemQty(\'' + it.id + '\', -1, \'' + order.id + '\')">−</button>' +
+            '<span style="min-width:24px;text-align:center;font-weight:700;">' + it.quantity + '</span>' +
+            '<button class="btn btn-outline" style="padding:2px 6px;font-size:0.85rem;" onclick="adminChangeItemQty(\'' + it.id + '\', 1, \'' + order.id + '\')">+</button>' +
+            '</div>';
+        } else {
+          qtyCell = String(it.quantity);
+        }
         itemsHtml += '<tr>' +
           '<td style="word-break:break-word;overflow-wrap:anywhere;">' + nameCell + '</td>' +
-          '<td>' + it.quantity + '</td>' +
+          '<td>' + qtyCell + '</td>' +
           '<td>' + formatMoney(it.price) + '</td>' +
           '<td>' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>' +
           (showReadyCol ? '<td>' + (it.is_ready ? '✓' : '—') + '</td>' : '') +
           (showServedCol ? '<td>' + (it.is_served ? '✓' : '—') + '</td>' : '') +
           (hasComments ? '<td style="word-break:break-word;overflow-wrap:anywhere;">' + escapeHtml(it.comment || '') + '</td>' : '') +
+          (canEdit ? '<td><button class="btn btn-danger" style="padding:4px 8px;font-size:0.85rem;" onclick="adminRemoveItem(\'' + it.id + '\', \'' + order.id + '\')" title="Удалить позицию">✕</button></td>' : '') +
         '</tr>';
       });
       itemsHtml += '</tbody></table>';
@@ -2246,24 +2263,82 @@ async function viewOrder(orderId) {
     else if (order.payment_method === 'card') payInfo = '💳 ' + formatMoney(order.card_amount || order.total);
     else if (order.payment_method === 'mixed') payInfo = '💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
 
+    // Status label
+    let statusLabel;
+    if (order.status === 'accepted') statusLabel = 'Принят';
+    else if (order.status === 'paused') statusLabel = '⏸ На паузе';
+    else if (order.status === 'completed') statusLabel = 'Завершён';
+    else if (order.status === 'cancelled') statusLabel = '✕ Отменён';
+    else statusLabel = order.status;
+
+    // Cancel reason (if order was cancelled)
+    let cancelReasonHtml = '';
+    if (order.status === 'cancelled' && order.cancel_reason) {
+      cancelReasonHtml = '<div style="margin-bottom:16px;padding:10px 14px;background:#ffebee;border-left:4px solid var(--danger);border-radius:6px;font-size:0.95rem;color:var(--danger);">' +
+        '<b>Причина отмены:</b> ' + escapeHtml(order.cancel_reason) +
+        (order.cancelled_at ? '<div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">' + formatDateTime(order.cancelled_at) + '</div>' : '') +
+      '</div>';
+    }
+
+    // Admin-only edit hint
+    let editHintHtml = '';
+    if (canEdit) {
+      editHintHtml = '<div style="margin-bottom:12px;padding:8px 12px;background:#e3f2fd;border-left:4px solid var(--info);border-radius:6px;font-size:0.85rem;color:#0d47a1;">' +
+        'ℹ Вы можете изменять количество и удалять позиции этого заказа (доступно только администратору).' +
+      '</div>';
+    }
+
     document.getElementById('ord-detail-content').innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">' +
         '<div><b>Заказ:</b> ' + escapeHtml(formatTableLabel(order)) + '</div>' +
         '<div><b>Гостей:</b> ' + order.guests + '</div>' +
         '<div><b>Официант:</b> ' + escapeHtml(order.waiter_name || '—') + '</div>' +
         '<div><b>Оплата:</b> ' + payInfo + '</div>' +
-        '<div><b>Статус:</b> ' +
-          (order.status === 'accepted' ? 'Принят' :
-           order.status === 'paused' ? '⏸ На паузе' :
-           order.status === 'completed' ? 'Завершён' : order.status) +
-        '</div>' +
+        '<div><b>Статус:</b> ' + statusLabel + '</div>' +
         '<div><b>Создан:</b> ' + formatDateTime(order.created_at) + '</div>' +
         '<div><b>Завершён:</b> ' + (order.completed_at ? formatDateTime(order.completed_at) : '—') + '</div>' +
       '</div>' +
       (order.waiter_note ? '<div style="margin-bottom:16px;padding:8px 12px;background:#fff8e1;border-radius:6px;font-size:0.9rem;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
+      cancelReasonHtml +
+      editHintHtml +
       itemsHtml +
       '<div style="text-align:right;font-size:1.5rem;font-weight:800;color:var(--primary);">Итого: ' + formatMoney(order.total) + '</div>';
     openModal('modal-order');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Admin-only: change item quantity in an accepted/paused order
+async function adminChangeItemQty(itemId, delta, orderId) {
+  try {
+    const order = await apiGet('getOrder', { id: orderId });
+    const item = (order.items || []).find(function(i) { return i.id === itemId; });
+    if (!item) return;
+    const newQty = (Number(item.quantity) || 0) + delta;
+    if (newQty <= 0) {
+      // Remove the item entirely
+      await apiPost('removeItemFromOrder', { item_id: itemId });
+      showToast('Позиция удалена (количество = 0)', 'info');
+    } else {
+      await apiPost('updateItemQuantity', { item_id: itemId, quantity: newQty });
+      showToast('Количество изменено на ' + newQty, 'success');
+    }
+    // Re-render the modal
+    viewOrder(orderId);
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Admin-only: remove an item from an accepted/paused order
+async function adminRemoveItem(itemId, orderId) {
+  const ok = await confirmDialog('Удалить позицию из заказа?', 'Удаление позиции', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
+  try {
+    await apiPost('removeItemFromOrder', { item_id: itemId });
+    showToast('Позиция удалена', 'info');
+    viewOrder(orderId);
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }

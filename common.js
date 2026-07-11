@@ -491,25 +491,41 @@ async function updateOrderStatus(orderId, status, paymentMethod, cashAmount, car
 }
 
 async function addItemToOrder(itemData) {
-  const itemId = 'it_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
-  await dbInsert('order_items', {
-    id: itemId,
-    order_id: itemData.order_id,
-    menu_item_id: itemData.menu_item_id || '',
-    name: itemData.name,
-    name_translation: itemData.name_translation || '',
-    category_name: itemData.category_name || '',
-    category_name_translation: itemData.category_name_translation || '',
-    modification_id: itemData.modification_id || '',
-    modification_name: itemData.modification_name || '',
-    price: Number(itemData.price) || 0,
-    quantity: Number(itemData.quantity) || 1,
-    comment: itemData.comment || '',
-    is_ready: false,
-    is_served: false,
-    needs_cooking: itemData.needs_cooking === true,
-    created_at: new Date().toISOString()
-  });
+  // Check if the same dish with the same modification already exists in the order.
+  // If so, increment its quantity instead of inserting a new row.
+  const existing = await _sb.from('order_items')
+    .select('*')
+    .eq('order_id', itemData.order_id)
+    .eq('menu_item_id', itemData.menu_item_id || '')
+    .eq('modification_id', itemData.modification_id || '');
+  if (existing.error) throw new Error(existing.error.message);
+  if (existing.data && existing.data.length > 0) {
+    // Merge — increment qty on existing item
+    const row = existing.data[0];
+    const newQty = (Number(row.quantity) || 0) + (Number(itemData.quantity) || 1);
+    await dbUpdate('order_items', row.id, { quantity: newQty });
+  } else {
+    // Insert new row
+    const itemId = 'it_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+    await dbInsert('order_items', {
+      id: itemId,
+      order_id: itemData.order_id,
+      menu_item_id: itemData.menu_item_id || '',
+      name: itemData.name,
+      name_translation: itemData.name_translation || '',
+      category_name: itemData.category_name || '',
+      category_name_translation: itemData.category_name_translation || '',
+      modification_id: itemData.modification_id || '',
+      modification_name: itemData.modification_name || '',
+      price: Number(itemData.price) || 0,
+      quantity: Number(itemData.quantity) || 1,
+      comment: itemData.comment || '',
+      is_ready: false,
+      is_served: false,
+      needs_cooking: itemData.needs_cooking === true,
+      created_at: new Date().toISOString()
+    });
+  }
 
   // Deduct stock
   await deductStock([{ menu_item_id: itemData.menu_item_id, quantity: itemData.quantity }]);
@@ -583,6 +599,16 @@ async function deleteOrder(orderId) {
   await _sb.from('order_items').delete().eq('order_id', orderId);
   await dbDelete('orders', orderId);
   return { ok: true };
+}
+
+// Mark an order as cancelled (preserving it for statistics) with a reason.
+// Order items are preserved too so admins can review what was cancelled.
+async function cancelOrderWithReasonDB(orderId, cancelReason) {
+  return await dbUpdate('orders', orderId, {
+    status: 'cancelled',
+    cancel_reason: cancelReason || '',
+    cancelled_at: new Date().toISOString()
+  });
 }
 
 async function pauseOrderDB(orderId) {
@@ -1918,6 +1944,8 @@ async function apiPost(action, body) {
       return await toggleItemServedDB(body.item_id, body.is_served);
     case 'deleteOrder':
       return await deleteOrder(body.order_id);
+    case 'cancelOrderWithReason':
+      return await cancelOrderWithReasonDB(body.order_id, body.cancel_reason);
     case 'pauseOrder':
       return await pauseOrderDB(body.order_id);
     case 'resumeOrder':
