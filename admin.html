@@ -847,6 +847,33 @@
       без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
     </p>
 
+    <!-- ====== Card 0: Live preview ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">👁</span> Живой предпросмотр шапки меню</h3>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 12px;line-height:1.4;">
+        Так шапка будет выглядеть у посетителя. Все изменения ниже применяются мгновенно — не нужно сохранять, чтобы увидеть результат.
+      </p>
+      <div id="qr-live-preview" style="border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.12);max-width:480px;border:1px solid var(--border);">
+        <!-- Header bar -->
+        <div id="preview-header" style="background:#d32f2f;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div id="preview-circle" style="flex:none;width:44px;height:44px;border-radius:50%;background:#ffd600;color:#000;display:none;align-items:center;justify-content:center;font-weight:800;font-size:14px;text-align:center;line-height:1;padding:4px;box-sizing:border-box;word-break:break-word;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.25);border:2px solid rgba(255,255,255,0.4);"></div>
+          <div style="flex:1;text-align:center;min-width:0;">
+            <div id="preview-restaurant-name" style="font-size:1.4rem;font-weight:600;margin:0;">Меню</div>
+            <div id="preview-subtitle" style="font-size:0.8rem;opacity:0.85;white-space:pre-wrap;"></div>
+          </div>
+          <div style="flex:none;width:44px;text-align:center;font-size:1.2rem;opacity:0.8;">🌙</div>
+        </div>
+        <!-- Sample item -->
+        <div style="background:#fafafa;padding:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <div style="flex:1;">
+            <div id="preview-item-name" style="font-weight:600;font-size:1.05rem;color:#1a1a1a;">Хачапури по-аджарски</div>
+            <div style="font-size:0.85rem;color:#666;margin-top:2px;font-style:italic;">Khachapuri Adjaruli</div>
+          </div>
+          <div id="preview-price" style="font-size:1.05rem;font-weight:700;color:#d32f2f;white-space:nowrap;">0 ₾</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ====== Card 1: Text content ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📝</span> Текстовые элементы</h3>
@@ -927,16 +954,21 @@
       <div id="qr-menu-categories"></div>
     </div>
 
-    <!-- ====== Card 5: Waiter QR toggle + Save button ====== -->
+    <!-- ====== Card 5: Waiter QR toggle + Save/Generate buttons ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">⚙️</span> Дополнительно</h3>
       <div class="form-group checkbox-field" style="margin-bottom:16px;">
         <input type="checkbox" id="set-show-qr">
         <label for="set-show-qr" style="margin:0;">Показать иконку QR-меню у официантов</label>
       </div>
-      <div style="display:flex;justify-content:flex-end;">
-        <button class="btn btn-primary" type="button" onclick="saveAndGenerateQrMenu()" style="font-size:1rem;padding:10px 20px;">💾 Сохранить и сгенерировать QR-код</button>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-outline" type="button" onclick="saveQrMenuSettings(false)" style="font-size:0.95rem;padding:10px 16px;">💾 Сохранить</button>
+        <button class="btn btn-primary" type="button" onclick="saveQrMenuSettings(true)" style="font-size:1rem;padding:10px 20px;">📱 Сохранить и сгенерировать QR-код</button>
       </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;line-height:1.4;">
+        «Сохранить» — применяет визуальные изменения (цвета, текст, кружок) без генерации QR-кода.<br>
+        «Сохранить и сгенерировать» — дополнительно обновляет сам QR-код (нужно, если вы поменяли выбранные категории или адрес меню).
+      </p>
     </div>
 
     <!-- ====== Card 6: Generated QR code ====== -->
@@ -957,7 +989,7 @@
       </div>
     </div>
 
-    <!-- Color picker <-> hex text sync (all pairs) -->
+    <!-- Color picker <-> hex text sync (all pairs) + live preview wiring -->
     <script>
       // Wire color picker <-> hex text input pairs.
       // NOTE: this script runs after all QR-menu elements are parsed.
@@ -977,11 +1009,32 @@
         }
         wirePair('qr-menu-color-price',  'qr-menu-color-price-text');
         wirePair('qr-menu-color-header', 'qr-menu-color-header-text');
-        wirePair('qr-menu-color-circle', 'qr-menu-color-circle-text', updateCirclePreview);
+        wirePair('qr-menu-color-circle', 'qr-menu-color-circle-text', function() {
+          if (typeof updateCirclePreview === 'function') updateCirclePreview();
+          if (typeof updateLivePreview === 'function') updateLivePreview();
+        });
         const circleTextInput = document.getElementById('qr-menu-circle-text');
-        if (circleTextInput) circleTextInput.addEventListener('input', updateCirclePreview);
-        // Initial preview render
+        if (circleTextInput) circleTextInput.addEventListener('input', function() {
+          if (typeof updateCirclePreview === 'function') updateCirclePreview();
+          if (typeof updateLivePreview === 'function') updateLivePreview();
+        });
+        // Wire subtitle input to live preview
+        const subtitleInput = document.getElementById('qr-menu-subtitle');
+        if (subtitleInput) subtitleInput.addEventListener('input', function() {
+          if (typeof updateLivePreview === 'function') updateLivePreview();
+        });
+        // Wire price/header color pickers to live preview too
+        const pricePicker = document.getElementById('qr-menu-color-price');
+        const priceText = document.getElementById('qr-menu-color-price-text');
+        const headerPicker = document.getElementById('qr-menu-color-header');
+        const headerText = document.getElementById('qr-menu-color-header-text');
+        if (pricePicker) pricePicker.addEventListener('input', function() { if (typeof updateLivePreview === 'function') updateLivePreview(); });
+        if (priceText) priceText.addEventListener('input', function() { if (typeof updateLivePreview === 'function') updateLivePreview(); });
+        if (headerPicker) headerPicker.addEventListener('input', function() { if (typeof updateLivePreview === 'function') updateLivePreview(); });
+        if (headerText) headerText.addEventListener('input', function() { if (typeof updateLivePreview === 'function') updateLivePreview(); });
+        // Initial previews
         if (typeof updateCirclePreview === 'function') updateCirclePreview();
+        if (typeof updateLivePreview === 'function') updateLivePreview();
       })();
     </script>
   </div>
@@ -1492,8 +1545,10 @@ function switchTab(name) {
   if (name === 'tables') loadTablesConfig();
   if (name === 'qrmenu') {
     renderQrMenuCategories();
-    // Re-run circle preview in case settings changed
+    loadQrMenuAppearance();
+    // Re-run previews in case settings changed
     if (typeof updateCirclePreview === 'function') updateCirclePreview();
+    if (typeof updateLivePreview === 'function') updateLivePreview();
   }
   // On mobile, close the sidebar after selecting a tab
   closeSidebarOnMobile();
@@ -1753,8 +1808,9 @@ function loadQrMenuAppearance() {
   document.getElementById('qr-menu-circle-text').value = s.qr_menu_circle_text || '';
   // Show QR to waiter checkbox
   document.getElementById('set-show-qr').checked = String(s.show_qr_to_waiter) === 'true';
-  // Update circle preview
+  // Update previews
   updateCirclePreview();
+  updateLivePreview();
 }
 
 // Live preview of the circle badge — auto-shrinks text to fit
@@ -1784,6 +1840,52 @@ function updateCirclePreview() {
   preview.style.fontSize = fontSize + 'px';
 }
 
+// Live preview of the entire menu header — reflects colors, subtitle, circle badge, sample item
+function updateLivePreview() {
+  const priceColor = document.getElementById('qr-menu-color-price').value || '#d32f2f';
+  const headerColor = document.getElementById('qr-menu-color-header').value || priceColor;
+  const circleText = (document.getElementById('qr-menu-circle-text').value || '').trim();
+  const circleColor = document.getElementById('qr-menu-color-circle').value || '#ffd600';
+  const subtitle = document.getElementById('qr-menu-subtitle').value || '';
+
+  const header = document.getElementById('preview-header');
+  if (header) header.style.background = headerColor;
+
+  const price = document.getElementById('preview-price');
+  if (price) price.style.color = priceColor;
+
+  const subtitleEl = document.getElementById('preview-subtitle');
+  if (subtitleEl) subtitleEl.textContent = subtitle;
+
+  const restaurantName = document.getElementById('preview-restaurant-name');
+  if (restaurantName) {
+    const name = (APP_DATA && APP_DATA.settings && APP_DATA.settings.restaurant_name) ? APP_DATA.settings.restaurant_name : 'Меню';
+    restaurantName.textContent = name;
+  }
+
+  // Circle badge in preview
+  const circle = document.getElementById('preview-circle');
+  if (circle) {
+    if (circleText) {
+      circle.textContent = circleText;
+      circle.style.background = circleColor;
+      circle.style.color = getContrastColor(circleColor);
+      const len = circleText.length;
+      let fs;
+      if (len <= 2) fs = 18;
+      else if (len === 3) fs = 15;
+      else if (len === 4) fs = 13;
+      else if (len <= 6) fs = 11;
+      else if (len <= 9) fs = 9;
+      else fs = 8;
+      circle.style.fontSize = fs + 'px';
+      circle.style.display = 'flex';
+    } else {
+      circle.style.display = 'none';
+    }
+  }
+}
+
 // Pick black or white text color based on background luminance
 function getContrastColor(hex) {
   const h = (hex || '').replace('#', '');
@@ -1796,8 +1898,10 @@ function getContrastColor(hex) {
   return lum > 0.55 ? '#000' : '#fff';
 }
 
-// Save the QR-menu appearance settings to Supabase, then generate the QR code.
-async function saveAndGenerateQrMenu() {
+// Save the QR-menu appearance settings to Supabase.
+// If `generate` is true, also regenerate the QR code image.
+// If `generate` is false, only save settings (visual changes apply on next menu.html visit).
+async function saveQrMenuSettings(generate) {
   const settings = {
     qr_menu_subtitle: document.getElementById('qr-menu-subtitle').value,
     qr_menu_footer: document.getElementById('qr-menu-footer').value,
@@ -1813,8 +1917,12 @@ async function saveAndGenerateQrMenu() {
     if (APP_DATA && APP_DATA.settings) {
       Object.keys(settings).forEach(function(k) { APP_DATA.settings[k] = settings[k]; });
     }
-    showToast('Оформление меню сохранено', 'success');
-    generateQrMenu();
+    if (generate) {
+      showToast('Настройки сохранены, QR-код сгенерирован', 'success');
+      generateQrMenu();
+    } else {
+      showToast('Настройки сохранены', 'success');
+    }
   } catch (err) {
     showToast('Ошибка сохранения: ' + err.message, 'error');
   }

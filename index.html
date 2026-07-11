@@ -582,8 +582,8 @@
   <div class="header-row header-bottom">
     <button class="badge shift-badge" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
-    <button class="badge" id="qr-menu-btn" style="display:none;padding:4px;font-weight:700;font-size:0.75rem;border-radius:50%;width:36px;height:36px;white-space:nowrap;flex:none;" onclick="showWaiterQrMenu()" title="QR-код меню">QR</button>
-    <div id="waiter-circle-badge" style="margin-right:10px;flex:none;width:34px;height:34px;border-radius:50%;background:#ffd600;color:#000;display:none;align-items:center;justify-content:center;font-weight:800;font-size:11px;text-align:center;line-height:1;padding:3px;box-sizing:border-box;word-break:break-word;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.25);border:2px solid rgba(255,255,255,0.5);" title=""></div>
+    <button class="badge" id="qr-menu-btn" style="display:none;padding:4px;font-weight:700;font-size:0.75rem;border-radius:50%;width:36px;height:36px;white-space:nowrap;flex:none;cursor:pointer;" onclick="showWaiterQrMenu()" title="QR-код меню">QR</button>
+    <button id="waiter-circle-badge" type="button" onclick="showWaiterQrMenu()" title="QR-код меню" style="margin-right:10px;flex:none;width:36px;height:36px;border-radius:50%;background:#ffd600;color:#000;display:none;align-items:center;justify-content:center;font-weight:800;font-size:11px;text-align:center;line-height:1;padding:3px;box-sizing:border-box;word-break:break-word;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.25);border:2px solid rgba(255,255,255,0.5);cursor:pointer;transition:transform 0.1s;"></button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -1059,11 +1059,26 @@ async function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = state.currentUser.name;
-  // Show QR menu button if enabled in settings
+  // Show QR menu icon if enabled in settings.
+  // If a circle badge text is configured, show the branded circle (clickable).
+  // Otherwise fall back to the plain "QR" button. Never show both at once.
+  var qrEnabled = (String(APP_DATA.settings.show_qr_to_waiter) === 'true');
+  var circleText = (APP_DATA.settings.qr_menu_circle_text || '').trim();
   var qrBtn = document.getElementById('qr-menu-btn');
-  if (qrBtn) qrBtn.style.display = (String(APP_DATA.settings.show_qr_to_waiter) === 'true') ? 'inline-flex' : 'none';
-  // Render circle badge next to logout button
-  applyWaiterCircleBadge();
+  var badge = document.getElementById('waiter-circle-badge');
+  if (qrEnabled && circleText && badge) {
+    // Use branded circle badge as the QR button
+    applyWaiterCircleBadge();
+    if (qrBtn) qrBtn.style.display = 'none';
+  } else if (qrEnabled) {
+    // No circle text → plain QR button
+    if (qrBtn) qrBtn.style.display = 'inline-flex';
+    if (badge) badge.style.display = 'none';
+  } else {
+    // QR feature disabled entirely
+    if (qrBtn) qrBtn.style.display = 'none';
+    if (badge) badge.style.display = 'none';
+  }
   requestWakeLock();
   await initServiceWorker();
   if (APP_DATA.settings.sound_notifications !== 'false') {
@@ -1156,7 +1171,7 @@ function applyWaiterCircleBadge() {
   else fontSize = 7;
   badge.style.fontSize = fontSize + 'px';
   badge.style.display = 'flex';
-  badge.title = text;
+  badge.title = 'QR-код меню: ' + text;
 }
 
 // Pick black or white text color based on background luminance
