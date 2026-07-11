@@ -352,9 +352,16 @@ async function getOrders(status, waiterId) {
     });
   });
 
-  // Attach items to orders
+  // Attach items to orders (sorted by created_at — preserves insertion order)
   const result = (orders || []).map(function(o) {
-    o.items = itemsByOrder[o.id] || [];
+    var its = (itemsByOrder[o.id] || []).slice();
+    its.sort(function(a, b) {
+      var ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      var tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (ta !== tb) return ta - tb;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+    o.items = its;
     return o;
   });
 
@@ -365,13 +372,24 @@ async function getOrder(id) {
   // Query order and items IN PARALLEL (2 requests at once, not sequentially)
   const [orderResult, itemsResult] = await Promise.all([
     _sb.from('orders').select('*').eq('id', id).single(),
-    _sb.from('order_items').select('*').eq('order_id', id)
+    _sb.from('order_items').select('*').eq('order_id', id).order('created_at', { ascending: true })
   ]);
   if (orderResult.error) throw new Error(orderResult.error.message);
   if (itemsResult.error) console.error('getOrder items error:', itemsResult.error);
 
   const data = orderResult.data;
-  data.items = (itemsResult.data || []).map(function(it) {
+  var rawItems = itemsResult.data || [];
+  // Defensive sort by created_at (preserves insertion order — fixes items
+  // reordering when quantity is updated or another item is removed).
+  rawItems.sort(function(a, b) {
+    var ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+    var tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (ta !== tb) return ta - tb;
+    // Fallback: by id (lexicographic — items created at the same millisecond
+    // get a stable order based on their random suffix).
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
+  data.items = rawItems.map(function(it) {
     return {
       id: it.id,
       order_id: it.order_id,

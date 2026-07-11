@@ -3008,17 +3008,53 @@ function openOrderDetail(orderId) {
 
 async function renderOrderDetail() {
   if (!state.currentOrderId) return;
+  // Don't re-render while the waiter is actively typing in a comment field —
+  // it would reset their input. We'll re-render on the next poll tick after
+  // they finish. Also skip if they're in the order-detail screen but the
+  // document doesn't have focus (e.g. they switched to another app).
+  var activeEl = document.activeElement;
+  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+      activeEl.closest('#screen-order-detail')) {
+    // User is editing something — only update the order state silently, skip DOM rebuild
+    try {
+      const order = await apiGet('getOrder', { id: state.currentOrderId });
+      state.currentOrder = order;
+      // Only re-render if item count or qty changed (so admin deletions show up)
+      const oldItems = (state.currentOrder && state.currentOrder.items) || [];
+      const newItems = order.items || [];
+      var sameStructure = oldItems.length === newItems.length;
+      if (sameStructure) {
+        for (var i = 0; i < oldItems.length; i++) {
+          if (oldItems[i].id !== newItems[i].id ||
+              Number(oldItems[i].quantity) !== Number(newItems[i].quantity) ||
+              !!oldItems[i].is_ready !== !!newItems[i].is_ready ||
+              !!oldItems[i].is_served !== !!newItems[i].is_served) {
+            sameStructure = false;
+            break;
+          }
+        }
+      }
+      if (sameStructure) {
+        // No structural change — just update total silently
+        const totalEl = document.getElementById('order-detail-total');
+        if (totalEl) totalEl.textContent = formatMoney(order.total);
+        return;
+      }
+      // Structure changed (admin removed item or changed qty) — re-render even though
+      // user is typing. Their comment will be lost, but it's better than hiding the change.
+    } catch (err) { /* fall through to normal render */ }
+  }
   try {
     const order = await apiGet('getOrder', { id: state.currentOrderId });
     state.currentOrder = order;
 
     const infoDiv = document.getElementById('order-detail-info');
     infoDiv.innerHTML =
-      '<div class="card">' +
+      '<div class="card" style="background:linear-gradient(135deg, #fff 0%, #fafafa 100%);border-left:4px solid var(--primary);margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<div>' +
             '<div style="font-size:1.5rem;font-weight:700;">' + escapeHtml(formatTableLabel(order)) + '</div>' +
-            '<div style="color:var(--text-muted);">' +
+            '<div style="color:var(--text-muted);margin-top:2px;">' +
               order.guests + ' чел. · ' + formatTime(order.created_at) +
             '</div>' +
           '</div>' +
@@ -3660,7 +3696,9 @@ function stopBadgePolling() {
 function startOrderPolling() {
   stopOrderPolling();
   renderOrderDetail(); // initial render
-  const interval = getPollInterval('poll_interval_waiter', 'POLL_ORDERS');
+  // Faster poll when the waiter is actively viewing an order detail — admin
+  // edits should appear within ~2-3 seconds, not the default 5s.
+  const interval = Math.min(getPollInterval('poll_interval_waiter', 'POLL_ORDERS'), 3000);
   state.pollingTimer = setInterval(renderOrderDetail, interval);
   console.log('Waiter order polling started:', interval + 'ms');
 }
