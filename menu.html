@@ -146,18 +146,18 @@
   .mi-info { flex: 1; min-width: 0; }
   .mi-name { font-weight: 600; font-size: 1.05rem; color: var(--vm-text); }
   .mi-translation { font-size: 0.85rem; color: var(--vm-muted); margin-top: 2px; font-style: italic; }
-  .mi-mods { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; font-size: 0.95rem; color: var(--vm-text); }
+  .mi-mods { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 0.95rem; color: var(--vm-text); }
   .mi-mod-row {
     display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
-    padding: 6px 10px; background: var(--vm-bg); border-radius: 6px;
-    border-left: 3px solid var(--vm-accent); margin-left: 4px;
+    padding: 3px 0 3px 14px; /* indent for the dot */
   }
-  .mi-mod-row .mi-mod-label { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+  .mi-mod-row .mi-mod-label { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; position: relative; }
   .mi-mod-row .mi-mod-icon {
     flex: none; width: 6px; height: 6px; border-radius: 50%;
     background: var(--vm-accent); display: inline-block;
+    margin-left: -14px; /* pull the dot into the indent so label text stays aligned */
   }
-  .mi-mod-row .mi-mod-name { min-width: 0; flex: 1; word-break: break-word; }
+  .mi-mod-row .mi-mod-name { min-width: 0; flex: 1; word-break: break-word; color: var(--vm-muted); }
   .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); white-space: nowrap; }
   .mi-price { font-size: 1.05rem; font-weight: 700; white-space: nowrap; flex: none; color: var(--vm-accent); }
 
