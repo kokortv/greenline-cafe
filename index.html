@@ -1992,13 +1992,26 @@ function selectMainCategory(cat) {
 function renderMenu() {
   const mainCat = state.mainCategory;
   if (!mainCat) {
-    // No category selected yet — clear the menu area and show a prompt
+    // No category selected yet — clear the menu area and show a full-width prompt.
+    // We override the grid layout on #menu-items with display:block so the
+    // message spans the entire right panel instead of being trapped in one grid cell.
     const itemsDiv = document.getElementById('menu-items');
-    if (itemsDiv) itemsDiv.innerHTML = '<div class="empty-state"><h3>Выберите категорию</h3><p>Нажмите на категорию слева, чтобы увидеть блюда</p></div>';
+    if (itemsDiv) {
+      itemsDiv.style.display = 'block';
+      itemsDiv.innerHTML =
+        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;padding:40px 20px;text-align:center;color:var(--text-muted);">' +
+          '<div style="font-size:3rem;opacity:0.3;margin-bottom:16px;">📂</div>' +
+          '<h3 style="font-size:1.3rem;margin:0 0 8px;color:var(--text);">Выберите категорию</h3>' +
+          '<p style="font-size:1rem;margin:0;max-width:400px;">Нажмите на категорию слева, чтобы увидеть блюда</p>' +
+        '</div>';
+    }
     const tabsDiv = document.getElementById('subcat-tabs');
     if (tabsDiv) tabsDiv.innerHTML = '';
     return;
   }
+  // Restore grid layout for actual menu items
+  const itemsDiv2 = document.getElementById('menu-items');
+  if (itemsDiv2) itemsDiv2.style.display = '';
   const subcats = APP_DATA.categories.filter(function(c) {
     return c.parent_id === mainCat.id;
   }).sort(function(a, b) {
@@ -3039,37 +3052,30 @@ async function renderOrderDetail() {
         else if (isReady) cardClass += ' ready';
         card.className = cardClass;
         card.dataset.itemId = item.id;  // for reliable DOM lookup
-        // Build the dish name line: optional category badge + dish name + status badge
+        // Build the dish name line: optional category badge + dish name + qty + status badge
         let statusBadge = '';
         if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
         else if (isReady) statusBadge = ' <span class="ci-ready-badge">✓ ГОТОВО</span>';
-        const nameLine = formatItemLabel(item) + statusBadge;
+        // Quantity shown inline after the dish name — no +/- stepper (waiter can't change qty)
+        const qtyBadge = ' <span style="color:var(--text-muted);font-weight:500;font-size:0.9rem;">· ' + item.quantity + ' шт</span>';
+        const nameLine = formatItemLabel(item) + qtyBadge + statusBadge;
         card.innerHTML =
           '<div class="ci-top">' +
             '<div class="ci-name">' + nameLine + '</div>' +
             '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
           '</div>' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
-            // Read-only qty display — waiter can NO LONGER change quantities of accepted orders.
-            // Only the admin can edit accepted orders (via the admin panel).
-            '<div class="stepper" data-item-id="' + item.id + '" style="opacity:0.85;">' +
-              '<button disabled>−</button>' +
-              '<input type="number" value="' + item.quantity + '" readonly disabled>' +
-              '<button disabled>+</button>' +
-            '</div>' +
-            '<div style="display:flex;gap:6px;">' +
-              (orderBarOnly
-                ? '' // bar-only order — no "Подано" button at all
-                : (isServed
-                  ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
-                  : (isReady || !needsCooking || !state.cookEnabled
-                    ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
-                    : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
-                    )
+          '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;">' +
+            (orderBarOnly
+              ? '' // bar-only order — no "Подано" button at all
+              : (isServed
+                ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                : (isReady || !needsCooking || !state.cookEnabled
+                  ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                  : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
                   )
-              ) +
-              // No "Удалить" button for the waiter — admin only
-            '</div>' +
+                )
+            ) +
+            // No "Удалить" button for the waiter — admin only
           '</div>' +
           (isServed
             ? ''

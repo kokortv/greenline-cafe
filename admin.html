@@ -2218,42 +2218,57 @@ async function viewOrder(orderId) {
     let itemsHtml = '';
     const canEdit = order.status === 'accepted' || order.status === 'paused';
     if (items.length > 0) {
-      itemsHtml = '<table style="margin:12px 0;width:100%;table-layout:fixed;"><thead><tr>' +
-        '<th style="width:30%;">Блюдо</th>' +
-        '<th style="width:14%;">Кол-во</th>' +
-        '<th style="width:13%;">Цена</th>' +
-        '<th style="width:13%;">Сумма</th>' +
-        (showReadyCol ? '<th style="width:10%;">Готово</th>' : '') +
-        (showServedCol ? '<th style="width:10%;">Подано</th>' : '') +
-        (hasComments ? '<th style="width:16%;">Комментарий</th>' : '') +
-        (canEdit ? '<th style="width:8%;">Действия</th>' : '') +
-        '</tr></thead><tbody>';
+      // Calculate column widths so they ALWAYS sum to 100% (no overflow).
+      // Base set: Блюдо(28) + Кол-во(12) + Цена(11) + Сумма(11) + Действия(8) = 70%
+      // Add Готово(8) + Подано(8) + Комментарий(14) conditionally.
+      var cols = [];
+      cols.push({ name: 'Блюдо', width: 28 });
+      cols.push({ name: 'Кол-во', width: canEdit ? 14 : 10 });
+      cols.push({ name: 'Цена', width: 11 });
+      cols.push({ name: 'Сумма', width: 11 });
+      if (showReadyCol) cols.push({ name: 'Готово', width: 7 });
+      if (showServedCol) cols.push({ name: 'Подано', width: 7 });
+      if (hasComments) cols.push({ name: 'Комментарий', width: 14 });
+      if (canEdit) cols.push({ name: 'Действия', width: 8 });
+      // Normalize widths to sum to exactly 100%
+      var totalW = cols.reduce(function(s, c) { return s + c.width; }, 0);
+      if (totalW !== 100) {
+        var scale = 100 / totalW;
+        cols.forEach(function(c) { c.width = Math.round(c.width * scale); });
+      }
+
+      itemsHtml = '<div style="overflow-x:auto;margin:12px 0;-webkit-overflow-scrolling:touch;">' +
+        '<table class="admin-order-table" style="width:100%;table-layout:fixed;border-collapse:collapse;"><thead><tr>';
+      cols.forEach(function(c) {
+        itemsHtml += '<th style="width:' + c.width + '%;padding:8px;text-align:left;background:var(--primary);color:#fff;font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + c.name + '</th>';
+      });
+      itemsHtml += '</tr></thead><tbody>';
       items.forEach(function(it) {
         var nameCell = escapeHtml(it.name) +
-          (it.modification_name ? '<div style="font-size:0.8rem;color:var(--primary);font-weight:600;margin-top:2px;">⚙ ' + escapeHtml(it.modification_name) + '</div>' : '');
+          (it.modification_name ? '<div style="font-size:0.78rem;color:var(--primary);font-weight:600;margin-top:2px;">⚙ ' + escapeHtml(it.modification_name) + '</div>' : '');
         // Admin can edit quantity inline (only if order is accepted/paused)
         var qtyCell;
         if (canEdit) {
-          qtyCell = '<div style="display:flex;align-items:center;gap:4px;">' +
-            '<button class="btn btn-outline" style="padding:2px 6px;font-size:0.85rem;" onclick="adminChangeItemQty(\'' + it.id + '\', -1, \'' + order.id + '\')">−</button>' +
+          qtyCell = '<div style="display:flex;align-items:center;gap:3px;">' +
+            '<button class="btn btn-outline" style="padding:2px 7px;font-size:0.85rem;min-width:28px;" onclick="adminChangeItemQty(\'' + it.id + '\', -1, \'' + order.id + '\')">−</button>' +
             '<span style="min-width:24px;text-align:center;font-weight:700;">' + it.quantity + '</span>' +
-            '<button class="btn btn-outline" style="padding:2px 6px;font-size:0.85rem;" onclick="adminChangeItemQty(\'' + it.id + '\', 1, \'' + order.id + '\')">+</button>' +
+            '<button class="btn btn-outline" style="padding:2px 7px;font-size:0.85rem;min-width:28px;" onclick="adminChangeItemQty(\'' + it.id + '\', 1, \'' + order.id + '\')">+</button>' +
             '</div>';
         } else {
           qtyCell = String(it.quantity);
         }
-        itemsHtml += '<tr>' +
-          '<td style="word-break:break-word;overflow-wrap:anywhere;">' + nameCell + '</td>' +
-          '<td>' + qtyCell + '</td>' +
-          '<td>' + formatMoney(it.price) + '</td>' +
-          '<td>' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>' +
-          (showReadyCol ? '<td>' + (it.is_ready ? '✓' : '—') + '</td>' : '') +
-          (showServedCol ? '<td>' + (it.is_served ? '✓' : '—') + '</td>' : '') +
-          (hasComments ? '<td style="word-break:break-word;overflow-wrap:anywhere;">' + escapeHtml(it.comment || '') + '</td>' : '') +
-          (canEdit ? '<td><button class="btn btn-danger" style="padding:4px 8px;font-size:0.85rem;" onclick="adminRemoveItem(\'' + it.id + '\', \'' + order.id + '\')" title="Удалить позицию">✕</button></td>' : '') +
-        '</tr>';
+        var rowCells = [];
+        rowCells.push('<td style="padding:8px;word-break:break-word;overflow-wrap:anywhere;white-space:normal;">' + nameCell + '</td>');
+        rowCells.push('<td style="padding:8px;white-space:nowrap;">' + qtyCell + '</td>');
+        rowCells.push('<td style="padding:8px;white-space:nowrap;">' + formatMoney(it.price) + '</td>');
+        rowCells.push('<td style="padding:8px;white-space:nowrap;font-weight:600;">' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>');
+        if (showReadyCol) rowCells.push('<td style="padding:8px;text-align:center;">' + (it.is_ready ? '✓' : '—') + '</td>');
+        if (showServedCol) rowCells.push('<td style="padding:8px;text-align:center;">' + (it.is_served ? '✓' : '—') + '</td>');
+        if (hasComments) rowCells.push('<td style="padding:8px;word-break:break-word;overflow-wrap:anywhere;white-space:normal;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(it.comment || '') + '</td>');
+        if (canEdit) rowCells.push('<td style="padding:8px;text-align:center;"><button class="btn btn-danger" style="padding:4px 8px;font-size:0.85rem;" onclick="adminRemoveItem(\'' + it.id + '\', \'' + order.id + '\')" title="Удалить позицию">✕</button></td>');
+        itemsHtml += '<tr style="border-bottom:1px solid var(--border);">' + rowCells.join('') + '</tr>';
       });
-      itemsHtml += '</tbody></table>';
+      itemsHtml += '</tbody></table></div>';
     } else {
       itemsHtml = '<p style="color:var(--text-muted);">В заказе нет позиций</p>';
     }
@@ -2317,9 +2332,17 @@ async function adminChangeItemQty(itemId, delta, orderId) {
     if (!item) return;
     const newQty = (Number(item.quantity) || 0) + delta;
     if (newQty <= 0) {
-      // Remove the item entirely
+      // Confirm before deleting — same dialog as the explicit "✕ Удалить" button
+      const ok = await confirmDialog(
+        'Удалить позицию «' + (item.name || '') + '» из заказа? (Количество станет 0)',
+        'Удаление позиции',
+        'Удалить',
+        'Отмена',
+        'btn-danger'
+      );
+      if (!ok) return;
       await apiPost('removeItemFromOrder', { item_id: itemId });
-      showToast('Позиция удалена (количество = 0)', 'info');
+      showToast('Позиция удалена', 'info');
     } else {
       await apiPost('updateItemQuantity', { item_id: itemId, quantity: newQty });
       showToast('Количество изменено на ' + newQty, 'success');
