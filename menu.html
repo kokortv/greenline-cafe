@@ -54,6 +54,18 @@
   }
   .header-spacer { height: 64px; }
 
+  /* Circle badge in header (left side, replaces empty spacer) */
+  .menu-circle-badge {
+    flex: none; width: 44px; height: 44px; border-radius: 50%;
+    background: #ffd600; color: #000;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px; text-align: center; line-height: 1;
+    padding: 4px; box-sizing: border-box; word-break: break-word; overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    border: 2px solid rgba(255,255,255,0.4);
+  }
+  .menu-header-slot { flex: none; width: 40px; }
+
   /* Fixed subcat tabs: sit right below header when at top, slide up to top:0 when header hides */
   .subcat-tabs-bar {
     position: fixed; top: 64px; left: 0; right: 0; z-index: 50;
@@ -152,7 +164,7 @@
 <body>
 
 <div class="menu-header" id="menu-header">
-  <div style="width:40px;"></div>
+  <div id="menu-header-left-slot" class="menu-header-slot"></div>
   <div class="menu-header-center">
     <h1 id="menu-restaurant-name">Меню</h1>
     <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
@@ -495,6 +507,48 @@ function applyAppearance() {
   var footer = document.getElementById('menu-footer');
   if (s.qr_menu_footer) { footer.textContent = s.qr_menu_footer; footer.style.display = 'block'; }
   else footer.style.display = 'none';
+  // Circle badge in header
+  applyCircleBadge(s.qr_menu_circle_text, s.qr_menu_color_circle);
+}
+
+// Render the circle badge in the header left slot, with auto-fit text
+function applyCircleBadge(text, bgColor) {
+  var slot = document.getElementById('menu-header-left-slot');
+  if (!slot) return;
+  var trimmed = (text || '').trim();
+  if (!trimmed) {
+    // No text → keep an empty 40px spacer so header stays balanced
+    slot.className = 'menu-header-slot';
+    slot.innerHTML = '';
+    slot.removeAttribute('style');
+    return;
+  }
+  slot.className = 'menu-circle-badge';
+  slot.textContent = trimmed;
+  var bg = bgColor || '#ffd600';
+  slot.style.background = bg;
+  slot.style.color = getContrastColor(bg);
+  // Auto-fit font size based on text length
+  var len = trimmed.length;
+  var fontSize;
+  if (len <= 2) fontSize = 18;
+  else if (len === 3) fontSize = 15;
+  else if (len === 4) fontSize = 13;
+  else if (len <= 6) fontSize = 11;
+  else if (len <= 9) fontSize = 9;
+  else fontSize = 8;
+  slot.style.fontSize = fontSize + 'px';
+}
+
+// Pick black or white text color based on background luminance
+function getContrastColor(hex) {
+  var h = String(hex || '').replace('#', '');
+  if (h.length !== 6) return '#000';
+  var r = parseInt(h.substr(0, 2), 16) / 255;
+  var g = parseInt(h.substr(2, 2), 16) / 255;
+  var b = parseInt(h.substr(4, 2), 16) / 255;
+  var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.55 ? '#000' : '#fff';
 }
 
 function render() {

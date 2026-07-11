@@ -257,7 +257,25 @@ async function loadAppData(force) {
         role: u.role,
         is_active: u.is_active,
         sort: u.sort,
+        phone: u.phone || '',
+        email: u.email || '',
+        last_login: u.last_login || null,
         has_password: !!(u.pin && String(u.pin).length > 0)
+      };
+    }),
+    // Include hidden (is_active=false) users separately so admin can manage them
+    users_all: users.map(function(u) {
+      return {
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        is_active: u.is_active === true || u.is_active === 'true',
+        sort: u.sort,
+        phone: u.phone || '',
+        email: u.email || '',
+        last_login: u.last_login || null,
+        has_password: !!(u.pin && String(u.pin).length > 0),
+        created_at: u.created_at || null
       };
     })
   };
@@ -1351,6 +1369,11 @@ async function loginWithPassword(userId, password) {
   }
   if (!match) throw new Error('Неверный пароль');
 
+  // Update last_login timestamp (fire-and-forget, do not block login)
+  try {
+    await dbUpdate('users', userId, { last_login: new Date().toISOString() });
+  } catch (e) { /* ignore — login should still succeed */ }
+
   return {
     token: 'session_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 12),
     user: { id: user.id, name: user.name, role: user.role },
@@ -1987,7 +2010,9 @@ async function apiPost(action, body) {
         name: body.name,
         role: body.role || 'waiter',
         is_active: body.is_active !== false,
-        sort: body.sort || 0
+        sort: body.sort || 0,
+        phone: body.phone || '',
+        email: body.email || ''
       };
       if (existing.length > 0) {
         return await dbUpdate('users', uId, record);

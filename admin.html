@@ -814,16 +814,47 @@
         (function() {
           const pairs = [
             ['qr-menu-color-price', 'qr-menu-color-price-text'],
-            ['qr-menu-color-header', 'qr-menu-color-header-text']
+            ['qr-menu-color-header', 'qr-menu-color-header-text'],
+            ['qr-menu-color-circle', 'qr-menu-color-circle-text']
           ];
           pairs.forEach(function(p) {
             const picker = document.getElementById(p[0]);
             const text = document.getElementById(p[1]);
             if (!picker || !text) return;
-            picker.addEventListener('input', function() { text.value = picker.value; });
+            picker.addEventListener('input', function() { text.value = picker.value; updateCirclePreview(); });
+            text.addEventListener('input', function() { picker.value = text.value; updateCirclePreview(); });
           });
+          const textInput = document.getElementById('qr-menu-circle-text');
+          if (textInput) textInput.addEventListener('input', updateCirclePreview);
         })();
       </script>
+
+      <h3 style="margin:20px 0 8px;font-size:1rem;">Кружок-значок в шапке меню</h3>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;">
+        Короткий текст в круглом значке рядом с названием ресторана. Подходит для скидок («−20%»), акции, WiFi-пароля и т.п. Текст автоматически уменьшается, чтобы поместиться в круг.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;">
+        <div class="form-group" style="margin:0;">
+          <label>Текст в кружке</label>
+          <input type="text" id="qr-menu-circle-text" placeholder="Например: −20%  или  WiFi  или  24/7" maxlength="20">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Цвет фона кружка</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="color" id="qr-menu-color-circle" value="#ffd600" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="text" id="qr-menu-color-circle-text" value="#ffd600" style="flex:1;font-family:monospace;">
+          </div>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label style="display:block;margin-bottom:4px;">Предпросмотр</label>
+          <div id="circle-preview-wrap" style="display:flex;align-items:center;justify-content:center;width:60px;height:60px;">
+            <div id="circle-preview" style="width:48px;height:48px;border-radius:50%;background:#ffd600;color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;text-align:center;line-height:1;padding:4px;box-sizing:border-box;word-break:break-word;overflow:hidden;">—</div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">
+        Оставьте поле «Текст в кружке» пустым, чтобы значок не отображался в меню.
+      </p>
 
       <div id="qr-menu-categories" style="margin-top:16px;margin-bottom:16px;"></div>
       <div class="form-group checkbox-field" style="margin-bottom:16px;">
@@ -984,6 +1015,20 @@
         <option value="waiter">Официант</option>
         <option value="cook">Повар</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>Телефон</label>
+      <input type="tel" id="user-phone" placeholder="Например: +995 555 12-34-56" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="user-email" placeholder="Например: anna@restaurant.com" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="user-is-active" checked style="width:auto;">
+        <span>Показывать на стартовой странице (виден официанту/повару при входе)</span>
+      </label>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('modal-user')">Отмена</button>
@@ -1583,12 +1628,57 @@ function loadQrMenuAppearance() {
   // Colors — default to brand red if not set
   const priceColor = s.qr_menu_color_price || '#d32f2f';
   const headerColor = s.qr_menu_color_header || '#d32f2f';
+  const circleColor = s.qr_menu_color_circle || '#ffd600';
   document.getElementById('qr-menu-color-price').value = priceColor;
   document.getElementById('qr-menu-color-price-text').value = priceColor;
   document.getElementById('qr-menu-color-header').value = headerColor;
   document.getElementById('qr-menu-color-header-text').value = headerColor;
+  document.getElementById('qr-menu-color-circle').value = circleColor;
+  document.getElementById('qr-menu-color-circle-text').value = circleColor;
+  document.getElementById('qr-menu-circle-text').value = s.qr_menu_circle_text || '';
   // Show QR to waiter checkbox
   document.getElementById('set-show-qr').checked = String(s.show_qr_to_waiter) === 'true';
+  // Update circle preview
+  updateCirclePreview();
+}
+
+// Live preview of the circle badge — auto-shrinks text to fit
+function updateCirclePreview() {
+  const text = (document.getElementById('qr-menu-circle-text').value || '').trim();
+  const color = document.getElementById('qr-menu-color-circle').value || '#ffd600';
+  const preview = document.getElementById('circle-preview');
+  if (!preview) return;
+  preview.style.background = color;
+  preview.style.color = getContrastColor(color);
+  if (!text) {
+    preview.textContent = '—';
+    preview.style.fontSize = '14px';
+    return;
+  }
+  preview.textContent = text;
+  // Auto-fit font size to circle (diameter ~40px usable)
+  // Short text → bigger font, long text → smaller font
+  const len = text.length;
+  let fontSize;
+  if (len <= 2) fontSize = 18;
+  else if (len === 3) fontSize = 15;
+  else if (len === 4) fontSize = 13;
+  else if (len <= 6) fontSize = 11;
+  else if (len <= 9) fontSize = 9;
+  else fontSize = 8;
+  preview.style.fontSize = fontSize + 'px';
+}
+
+// Pick black or white text color based on background luminance
+function getContrastColor(hex) {
+  const h = (hex || '').replace('#', '');
+  if (h.length !== 6) return '#000';
+  const r = parseInt(h.substr(0, 2), 16) / 255;
+  const g = parseInt(h.substr(2, 2), 16) / 255;
+  const b = parseInt(h.substr(4, 2), 16) / 255;
+  // Relative luminance (sRGB)
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.55 ? '#000' : '#fff';
 }
 
 // Save the QR-menu appearance settings to Supabase, then generate the QR code.
@@ -1598,6 +1688,8 @@ async function saveAndGenerateQrMenu() {
     qr_menu_footer: document.getElementById('qr-menu-footer').value,
     qr_menu_color_price: document.getElementById('qr-menu-color-price').value,
     qr_menu_color_header: document.getElementById('qr-menu-color-header').value,
+    qr_menu_circle_text: document.getElementById('qr-menu-circle-text').value.trim(),
+    qr_menu_color_circle: document.getElementById('qr-menu-color-circle').value,
     show_qr_to_waiter: document.getElementById('set-show-qr').checked ? 'true' : 'false'
   };
   try {
@@ -4155,13 +4247,29 @@ async function showDeliveriesForMenuItem(menuItemId, itemName) {
 init();
 /* ---------- STAFF ---------- */
 function renderStaffList() {
-  const waiters = (APP_DATA.users || []).filter(function(u) { return u.role === 'waiter'; })
+  // Use users_all so hidden (is_active=false) employees are still manageable from admin
+  const all = APP_DATA.users_all || APP_DATA.users || [];
+  const waiters = all.filter(function(u) { return u.role === 'waiter'; })
     .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
-  const cooks = (APP_DATA.users || []).filter(function(u) { return u.role === 'cook'; })
+  const cooks = all.filter(function(u) { return u.role === 'cook'; })
     .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
 
   const waitersDiv = document.getElementById('waiters-list');
   const cooksDiv = document.getElementById('cooks-list');
+
+  function fmtLastLogin(s) {
+    if (!s) return '<span style="color:#999;">никогда</span>';
+    try {
+      const d = new Date(s);
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+      const dateStr = pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+      const timeStr = pad(d.getHours()) + ':' + pad(d.getMinutes());
+      if (sameDay) return 'сегодня в ' + timeStr;
+      return dateStr + ' ' + timeStr;
+    } catch (e) { return '<span style="color:#999;">—</span>'; }
+  }
 
   function renderList(div, list, role) {
     if (list.length === 0) {
@@ -4170,18 +4278,43 @@ function renderStaffList() {
     }
     div.innerHTML = '';
     list.forEach(function(u) {
+      const isHidden = u.is_active === false;
       const row = document.createElement('div');
       row.className = 'user-row';
+      row.style.opacity = isHidden ? '0.6' : '1';
+
+      // Contact info (phone / email) — small text under name
+      let contact = '';
+      if (u.phone || u.email) {
+        contact = '<div style="font-size:0.78rem;color:#666;margin-top:2px;gap:8px;display:flex;flex-wrap:wrap;">';
+        if (u.phone) contact += '<span>📞 ' + escapeHtml(u.phone) + '</span>';
+        if (u.email) contact += '<span>✉ ' + escapeHtml(u.email) + '</span>';
+        contact += '</div>';
+      }
+
+      // Last login badge
+      const lastLogin = '<span class="user-role-badge" style="background:#e3f2fd;color:#0d47a1;font-size:0.72rem;" title="Последний вход">⏱ ' + fmtLastLogin(u.last_login) + '</span>';
+
+      // Hide/Show toggle button
+      const toggleBtn = isHidden
+        ? '<button class="btn btn-outline" style="border-color:#43a047;color:#2e7d32;" onclick="toggleUserHidden(\'' + u.id + '\')" title="Показать на стартовой странице">👁 Показать</button>'
+        : '<button class="btn btn-outline" style="border-color:#fb8c00;color:#e65100;" onclick="toggleUserHidden(\'' + u.id + '\')" title="Скрыть с стартовой страницы">🚫 Скрыть</button>';
+
       row.innerHTML =
-        '<div class="user-name">' + escapeHtml(u.name) + '</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div class="user-name">' + escapeHtml(u.name) + (isHidden ? ' <span style="color:#e65100;font-size:0.78rem;font-weight:600;">(скрыт)</span>' : '') + '</div>' +
+          contact +
+        '</div>' +
         '<span class="user-role-badge ' + (role === 'cook' ? 'cook' : '') + '">' +
           (role === 'cook' ? 'повар' : 'официант') +
         '</span>' +
         (u.has_password
           ? '<span class="user-role-badge" style="background:#c8e6c9;color:#1b5e20;">🔑 есть пароль</span>'
           : '<span class="user-role-badge" style="background:#ffe0b2;color:#e65100;">нет пароля</span>') +
+        lastLogin +
         '<button class="btn btn-outline" onclick="openUserModal(\'' + u.id + '\')">✎ Изменить</button>' +
         '<button class="btn btn-info" onclick="openPasswordModal(\'' + u.id + '\')">🔑 Пароль</button>' +
+        toggleBtn +
         '<button class="btn btn-danger" onclick="deleteUserBtn(\'' + u.id + '\')">✕</button>';
       div.appendChild(row);
     });
@@ -4190,20 +4323,50 @@ function renderStaffList() {
   renderList(cooksDiv, cooks, 'cook');
 }
 
+// Toggle hide/show on start page (sets is_active flag)
+async function toggleUserHidden(userId) {
+  const u = (APP_DATA.users_all || APP_DATA.users || []).find(function(x) { return x.id === userId; });
+  if (!u) return;
+  const newActive = !(u.is_active === false ? false : true);
+  try {
+    await apiPost('saveUser', {
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      is_active: newActive,
+      sort: u.sort || 0,
+      phone: u.phone || '',
+      email: u.email || ''
+    });
+    showToast(newActive ? 'Сотрудник снова виден на стартовой странице' : 'Сотрудник скрыт с стартовой страницы', 'success');
+    await loadAppDataForce();
+    renderStaffList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
 function openUserModal(id) {
   const title = document.getElementById('modal-user-title');
   if (id) {
-    const u = APP_DATA.users.find(function(x) { return x.id === id; });
+    // Look in users_all (includes hidden employees) so admin can edit hidden ones too
+    const u = (APP_DATA.users_all || APP_DATA.users || []).find(function(x) { return x.id === id; });
     if (!u) return;
     title.textContent = 'Изменить сотрудника';
     document.getElementById('user-id').value = u.id;
     document.getElementById('user-name').value = u.name;
     document.getElementById('user-role').value = u.role;
+    document.getElementById('user-phone').value = u.phone || '';
+    document.getElementById('user-email').value = u.email || '';
+    document.getElementById('user-is-active').checked = (u.is_active !== false);
   } else {
     title.textContent = 'Новый сотрудник';
     document.getElementById('user-id').value = '';
     document.getElementById('user-name').value = '';
     document.getElementById('user-role').value = 'waiter';
+    document.getElementById('user-phone').value = '';
+    document.getElementById('user-email').value = '';
+    document.getElementById('user-is-active').checked = true;
   }
   openModal('modal-user');
 }
@@ -4214,7 +4377,9 @@ async function saveUserBtn() {
     id: id || undefined,
     name: document.getElementById('user-name').value.trim(),
     role: document.getElementById('user-role').value,
-    is_active: true
+    is_active: document.getElementById('user-is-active').checked,
+    phone: document.getElementById('user-phone').value.trim(),
+    email: document.getElementById('user-email').value.trim()
   };
   if (!payload.name) { showToast('Введите имя', 'warning'); return; }
   try {
