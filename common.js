@@ -1806,6 +1806,12 @@ function setCurrentSession(session) {
 }
 
 async function logoutUser() {
+  // If a confirmation function is defined (waiter page), ask before logging out.
+  // This prevents accidental logouts from a stray tap on the user chip.
+  if (typeof window.confirmLogout === 'function') {
+    var ok = await window.confirmLogout();
+    if (!ok) return;
+  }
   unsubscribeAll();
   setCurrentSession(null);
   location.reload();

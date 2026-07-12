@@ -513,6 +513,26 @@
   /* ===========================
      MODERN CART ROWS (left panel of order screen)
      =========================== */
+  /* Group wrapper for items being added to an existing order — distinct highlight */
+  .cart-added-group {
+    background: #e8f5e9;
+    border: 2px dashed var(--success);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+  .cart-added-group-label {
+    font-size: 0.82rem; font-weight: 700; color: var(--success);
+    margin-bottom: 8px; padding: 0 4px;
+  }
+  /* Override cart row background inside the added group so they stand out */
+  .cart-added-group .cart-row-modern {
+    background: #fff;
+    border-left-color: var(--success);
+  }
+  .cart-group-note {
+    margin-top: 8px; padding: 0 4px;
+  }
   .cart-row-modern {
     display: grid;
     grid-template-columns: 1fr auto auto;
@@ -621,9 +641,10 @@
     min-height: calc(100vh - 130px);
   }
   .archive-panel-left {
-    flex: none; width: 340px; padding: 0 12px 12px 0;
+    flex: none; width: 340px; padding: 0 12px 0 0;
     border-right: 2px solid var(--border);
-    display: flex; flex-direction: column; max-height: calc(100vh - 130px);
+    display: flex; flex-direction: column;
+    height: calc(100vh - 130px); /* full height */
     position: sticky; top: 0;
   }
   .archive-panel-right {
@@ -631,7 +652,7 @@
     max-height: calc(100vh - 130px);
   }
   .archive-search-box {
-    display: flex; gap: 6px; margin-bottom: 10px;
+    display: flex; gap: 6px; margin-bottom: 12px;
   }
   .archive-search-box input {
     flex: 1; min-width: 0; padding: 10px 12px; font-size: 0.95rem;
@@ -643,7 +664,7 @@
   .archive-orders-list {
     flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
     -webkit-overflow-scrolling: touch;
-    padding-top: 10px; /* small gap above the first order block */
+    padding-top: 10px; padding-right: 4px; /* space for scrollbar */
   }
   .archive-order-row {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -952,7 +973,7 @@
         <div class="grid grid-4" id="main-cats"></div>
         <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Добавленные блюда</h3>
         <div id="order-cart-items" style="flex:1;overflow-y:auto;min-height:60px;"></div>
-        <div style="margin:8px 0;">
+        <div id="order-comment-section" style="margin:8px 0;">
           <div style="display:flex;gap:6px;align-items:stretch;">
             <textarea id="order-comment" rows="3" placeholder="Комментарий к заказу..." 
               style="flex:1;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;"
@@ -1012,16 +1033,16 @@
       <h2 class="section-title" style="margin:0;">Архив заказов за сегодня</h2>
     </div>
     <div class="archive-layout">
-      <!-- LEFT: list of today's orders + search -->
+      <!-- LEFT: full-height list of today's completed orders (scrollable) -->
       <div class="archive-panel-left">
+        <div id="archive-orders-list" class="archive-orders-list"></div>
+      </div>
+      <!-- RIGHT: order details + search -->
+      <div class="archive-panel-right">
         <div class="archive-search-box">
           <input type="text" id="archive-search" placeholder="🔍 Поиск по названию блюда..." oninput="filterArchiveOrders()">
           <button class="btn btn-outline" onclick="clearArchiveSearch()" title="Очистить" style="padding:6px 10px;flex:none;">✕</button>
         </div>
-        <div id="archive-orders-list" class="archive-orders-list"></div>
-      </div>
-      <!-- RIGHT: order details -->
-      <div class="archive-panel-right">
         <div id="archive-order-detail">
           <div class="archive-empty-state">
             <div style="font-size:3rem;opacity:0.3;margin-bottom:8px;">📂</div>
@@ -1515,6 +1536,34 @@ function toggleFullscreen() {
   } catch (e) { /* ignore */ }
 }
 
+// Logout confirmation — called by common.js logoutUser() before actually logging out.
+// Returns a Promise<boolean> — true = confirm logout, false = cancel.
+window.confirmLogout = function() {
+  return new Promise(function(resolve) {
+    var existing = document.getElementById('logout-confirm-overlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'logout-confirm-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:12px;padding:20px;max-width:360px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.3);text-align:center;">' +
+        '<div style="font-size:2.4rem;margin-bottom:8px;">🚪</div>' +
+        '<h3 style="margin:0 0 8px;">Выйти из аккаунта?</h3>' +
+        '<p style="margin:0 0 16px;font-size:0.9rem;color:var(--text-muted);">Вы выходите из аккаунта официанта. Активные заказы останутся в системе.</p>' +
+        '<div style="display:flex;gap:8px;justify-content:center;">' +
+          '<button type="button" class="btn btn-outline" id="logout-cancel" style="flex:1;">Отмена</button>' +
+          '<button type="button" class="btn btn-danger" id="logout-confirm" style="flex:1;">Выйти</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) { overlay.remove(); resolve(false); }
+    });
+    document.getElementById('logout-cancel').onclick = function() { overlay.remove(); resolve(false); };
+    document.getElementById('logout-confirm').onclick = function() { overlay.remove(); resolve(true); };
+  });
+};
+
 // Show QR code of the visitor menu in a modal
 function showWaiterQrMenu() {
   // Build URL to menu.html (all categories)
@@ -1992,6 +2041,10 @@ function openOrderScreen() {
   const editableGuests = document.getElementById('guests-stepper-editable');
   if (editableGuests) editableGuests.style.display = state.addingToOrder ? 'none' : 'flex';
   if (staticGuests) staticGuests.style.display = state.addingToOrder ? 'block' : 'none';
+  // Hide the "Комментарий к заказу" field when adding to an existing order —
+  // only per-item "пояснение" is used in that mode.
+  const commentSection = document.getElementById('order-comment-section');
+  if (commentSection) commentSection.style.display = state.addingToOrder ? 'none' : 'block';
   const commentEl = document.getElementById('order-comment');
   if (commentEl) commentEl.value = state.orderComment || '';
   // Clear the menu search field when (re)opening the order screen
@@ -2048,8 +2101,10 @@ function cancelNewOrder() {
 function renderOrderCart() {
   const div = document.getElementById('order-cart-items');
   if (!div) return;
-  // When adding to an existing order, each cart row gets a "пояснение" input.
-  // For new orders, no per-item comment (only the whole-order comment below).
+  // When adding to an existing order, items are grouped with a distinct highlight,
+  // and a single "пояснение" field is shown:
+  //  - if only 1 item in cart → under that item
+  //  - if multiple items → at the bottom of the group (applies to all)
   const showPerItemNote = !!state.addingToOrder;
   if (state.cart.length === 0) {
     div.innerHTML =
@@ -2059,6 +2114,11 @@ function renderOrderCart() {
       '</div>';
   } else {
     let html = '';
+    // When adding to order, wrap all items in a highlighted "added group" container
+    if (showPerItemNote) {
+      html += '<div class="cart-added-group">';
+      html += '<div class="cart-added-group-label">➕ Добавляются к заказу</div>';
+    }
     state.cart.forEach(function(item, idx) {
       let nameLine = escapeHtml(item.name);
       if (item.modification_name) nameLine += ' <span style="color:var(--primary);font-weight:600;font-size:0.82rem;background:rgba(211,47,47,0.08);padding:1px 6px;border-radius:4px;margin-left:4px;">· ' + escapeHtml(item.modification_name) + '</span>';
@@ -2077,8 +2137,8 @@ function renderOrderCart() {
       html +=     '<button onclick="changeCartQty(' + idx + ', 1)" class="cart-qty-btn" aria-label="Увеличить">+</button>';
       html +=   '</div>';
       html +=   '<div class="cart-row-modern-total">' + formatMoney(item.price * item.quantity) + '</div>';
-      // Per-item "пояснение" — only shown when adding to an existing order
-      if (showPerItemNote) {
+      // Per-item "пояснение" — only shown when adding to order AND there's exactly 1 item
+      if (showPerItemNote && state.cart.length === 1) {
         html +=   '<div style="grid-column:1 / -1;margin-top:4px;">' +
           '<textarea rows="3" class="cart-item-note-input" placeholder="Пояснение..." ' +
             'oninput="setCartComment(' + idx + ', this.value)" ' +
@@ -2087,6 +2147,17 @@ function renderOrderCart() {
       }
       html += '</div>';
     });
+    // Group-level "пояснение" — shown at the bottom when there are multiple items
+    if (showPerItemNote && state.cart.length > 1) {
+      html += '<div class="cart-group-note">';
+      html +=   '<textarea rows="3" class="cart-item-note-input" placeholder="Пояснение к добавляемым блюдам..." ' +
+        'oninput="setGroupCartComment(this.value)" ' +
+        'style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(state.cart[0].comment || '') + '</textarea>';
+      html += '</div>';
+    }
+    if (showPerItemNote) {
+      html += '</div>'; // close .cart-added-group
+    }
     div.innerHTML = html;
   }
   // Update total
@@ -2814,6 +2885,12 @@ function renderCartItems() {
 
 function setCartComment(idx, val) {
   if (state.cart[idx]) state.cart[idx].comment = val;
+}
+
+// Set the same "пояснение" on ALL items in the cart — used when adding
+// multiple items to an existing order and a single group-level note is entered.
+function setGroupCartComment(val) {
+  state.cart.forEach(function(item) { item.comment = val; });
 }
 
 async function clearCart() {
