@@ -3811,90 +3811,101 @@ async function renderOrderDetail() {
 
       itemGroups.forEach(function(group, groupIdx) {
         var isAddedLater = group.time !== firstGroupTime;
-        // For added-later groups: if multiple items share the same comment, show it once
-        // under the whole group. If only 1 item, show its comment under that item.
-        var sharedComment = null;
-        if (isAddedLater && group.items.length > 1) {
-          var allSame = true;
-          var firstComment = group.items[0].comment || '';
-          for (var i = 1; i < group.items.length; i++) {
-            if ((group.items[i].comment || '') !== firstComment) { allSame = false; break; }
+        // For added-later groups: collect the first non-empty comment from any
+        // item — it will be shown ONCE at the bottom of the whole block.
+        var groupComment = null;
+        if (isAddedLater) {
+          for (var i = 0; i < group.items.length; i++) {
+            if (group.items[i].comment && group.items[i].comment.trim()) {
+              groupComment = group.items[i].comment;
+              break;
+            }
           }
-          if (allSame && firstComment) sharedComment = firstComment;
         }
-        // Wrapper for added-later groups — single highlighted block containing all items
+        // Wrapper for added-later groups — one solid highlighted block
         var groupWrapper = null;
         if (isAddedLater) {
           groupWrapper = document.createElement('div');
           groupWrapper.className = 'order-added-group';
-          groupWrapper.style.cssText = 'background:#e8f5e9;border-left:4px solid var(--success);border-radius:8px;padding:8px 10px;margin-bottom:10px;';
+          groupWrapper.style.cssText = 'background:#e8f5e9;border-left:4px solid var(--success);border-radius:8px;padding:10px 12px;margin-bottom:10px;';
           itemsDiv.appendChild(groupWrapper);
         }
-        group.items.forEach(function(item) {
+        group.items.forEach(function(item, itemIdx) {
           const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
           const needsCooking = item.needs_cooking === true || item.needs_cooking === 'true' ||
                                item.needs_cooking === 'TRUE' || item.needs_cooking === 1 || item.needs_cooking === '1';
           const isServed = item.is_served === true || item.is_served === 'true' || item.is_served === 'TRUE';
-          const card = document.createElement('div');
-          // Class: 'ready' if cook marked it ready, 'served' if waiter marked it served
-          let cardClass = 'cart-item';
-          if (isServed) cardClass += ' served';
-          else if (isReady) cardClass += ' ready';
-          card.className = cardClass;
-          card.dataset.itemId = item.id;
           // Build the dish name line: optional category badge + dish name + qty + status badge
           let statusBadge = '';
           if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
           else if (isReady) statusBadge = ' <span class="ci-ready-badge">✓ ГОТОВО</span>';
-          // Quantity shown inline after the dish name
           const qtyBadge = ' <span style="color:var(--text-muted);font-weight:500;font-size:0.9rem;">· ' + item.quantity + ' шт</span>';
           const nameLine = formatItemLabel(item) + qtyBadge + statusBadge;
-          // Show per-item comment only when:
-          //  - single added item (no shared comment logic applies)
-          //  - OR multiple items but each has a different comment
-          var showItemComment = false;
+
           if (isAddedLater) {
-            // Single item in the group → show its comment under it
-            if (group.items.length === 1 && item.comment) showItemComment = true;
-            // Multiple items but no shared comment → show each item's own comment
-            if (group.items.length > 1 && sharedComment === null && item.comment) showItemComment = true;
-          } else {
-            // Original order items — show comment if present
-            if (item.comment) showItemComment = true;
-          }
-          card.innerHTML =
-            '<div class="ci-top">' +
-              '<div class="ci-name">' + nameLine + '</div>' +
-              '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
-            '</div>' +
-            (showItemComment
-              ? '<div style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);"><b>Пояснение:</b> ' + escapeHtml(item.comment) + '</div>'
-              : ''
-            ) +
-            '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;">' +
-              (orderBarOnly
-                ? ''
-                : (isServed
-                  ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
-                  : (isReady || !needsCooking || !state.cookEnabled
-                    ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
-                    : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+            // Inside the added-later group: items are simple rows, NOT separate cards.
+            // No individual background/shadow — just name + price + served button,
+            // separated by a thin divider line between items.
+            var row = document.createElement('div');
+            row.dataset.itemId = item.id;
+            var rowStyle = 'padding:8px 0;';
+            if (itemIdx > 0) rowStyle += 'border-top:1px solid rgba(0,0,0,0.08);';
+            row.style.cssText = rowStyle;
+            row.innerHTML =
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+                '<div style="flex:1;min-width:0;font-weight:600;font-size:0.95rem;">' + nameLine + '</div>' +
+                '<div style="font-weight:700;color:var(--primary);white-space:nowrap;">' + formatMoney(item.price * item.quantity) + '</div>' +
+              '</div>' +
+              '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">' +
+                (orderBarOnly
+                  ? ''
+                  : (isServed
+                    ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                    : (isReady || !needsCooking || !state.cookEnabled
+                      ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                      : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+                      )
                     )
-                  )
-                ) +
-            '</div>';
-          // Append to group wrapper if added later, otherwise directly to itemsDiv
-          if (isAddedLater) {
-            groupWrapper.appendChild(card);
+                  ) +
+              '</div>';
+            groupWrapper.appendChild(row);
           } else {
+            // Original order items — normal cart-item cards with individual comments
+            const card = document.createElement('div');
+            let cardClass = 'cart-item';
+            if (isServed) cardClass += ' served';
+            else if (isReady) cardClass += ' ready';
+            card.className = cardClass;
+            card.dataset.itemId = item.id;
+            card.innerHTML =
+              '<div class="ci-top">' +
+                '<div class="ci-name">' + nameLine + '</div>' +
+                '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
+              '</div>' +
+              (item.comment
+                ? '<div style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);"><b>Пояснение:</b> ' + escapeHtml(item.comment) + '</div>'
+                : ''
+              ) +
+              '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;">' +
+                (orderBarOnly
+                  ? ''
+                  : (isServed
+                    ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                    : (isReady || !needsCooking || !state.cookEnabled
+                      ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                      : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+                      )
+                    )
+                  ) +
+              '</div>';
             itemsDiv.appendChild(card);
           }
         });
-        // Shared group comment — shown ONCE at the bottom of the group block
-        if (sharedComment) {
+        // ONE пояснение at the very bottom of the added-later block (never per-item)
+        if (isAddedLater && groupComment) {
           var commentDiv = document.createElement('div');
-          commentDiv.style.cssText = 'margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);';
-          commentDiv.innerHTML = '<b>Пояснение:</b> ' + escapeHtml(sharedComment);
+          commentDiv.style.cssText = 'margin-top:8px;padding:8px 12px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);';
+          commentDiv.innerHTML = '<b>Пояснение:</b> ' + escapeHtml(groupComment);
           groupWrapper.appendChild(commentDiv);
         }
       });
