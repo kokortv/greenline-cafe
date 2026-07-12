@@ -3792,22 +3792,28 @@ async function renderOrderDetail() {
     } else {
       // Compute bar-only status once before rendering items — if true, "Подано" buttons are hidden
       const orderBarOnly = isOrderBarOnly(order.items || []);
-      // Group items by created_at (items added in the same batch share a timestamp).
-      // The first group = original order items; subsequent groups = added later.
-      var itemGroups = [];
-      var currentGroup = null;
+      // Split items into TWO groups:
+      // 1. Original items — share the earliest created_at (the order creation time)
+      // 2. Added-later items — ALL items with a different timestamp, combined into ONE group
+      //    (regardless of whether they were added one-at-a-time or in a batch)
       var firstGroupTime = null;
       order.items.forEach(function(item) {
         var t = item.created_at || '';
-        if (currentGroup && currentGroup.time === t) {
-          currentGroup.items.push(item);
+        if (firstGroupTime === null || t < firstGroupTime) firstGroupTime = t;
+      });
+      var itemGroups = [];
+      var originalGroup = { time: firstGroupTime, items: [] };
+      var addedGroup = { time: 'added-later', items: [] };
+      order.items.forEach(function(item) {
+        var t = item.created_at || '';
+        if (t === firstGroupTime) {
+          originalGroup.items.push(item);
         } else {
-          currentGroup = { time: t, items: [item] };
-          itemGroups.push(currentGroup);
+          addedGroup.items.push(item);
         }
       });
-      // The earliest group is the "original" order; all others are "added later"
-      firstGroupTime = itemGroups.length > 0 ? itemGroups[0].time : null;
+      itemGroups.push(originalGroup);
+      if (addedGroup.items.length > 0) itemGroups.push(addedGroup);
 
       itemGroups.forEach(function(group, groupIdx) {
         var isAddedLater = group.time !== firstGroupTime;
