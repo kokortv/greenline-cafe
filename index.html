@@ -331,6 +331,11 @@
     border-left: 4px solid var(--info);
     opacity: 0.7;
   }
+  /* Added-later items inside an accepted order — distinct green tint */
+  .cart-item.added-later {
+    background: #f1f8f4;
+    border-left: 4px solid var(--success);
+  }
   .cart-item .ci-cat-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -472,7 +477,7 @@
     border-right: 2px solid var(--border);
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 60px);
+    height: calc(100vh - 60px); /* full height */
     position: sticky;
     top: 0;
     overflow: hidden;
@@ -511,77 +516,57 @@
     font-size: 0.85rem;
   }
   /* ===========================
-     MODERN CART ROWS (left panel of order screen)
+     MODERN CART ROWS (left panel of order screen) — compact layout
      =========================== */
-  /* Group wrapper for items being added to an existing order — distinct highlight */
-  .cart-added-group {
-    background: #e8f5e9;
-    border: 2px dashed var(--success);
-    border-radius: 12px;
-    padding: 10px;
-    margin-bottom: 8px;
-  }
-  .cart-added-group-label {
-    font-size: 0.82rem; font-weight: 700; color: var(--success);
-    margin-bottom: 8px; padding: 0 4px;
-  }
-  /* Override cart row background inside the added group so they stand out */
-  .cart-added-group .cart-row-modern {
-    background: #fff;
-    border-left-color: var(--success);
-  }
   .cart-group-note {
-    margin-top: 8px; padding: 0 4px;
+    margin-top: 6px; padding: 0 2px;
   }
   .cart-row-modern {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     background: #fff;
-    border-radius: 10px;
-    padding: 10px 12px;
-    margin-bottom: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     border-left: 3px solid var(--primary);
-    transition: background 0.15s, transform 0.1s;
   }
-  .cart-row-modern:active { transform: scale(0.99); }
   .cart-row-modern-info { min-width: 0; }
   .cart-row-modern-name {
-    font-size: 0.98rem;
+    font-size: 0.92rem;
     font-weight: 600;
     color: var(--text);
     word-break: break-word;
-    line-height: 1.25;
-  }
-  .cart-row-modern-translation {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    font-style: italic;
-    margin-top: 2px;
+    line-height: 1.2;
   }
   .cart-row-modern-price {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
-    margin-top: 4px;
+    margin-top: 2px;
+  }
+  /* Right side: qty stepper + total, stacked tightly */
+  .cart-row-modern-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    flex: none;
   }
   .cart-row-modern-controls {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     background: var(--bg);
-    border-radius: 8px;
-    padding: 4px;
+    border-radius: 6px;
+    padding: 2px;
   }
   .cart-qty-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border: none;
     background: #fff;
-    border-radius: 6px;
+    border-radius: 5px;
     cursor: pointer;
-    font-size: 1.2rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: var(--primary);
     box-shadow: 0 1px 2px rgba(0,0,0,0.08);
@@ -594,19 +579,22 @@
   .cart-qty-btn:hover { background: var(--primary); color: #fff; }
   .cart-qty-btn:active { transform: scale(0.92); }
   .cart-qty-val {
-    min-width: 28px;
+    min-width: 22px;
     text-align: center;
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: 0.92rem;
     color: var(--text);
   }
   .cart-row-modern-total {
     font-weight: 700;
     color: var(--primary);
-    font-size: 1rem;
+    font-size: 0.92rem;
     white-space: nowrap;
-    min-width: 70px;
     text-align: right;
+  }
+  .cart-row-modern-note {
+    grid-column: 1 / -1;
+    margin-top: 4px;
   }
   /* Active category button highlight */
   .main-cat-btn.selected {
@@ -2101,10 +2089,9 @@ function cancelNewOrder() {
 function renderOrderCart() {
   const div = document.getElementById('order-cart-items');
   if (!div) return;
-  // When adding to an existing order, items are grouped with a distinct highlight,
-  // and a single "пояснение" field is shown:
+  // When adding to an existing order, a "пояснение" field is shown:
   //  - if only 1 item in cart → under that item
-  //  - if multiple items → at the bottom of the group (applies to all)
+  //  - if multiple items → at the bottom (single note for the whole group)
   const showPerItemNote = !!state.addingToOrder;
   if (state.cart.length === 0) {
     div.innerHTML =
@@ -2114,49 +2101,40 @@ function renderOrderCart() {
       '</div>';
   } else {
     let html = '';
-    // When adding to order, wrap all items in a highlighted "added group" container
-    if (showPerItemNote) {
-      html += '<div class="cart-added-group">';
-      html += '<div class="cart-added-group-label">➕ Добавляются к заказу</div>';
-    }
     state.cart.forEach(function(item, idx) {
       let nameLine = escapeHtml(item.name);
       if (item.modification_name) nameLine += ' <span style="color:var(--primary);font-weight:600;font-size:0.82rem;background:rgba(211,47,47,0.08);padding:1px 6px;border-radius:4px;margin-left:4px;">· ' + escapeHtml(item.modification_name) + '</span>';
-      // Modern cart row: card with rounded corners, soft shadow, qty stepper with bigger tap targets
+      // Compact cart row: name+price on left, [− qty +] and total on right — all in one tight row
       html += '<div class="cart-row-modern">';
       html +=   '<div class="cart-row-modern-info">';
       html +=     '<div class="cart-row-modern-name">' + nameLine + '</div>';
-      if (item.name_translation) {
-        html +=   '<div class="cart-row-modern-translation">' + escapeHtml(item.name_translation) + '</div>';
-      }
       html +=     '<div class="cart-row-modern-price">' + formatMoney(item.price) + ' × ' + item.quantity + '</div>';
       html +=   '</div>';
-      html +=   '<div class="cart-row-modern-controls">';
-      html +=     '<button onclick="changeCartQty(' + idx + ', -1)" class="cart-qty-btn" aria-label="Уменьшить">−</button>';
-      html +=     '<span class="cart-qty-val">' + item.quantity + '</span>';
-      html +=     '<button onclick="changeCartQty(' + idx + ', 1)" class="cart-qty-btn" aria-label="Увеличить">+</button>';
+      html +=   '<div class="cart-row-modern-right">';
+      html +=     '<div class="cart-row-modern-controls">';
+      html +=       '<button onclick="changeCartQty(' + idx + ', -1)" class="cart-qty-btn" aria-label="Уменьшить">−</button>';
+      html +=       '<span class="cart-qty-val">' + item.quantity + '</span>';
+      html +=       '<button onclick="changeCartQty(' + idx + ', 1)" class="cart-qty-btn" aria-label="Увеличить">+</button>';
+      html +=     '</div>';
+      html +=     '<div class="cart-row-modern-total">' + formatMoney(item.price * item.quantity) + '</div>';
       html +=   '</div>';
-      html +=   '<div class="cart-row-modern-total">' + formatMoney(item.price * item.quantity) + '</div>';
       // Per-item "пояснение" — only shown when adding to order AND there's exactly 1 item
       if (showPerItemNote && state.cart.length === 1) {
-        html +=   '<div style="grid-column:1 / -1;margin-top:4px;">' +
-          '<textarea rows="3" class="cart-item-note-input" placeholder="Пояснение..." ' +
+        html +=   '<div class="cart-row-modern-note">' +
+          '<textarea rows="2" class="cart-item-note-input" placeholder="Пояснение..." ' +
             'oninput="setCartComment(' + idx + ', this.value)" ' +
-            'style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(item.comment || '') + '</textarea>' +
+            'style="width:100%;padding:6px 10px;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(item.comment || '') + '</textarea>' +
         '</div>';
       }
       html += '</div>';
     });
     // Group-level "пояснение" — shown at the bottom when there are multiple items
     if (showPerItemNote && state.cart.length > 1) {
-      html += '<div class="cart-group-note">';
-      html +=   '<textarea rows="3" class="cart-item-note-input" placeholder="Пояснение к добавляемым блюдам..." ' +
-        'oninput="setGroupCartComment(this.value)" ' +
-        'style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(state.cart[0].comment || '') + '</textarea>';
-      html += '</div>';
-    }
-    if (showPerItemNote) {
-      html += '</div>'; // close .cart-added-group
+      html += '<div class="cart-group-note">' +
+        '<textarea rows="2" class="cart-item-note-input" placeholder="Пояснение к добавляемым блюдам..." ' +
+          'oninput="setGroupCartComment(this.value)" ' +
+          'style="width:100%;padding:6px 10px;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(state.cart[0].comment || '') + '</textarea>' +
+      '</div>';
     }
     div.innerHTML = html;
   }
@@ -3816,52 +3794,105 @@ async function renderOrderDetail() {
     } else {
       // Compute bar-only status once before rendering items — if true, "Подано" buttons are hidden
       const orderBarOnly = isOrderBarOnly(order.items || []);
-      // Note: ready-item notifications + sound are handled centrally in
-      // refreshActiveOrders() so we don't double-fire them here.
+      // Group items by created_at (items added in the same batch share a timestamp).
+      // The first group = original order items; subsequent groups = added later.
+      var itemGroups = [];
+      var currentGroup = null;
+      var firstGroupTime = null;
+      order.items.forEach(function(item) {
+        var t = item.created_at || '';
+        if (currentGroup && currentGroup.time === t) {
+          currentGroup.items.push(item);
+        } else {
+          currentGroup = { time: t, items: [item] };
+          itemGroups.push(currentGroup);
+        }
+      });
+      // The earliest group is the "original" order; all others are "added later"
+      firstGroupTime = itemGroups.length > 0 ? itemGroups[0].time : null;
 
-      order.items.forEach(function(item, idx) {
-        const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
-        const needsCooking = item.needs_cooking === true || item.needs_cooking === 'true' ||
-                             item.needs_cooking === 'TRUE' || item.needs_cooking === 1 || item.needs_cooking === '1';
-        const isServed = item.is_served === true || item.is_served === 'true' || item.is_served === 'TRUE';
-        const card = document.createElement('div');
-        // Class: 'ready' if cook marked it ready, 'served' if waiter marked it served
-        let cardClass = 'cart-item';
-        if (isServed) cardClass += ' served';
-        else if (isReady) cardClass += ' ready';
-        card.className = cardClass;
-        card.dataset.itemId = item.id;  // for reliable DOM lookup
-        // Build the dish name line: optional category badge + dish name + qty + status badge
-        let statusBadge = '';
-        if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
-        else if (isReady) statusBadge = ' <span class="ci-ready-badge">✓ ГОТОВО</span>';
-        // Quantity shown inline after the dish name — no +/- stepper (waiter can't change qty)
-        const qtyBadge = ' <span style="color:var(--text-muted);font-weight:500;font-size:0.9rem;">· ' + item.quantity + ' шт</span>';
-        const nameLine = formatItemLabel(item) + qtyBadge + statusBadge;
-        card.innerHTML =
-          '<div class="ci-top">' +
-            '<div class="ci-name">' + nameLine + '</div>' +
-            '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
-          '</div>' +
-          (item.comment
-            ? '<div style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);"><b>Пояснение:</b> ' + escapeHtml(item.comment) + '</div>'
-            : ''
-          ) +
-          '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;">' +
-            (orderBarOnly
-              ? '' // bar-only order — no "Подано" button at all
-              : (isServed
-                ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
-                : (isReady || !needsCooking || !state.cookEnabled
-                  ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
-                  : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
-                  )
-                )
+      itemGroups.forEach(function(group, groupIdx) {
+        var isAddedLater = group.time !== firstGroupTime;
+        // If this is an "added later" group with multiple items, check if they share
+        // the same comment — if so, show it once for the group instead of per-item.
+        var sharedComment = null;
+        if (isAddedLater && group.items.length > 1) {
+          var allSame = true;
+          var firstComment = group.items[0].comment || '';
+          for (var i = 1; i < group.items.length; i++) {
+            if ((group.items[i].comment || '') !== firstComment) { allSame = false; break; }
+          }
+          if (allSame && firstComment) sharedComment = firstComment;
+        }
+        // Wrapper for added-later groups
+        if (isAddedLater) {
+          var groupWrapper = document.createElement('div');
+          groupWrapper.className = 'order-added-group';
+          groupWrapper.style.cssText = 'background:#e8f5e9;border-left:4px solid var(--success);border-radius:8px;padding:8px 10px;margin-bottom:10px;';
+          var groupLabel = document.createElement('div');
+          groupLabel.style.cssText = 'font-size:0.78rem;font-weight:700;color:var(--success);margin-bottom:6px;';
+          groupLabel.textContent = '➕ Добавлено позже';
+          groupWrapper.appendChild(groupLabel);
+          itemsDiv.appendChild(groupWrapper);
+        }
+        group.items.forEach(function(item) {
+          const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
+          const needsCooking = item.needs_cooking === true || item.needs_cooking === 'true' ||
+                               item.needs_cooking === 'TRUE' || item.needs_cooking === 1 || item.needs_cooking === '1';
+          const isServed = item.is_served === true || item.is_served === 'true' || item.is_served === 'TRUE';
+          const card = document.createElement('div');
+          // Class: 'ready' if cook marked it ready, 'served' if waiter marked it served
+          let cardClass = 'cart-item';
+          if (isServed) cardClass += ' served';
+          else if (isReady) cardClass += ' ready';
+          // Added-later items get a distinct background
+          if (isAddedLater) cardClass += ' added-later';
+          card.className = cardClass;
+          card.dataset.itemId = item.id;
+          // Build the dish name line: optional category badge + dish name + qty + status badge
+          let statusBadge = '';
+          if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
+          else if (isReady) statusBadge = ' <span class="ci-ready-badge">✓ ГОТОВО</span>';
+          // Quantity shown inline after the dish name
+          const qtyBadge = ' <span style="color:var(--text-muted);font-weight:500;font-size:0.9rem;">· ' + item.quantity + ' шт</span>';
+          const nameLine = formatItemLabel(item) + qtyBadge + statusBadge;
+          // Show per-item comment only if it's NOT the shared group comment
+          var showItemComment = item.comment && sharedComment === null;
+          card.innerHTML =
+            '<div class="ci-top">' +
+              '<div class="ci-name">' + nameLine + '</div>' +
+              '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
+            '</div>' +
+            (showItemComment
+              ? '<div style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);"><b>Пояснение:</b> ' + escapeHtml(item.comment) + '</div>'
+              : ''
             ) +
-            // No per-item comment input for the waiter — read-only display only.
-            // Admin can edit item comments via the admin panel.
-          '</div>';
-        itemsDiv.appendChild(card);
+            '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;">' +
+              (orderBarOnly
+                ? ''
+                : (isServed
+                  ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                  : (isReady || !needsCooking || !state.cookEnabled
+                    ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                    : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+                    )
+                  )
+                ) +
+            '</div>';
+          // Append to group wrapper if added later, otherwise directly to itemsDiv
+          if (isAddedLater) {
+            groupWrapper.appendChild(card);
+          } else {
+            itemsDiv.appendChild(card);
+          }
+        });
+        // Shared group comment — shown once at the bottom of the group
+        if (sharedComment) {
+          var commentDiv = document.createElement('div');
+          commentDiv.style.cssText = 'margin-top:4px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);';
+          commentDiv.innerHTML = '<b>Пояснение к добавленным блюдам:</b> ' + escapeHtml(sharedComment);
+          groupWrapper.appendChild(commentDiv);
+        }
       });
     }
 
