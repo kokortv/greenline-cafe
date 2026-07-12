@@ -765,11 +765,14 @@
         </div>
         <div id="order-guests-section">
           <h3 style="font-size:0.95rem;color:var(--text-muted);margin:8px 0;">Количество гостей</h3>
-          <div class="guests-stepper">
+          <!-- Editable stepper — shown for NEW orders only -->
+          <div class="guests-stepper" id="guests-stepper-editable">
             <button onclick="changeGuests(-1)">−</button>
             <div class="guests-value" id="guests-value">1</div>
             <button onclick="changeGuests(1)">+</button>
           </div>
+          <!-- Static display — shown when adding to an existing order (guests can't change) -->
+          <div id="guests-static-display" style="display:none;font-size:1.1rem;font-weight:700;padding:8px 0;">1</div>
         </div>
         <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Тип заказа</h3>
         <div class="grid grid-4" id="main-cats"></div>
@@ -778,7 +781,10 @@
         <div style="margin:8px 0;">
           <textarea id="order-comment" rows="2" placeholder="Общий комментарий к заказу..." 
             style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;"
-            onchange="state.orderComment = this.value;"></textarea>
+            oninput="state.orderComment = this.value;"></textarea>
+          <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="saveOrderCommentBtn()" title="Сохранить комментарий">💾 Сохранить</button>
+          </div>
         </div>
       </div>
       <!-- RIGHT: menu -->
@@ -1749,7 +1755,13 @@ function openOrderScreen() {
   if (backBtn) {
     backBtn.textContent = state.addingToOrder ? '← К заказу' : '← Столы';
   }
+  // Guests section: editable stepper for new orders, static number when adding to existing order
   document.getElementById('guests-value').textContent = state.guests;
+  const staticGuests = document.getElementById('guests-static-display');
+  if (staticGuests) staticGuests.textContent = state.guests;
+  const editableGuests = document.getElementById('guests-stepper-editable');
+  if (editableGuests) editableGuests.style.display = state.addingToOrder ? 'none' : 'flex';
+  if (staticGuests) staticGuests.style.display = state.addingToOrder ? 'block' : 'none';
   const commentEl = document.getElementById('order-comment');
   if (commentEl) commentEl.value = state.orderComment || '';
   renderMainCats();
@@ -1801,6 +1813,9 @@ function cancelNewOrder() {
 function renderOrderCart() {
   const div = document.getElementById('order-cart-items');
   if (!div) return;
+  // When adding to an existing order, each cart row gets a "пояснение" input.
+  // For new orders, no per-item comment (only the whole-order comment below).
+  const showPerItemNote = !!state.addingToOrder;
   if (state.cart.length === 0) {
     div.innerHTML =
       '<div style="text-align:center;padding:32px 16px;color:var(--text-muted);">' +
@@ -1827,6 +1842,14 @@ function renderOrderCart() {
       html +=     '<button onclick="changeCartQty(' + idx + ', 1)" class="cart-qty-btn" aria-label="Увеличить">+</button>';
       html +=   '</div>';
       html +=   '<div class="cart-row-modern-total">' + formatMoney(item.price * item.quantity) + '</div>';
+      // Per-item "пояснение" — only shown when adding to an existing order
+      if (showPerItemNote) {
+        html +=   '<div style="grid-column:1 / -1;margin-top:4px;">' +
+          '<input type="text" class="cart-item-note-input" placeholder="Пояснение к блюду..." value="' + escapeHtml(item.comment || '') + '" ' +
+            'oninput="setCartComment(' + idx + ', this.value)" ' +
+            'style="width:100%;padding:6px 10px;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;background:#fff8e1;color:var(--text);">' +
+        '</div>';
+      }
       html += '</div>';
     });
     div.innerHTML = html;
@@ -2986,7 +3009,8 @@ function renderActiveOrdersList() {
 }
 
 /* ---------- ORDER DETAIL ---------- */
-// Update order note (waiter_note) — can be edited even after the order is accepted
+// Update order note (waiter_note) — used by admin to edit an accepted order's comment.
+// (Waiter can't edit comments on accepted orders — only via this admin path.)
 async function updateOrderNote(orderId, note) {
   try {
     await apiPost('updateOrderNote', { order_id: orderId, note: note });
@@ -2999,6 +3023,16 @@ async function updateOrderNote(orderId, note) {
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
+}
+
+// "Save" button next to the order comment textarea on the NEW ORDER screen.
+// The textarea already writes to state.orderComment on every input (oninput),
+// so this button just confirms the save visually + plays a subtle feedback.
+function saveOrderCommentBtn() {
+  var ta = document.getElementById('order-comment');
+  if (ta) state.orderComment = ta.value;
+  // Brief visual feedback — flash the button green
+  showToast('Комментарий сохранён', 'success');
 }
 
 function openOrderDetail(orderId) {
@@ -3049,6 +3083,19 @@ async function renderOrderDetail() {
     state.currentOrder = order;
 
     const infoDiv = document.getElementById('order-detail-info');
+    // Order comment now lives INSIDE the top info card, displayed as read-only
+    // text below the table/guests/time line. Waiter can't edit it on this screen —
+    // only admin can change the comment via the admin panel.
+    var commentBlock = '';
+    if (order.waiter_note) {
+      commentBlock =
+        '<div style="margin-top:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.9rem;color:var(--text);">' +
+          '<b style="color:var(--warning);">Комментарий к заказу:</b> ' + escapeHtml(order.waiter_note) +
+        '</div>';
+    } else {
+      commentBlock =
+        '<div style="margin-top:8px;font-size:0.85rem;color:var(--text-muted);font-style:italic;">Без комментария к заказу</div>';
+    }
     infoDiv.innerHTML =
       '<div class="card" style="background:linear-gradient(135deg, #fff 0%, #fafafa 100%);border-left:4px solid var(--primary);margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
@@ -3064,6 +3111,7 @@ async function renderOrderDetail() {
             '</span>' +
           '</div>' +
         '</div>' +
+        commentBlock +
       '</div>';
 
     const itemsDiv = document.getElementById('order-detail-items');
@@ -3100,6 +3148,10 @@ async function renderOrderDetail() {
             '<div class="ci-name">' + nameLine + '</div>' +
             '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
           '</div>' +
+          (item.comment
+            ? '<div style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);"><b>Пояснение:</b> ' + escapeHtml(item.comment) + '</div>'
+            : ''
+          ) +
           '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;">' +
             (orderBarOnly
               ? '' // bar-only order — no "Подано" button at all
@@ -3111,30 +3163,15 @@ async function renderOrderDetail() {
                   )
                 )
             ) +
-            // No "Удалить" button for the waiter — admin only
-          '</div>' +
-          (isServed
-            ? ''
-            : (String(APP_DATA.settings.dish_comments) === 'false'
-                ? ''
-                : '<div class="ci-comment">' +
-                    '<input type="text" placeholder="' + (needsCooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment || '') + '" ' +
-                    'onchange="updateOrderItemComment(\'' + item.id + '\', this.value)">' +
-                  '</div>'
-              )
-          );
+            // No per-item comment input for the waiter — read-only display only.
+            // Admin can edit item comments via the admin panel.
+          '</div>';
         itemsDiv.appendChild(card);
       });
     }
 
-    // Order comment — editable textarea, placed BELOW the items list
-    const noteDiv = document.createElement('div');
-    noteDiv.style.cssText = 'margin-top:12px;';
-    noteDiv.innerHTML =
-      '<textarea id="order-detail-note" rows="2" placeholder="Комментарий к заказу..." ' +
-        'style="width:100%;padding:8px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:' + (order.waiter_note ? '#fff8e1' : '#fff') + ';" ' +
-        'onchange="updateOrderNote(\'' + order.id + '\', this.value)">' + escapeHtml(order.waiter_note || '') + '</textarea>';
-    itemsDiv.appendChild(noteDiv);
+    // Order comment is now displayed INSIDE the top info card (read-only for the waiter).
+    // No separate textarea below the items list anymore.
 
     document.getElementById('order-detail-total').textContent = formatMoney(order.total);
 

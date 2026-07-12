@@ -511,39 +511,47 @@ async function updateOrderStatus(orderId, status, paymentMethod, cashAmount, car
 async function addItemToOrder(itemData) {
   // Check if the same dish with the same modification already exists in the order.
   // If so, increment its quantity instead of inserting a new row.
-  const existing = await _sb.from('order_items')
-    .select('*')
-    .eq('order_id', itemData.order_id)
-    .eq('menu_item_id', itemData.menu_item_id || '')
-    .eq('modification_id', itemData.modification_id || '');
-  if (existing.error) throw new Error(existing.error.message);
-  if (existing.data && existing.data.length > 0) {
-    // Merge — increment qty on existing item
-    const row = existing.data[0];
-    const newQty = (Number(row.quantity) || 0) + (Number(itemData.quantity) || 1);
-    await dbUpdate('order_items', row.id, { quantity: newQty });
-  } else {
-    // Insert new row
-    const itemId = 'it_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
-    await dbInsert('order_items', {
-      id: itemId,
-      order_id: itemData.order_id,
-      menu_item_id: itemData.menu_item_id || '',
-      name: itemData.name,
-      name_translation: itemData.name_translation || '',
-      category_name: itemData.category_name || '',
-      category_name_translation: itemData.category_name_translation || '',
-      modification_id: itemData.modification_id || '',
-      modification_name: itemData.modification_name || '',
-      price: Number(itemData.price) || 0,
-      quantity: Number(itemData.quantity) || 1,
-      comment: itemData.comment || '',
-      is_ready: false,
-      is_served: false,
-      needs_cooking: itemData.needs_cooking === true,
-      created_at: new Date().toISOString()
-    });
+  // EXCEPTION: if the new item has a comment ("пояснение"), always insert a new row
+  // so the пояснение is preserved (merging would silently drop it).
+  const hasComment = !!(itemData.comment && String(itemData.comment).trim());
+  if (!hasComment) {
+    const existing = await _sb.from('order_items')
+      .select('*')
+      .eq('order_id', itemData.order_id)
+      .eq('menu_item_id', itemData.menu_item_id || '')
+      .eq('modification_id', itemData.modification_id || '');
+    if (existing.error) throw new Error(existing.error.message);
+    if (existing.data && existing.data.length > 0) {
+      // Merge — increment qty on existing item
+      const row = existing.data[0];
+      const newQty = (Number(row.quantity) || 0) + (Number(itemData.quantity) || 1);
+      await dbUpdate('order_items', row.id, { quantity: newQty });
+      // Deduct stock, recalc total, return updated order
+      await deductStock([{ menu_item_id: itemData.menu_item_id, quantity: itemData.quantity }]);
+      await recalcOrderTotalDB(itemData.order_id);
+      return await getOrder(itemData.order_id);
+    }
   }
+  // Insert new row (always when there's a comment, or when no matching item exists)
+  const itemId = 'it_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+  await dbInsert('order_items', {
+    id: itemId,
+    order_id: itemData.order_id,
+    menu_item_id: itemData.menu_item_id || '',
+    name: itemData.name,
+    name_translation: itemData.name_translation || '',
+    category_name: itemData.category_name || '',
+    category_name_translation: itemData.category_name_translation || '',
+    modification_id: itemData.modification_id || '',
+    modification_name: itemData.modification_name || '',
+    price: Number(itemData.price) || 0,
+    quantity: Number(itemData.quantity) || 1,
+    comment: itemData.comment || '',
+    is_ready: false,
+    is_served: false,
+    needs_cooking: itemData.needs_cooking === true,
+    created_at: new Date().toISOString()
+  });
 
   // Deduct stock
   await deductStock([{ menu_item_id: itemData.menu_item_id, quantity: itemData.quantity }]);
