@@ -604,6 +604,7 @@
   .archive-orders-list {
     flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
     -webkit-overflow-scrolling: touch;
+    padding-top: 10px; /* small gap above the first order block */
   }
   .archive-order-row {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -618,19 +619,18 @@
   .archive-order-row.active {
     background: var(--primary); color: #fff; border-color: var(--primary);
   }
-  .archive-order-row.active .aor-table,
-  .archive-order-row.active .aor-total { color: #fff; }
+  .archive-order-row.active .aor-num,
+  .archive-order-row.active .aor-time,
+  .archive-order-row.active .aor-total { color: #fff !important; }
   .archive-order-row .aor-info { flex: 1; min-width: 0; }
   .archive-order-row .aor-num {
-    font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
+    font-size: 1.05rem; font-weight: 700; color: var(--text);
   }
-  .archive-order-row.active .aor-num { color: rgba(255,255,255,0.8); }
-  .archive-order-row .aor-table {
-    font-size: 1rem; font-weight: 700; color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .archive-order-row .aor-time {
+    font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-top: 2px;
   }
   .archive-order-row .aor-total {
-    font-size: 1rem; font-weight: 700; color: var(--primary);
+    font-size: 1.05rem; font-weight: 700; color: var(--primary);
     white-space: nowrap; flex: none;
   }
   .archive-order-row .aor-status {
@@ -3310,8 +3310,8 @@ function renderArchiveList() {
     // (archive shows only completed orders, so a status badge is redundant)
     html += '<div class="archive-order-row' + isActive + '" onclick="selectArchiveOrder(\'' + order.id + '\')">';
     html +=   '<div class="aor-info">';
-    html +=     '<div class="aor-num">№' + escapeHtml(String(dailyNum)) + '</div>';
-    html +=     '<div class="aor-table" style="font-size:0.85rem;font-weight:500;color:var(--text-muted);">' + formatTime(order.created_at) + '</div>';
+    html +=     '<div class="aor-num">Заказ №' + escapeHtml(String(dailyNum)) + '</div>';
+    html +=     '<div class="aor-time">' + formatTime(order.created_at) + '</div>';
     html +=   '</div>';
     html +=   '<div class="aor-total">' + formatMoney(total) + '</div>';
     html += '</div>';

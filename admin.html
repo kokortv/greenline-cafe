@@ -2084,11 +2084,59 @@ async function loadOrders() {
       });
     }
     adminState.orders = orders;
+    // Build a daily-number map so each order shows "Заказ №1", "№2", ... per day.
+    // We need ALL orders for each day (regardless of status filter) to compute
+    // correct sequence numbers — fetch them in parallel by day.
+    await buildDailyOrderNumbers(orders);
     renderOrders();
     await refreshActiveOrdersCount();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
+}
+
+// Map: { [orderId]: dailySequenceNumber } — recomputed on each loadOrders.
+// Numbers are per-day: the earliest order of each day gets №1.
+adminState.dailyNumbers = {};
+
+async function buildDailyOrderNumbers(orders) {
+  adminState.dailyNumbers = {};
+  if (!orders || orders.length === 0) return;
+  // Collect unique dates (YYYY-MM-DD) from the visible orders
+  var dates = {};
+  orders.forEach(function(o) {
+    if (o.created_at) {
+      var d = o.created_at.substring(0, 10);
+      if (!dates[d]) dates[d] = [];
+      dates[d].push(o);
+    }
+  });
+  // For each date, we need ALL orders of that day (not just the filtered subset)
+  // to compute correct sequence. Fetch them via getOrders('all') once and group.
+  try {
+    var allData = await apiGet('getOrders', { status: 'all' });
+    var allOrders = allData.orders || [];
+    // Group by date
+    var byDate = {};
+    allOrders.forEach(function(o) {
+      if (o.created_at) {
+        var d = o.created_at.substring(0, 10);
+        if (!byDate[d]) byDate[d] = [];
+        byDate[d].push(o);
+      }
+    });
+    // For each date that appears in our visible orders, sort all orders of
+    // that day by created_at ascending and assign sequence numbers.
+    Object.keys(dates).forEach(function(d) {
+      var dayOrders = byDate[d] || [];
+      dayOrders.sort(function(a, b) {
+        return new Date(a.created_at) - new Date(b.created_at);
+      });
+      dayOrders.forEach(function(o, idx) {
+        adminState.dailyNumbers[o.id] = idx + 1;
+      });
+    });
+  } catch (e) { /* ignore — daily numbers just won't be available */ }
 }
 
 async function refreshActiveOrdersCount() {
@@ -2148,8 +2196,9 @@ function renderOrders() {
 
   sorted.forEach(function(order) {
     const rowStyle = order.status === 'paused' ? 'background:#fffde7;' : '';
+    const dailyNum = adminState.dailyNumbers[order.id] || '?';
     html += '<tr style="' + rowStyle + 'border-bottom:1px solid var(--border);">';
-    html += '<td style="padding:10px;font-weight:700;">' + escapeHtml(formatTableLabel(order)) + '</td>';
+    html += '<td style="padding:10px;font-weight:700;">Заказ №' + escapeHtml(String(dailyNum)) + '<div style="font-size:0.78rem;font-weight:500;color:var(--text-muted);margin-top:2px;">' + escapeHtml(formatTableLabel(order)) + '</div></td>';
     if (hasGuests) html += '<td style="padding:10px;">' + (order.guests || 0) + '</td>';
     if (hasWaiter) html += '<td style="padding:10px;">' + escapeHtml(order.waiter_name || '—') + '</td>';
     if (hasPayment) {
@@ -2191,9 +2240,10 @@ function clearFilters() {
 async function viewOrder(orderId) {
   try {
     const order = await apiGet('getOrder', { id: orderId });
-    // Show a short order number (last 6 chars of the ID) instead of the full ID
-    const shortId = orderId.length > 6 ? orderId.substring(orderId.length - 6) : orderId;
-    document.getElementById('ord-detail-id').textContent = '#' + shortId;
+    // Show daily sequence number (Заказ №1, №2, ...) — falls back to short ID
+    const dailyNum = adminState.dailyNumbers[orderId];
+    const displayNum = dailyNum ? '№' + dailyNum : '#' + (orderId.length > 6 ? orderId.substring(orderId.length - 6) : orderId);
+    document.getElementById('ord-detail-id').textContent = displayNum;
     // Determine which item columns have real data (not just dashes)
     const cookEnabled = String(APP_DATA.settings.cook_enabled) !== 'false';
     const items = order.items || [];
