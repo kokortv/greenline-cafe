@@ -59,6 +59,32 @@
   .table-btn .table-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
   .table-btn.has-order .table-label { color: var(--text); }
 
+  /* Order info inside numbered table blocks (time + total) */
+  .table-btn .table-order-info {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.15);
+    width: 100%;
+  }
+  .table-btn .table-order-info .toi-time {
+    font-size: 0.7rem; color: var(--text); opacity: 0.85; font-weight: 500;
+  }
+  .table-btn .table-order-info .toi-total {
+    font-size: 0.95rem; font-weight: 800; color: var(--primary);
+  }
+
+  /* Count badge for virtual tables with >1 active orders — top-right corner */
+  .table-btn { position: relative; }
+  .table-btn .table-count-badge {
+    position: absolute; top: 4px; right: 4px;
+    background: var(--danger); color: #fff;
+    font-size: 0.72rem; font-weight: 800;
+    min-width: 18px; height: 18px;
+    border-radius: 9px; padding: 0 5px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    z-index: 2;
+  }
+
   /* Virtual tables (Бар, С собой) — different color, shared */
   .table-btn.virtual {
     background: #e3f2fd;
@@ -726,14 +752,6 @@
   <div class="screen active" id="screen-home">
     <div id="ready-alert-panel" style="display:none;"></div>
 
-    <div id="home-active-orders" style="display:none;">
-      <h2 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
-        Активные заказы
-        <span class="pill pill-warning" id="home-active-count">0</span>
-      </h2>
-      <div id="home-active-orders-list"></div>
-    </div>
-
     <h2 class="section-title">Новый заказ</h2>
     <h3 style="font-size:1rem;color:var(--text-muted);margin-bottom:8px;">Выберите столик</h3>
     <div class="table-grid" id="table-grid"></div>
@@ -842,10 +860,10 @@
       <div class="label">Итого</div>
       <div class="amount" id="order-detail-total">0 ₽</div>
     </div>
-    <div class="grid grid-2" style="margin-top:12px;">
-      <button class="btn btn-success btn-lg" onclick="withLoading(this, '...', function() { return completeOrder(); })">✓ Завершить заказ</button>
-      <button class="btn btn-danger btn-lg" onclick="withLoading(this, 'Отмена...', function() { return cancelOrder(); })">Отменить заказ</button>
+    <div style="margin-top:12px;">
+      <button class="btn btn-success btn-lg" style="width:100%;" onclick="withLoading(this, '...', function() { return completeOrder(); })">✓ Завершить заказ</button>
     </div>
+    <p style="text-align:center;color:var(--text-muted);font-size:0.82rem;margin-top:10px;">Чтобы отменить заказ — обратитесь к администратору.</p>
     <!-- Bottom padding so buttons don't stick to the bottom of the screen -->
     <div style="height:60px;"></div>
   </div>
@@ -1574,6 +1592,8 @@ function isOrderBarOnly(items) {
 
 function renderHome() {
   // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other.
+  // For tables with the current waiter's active order, also show the order's
+  // acceptance time and total inside the table block.
   // Tables are now sourced from APP_DATA.tables.numbered (each may have an optional
   // custom label). Fall back to settings.table_count for backward compatibility.
   const numberedTables = (APP_DATA.tables && APP_DATA.tables.numbered) || [];
@@ -1587,9 +1607,12 @@ function renderHome() {
     const tableInfo = numberedTables.find(function(t) { return t.number === i; });
     const customLabel = tableInfo && tableInfo.label ? tableInfo.label : '';
     const displayName = customLabel || String(i);
-    const hasOrder = state.activeOrders.some(function(o) {
-      return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered');
+    // Find the current waiter's active order on this table (if any)
+    const myOrder = state.activeOrders.find(function(o) {
+      return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered') &&
+             (o.status === 'accepted' || o.status === 'paused');
     });
+    const hasOrder = !!myOrder;
     // Find table status (free / mine / other)
     const ts = state.tableStatuses.find(function(t) { return t.table === i && t.type === 'numbered'; });
     const lockedByOther = ts && ts.status === 'other';
@@ -1601,7 +1624,15 @@ function renderHome() {
     if (lockedByOther) { cls += ' locked-by-other'; label = ts.waiter_name ? '⨉ ' + ts.waiter_name : '⨉ занят'; }
     if (isSelected) { cls += ' selected'; label = '✓ выбран'; }
     btn.className = cls;
-    btn.innerHTML = escapeHtml(displayName) + '<span class="table-label">' + label + '</span>';
+    // Build inner HTML: table number + status label + (if hasOrder) order time + total
+    let inner = escapeHtml(displayName) + '<span class="table-label">' + label + '</span>';
+    if (myOrder) {
+      inner += '<span class="table-order-info">' +
+        '<span class="toi-time">🕐 ' + formatTime(myOrder.created_at) + '</span>' +
+        '<span class="toi-total">' + formatMoney(myOrder.total) + '</span>' +
+      '</span>';
+    }
+    btn.innerHTML = inner;
     if (lockedByOther) {
       btn.disabled = true;
       btn.onclick = function() {
@@ -1643,7 +1674,12 @@ function renderHome() {
       if (activeCount > 0) { cls += ' has-order'; label = activeCount + ' активн.'; }
       if (isSelected) { cls += ' selected'; label = '✓ ' + (state.selectedVirtualLabel || name); }
       btn.className = cls;
-      btn.innerHTML = escapeHtml(name) + '<span class="table-label">' + label + '</span>';
+      // Build inner HTML: name + label + (if >1 active orders) a count badge in top-right
+      let vInner = escapeHtml(name) + '<span class="table-label">' + label + '</span>';
+      if (activeCount > 1) {
+        vInner = '<span class="table-count-badge" title="Активных заказов: ' + activeCount + '">' + activeCount + '</span>' + vInner;
+      }
+      btn.innerHTML = vInner;
       btn.onclick = function(e) { selectTable(name, 'virtual', e); };
       virtualGrid.appendChild(btn);
     });

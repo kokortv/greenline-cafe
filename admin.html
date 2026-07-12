@@ -2174,7 +2174,7 @@ function renderOrders() {
       '<button class="btn btn-outline" style="padding:6px 10px;" onclick="viewOrder(\'' + order.id + '\')">👁</button> ' +
       (order.status === 'accepted' || order.status === 'paused' ?
         '<button class="btn btn-success" style="padding:6px 10px;" onclick="withLoading(this, \'...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">✓</button> ' : '') +
-      '<button class="btn btn-danger" style="padding:6px 10px;" onclick="deleteOrderAdmin(\'' + order.id + '\')">✕</button>' +
+      '<button class="btn btn-danger" style="padding:6px 10px;" onclick="cancelOrderAdmin(\'' + order.id + '\')" title="Отменить заказ">✕</button>' +
     '</td>';
     html += '</tr>';
   });
@@ -2396,16 +2396,61 @@ async function completeOrderAdmin(orderId) {
   }
 }
 
-async function deleteOrderAdmin(orderId) {
-  const ok = await confirmDialog('Удалить этот заказ безвозвратно?', 'Удаление заказа', 'Удалить', 'Отмена', 'btn-danger');
-  if (!ok) return;
-  try {
-    await apiPost('deleteOrder', { order_id: orderId });
-    showToast('Заказ удалён', 'info');
-    loadOrders();
-  } catch (err) {
-    showToast('Ошибка: ' + err.message, 'error');
-  }
+// Admin: cancel an order with a required reason (preserves it in statistics).
+// Replaces the old hard-delete behaviour — cancelled orders stay in the DB
+// with status='cancelled' + cancel_reason + cancelled_at so they show up in reports.
+async function cancelOrderAdmin(orderId) {
+  // Build a modal that requires a cancel reason — same UX as the waiter's former flow
+  const existing = document.getElementById('admin-cancel-overlay');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'admin-cancel-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:20px;max-width:420px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.3);">' +
+      '<h3 style="margin:0 0 8px;color:var(--danger);">Отмена заказа</h3>' +
+      '<p style="margin:0 0 14px;font-size:0.9rem;color:var(--text-muted);">Укажите причину отмены — она будет показана в статистике заказов.</p>' +
+      '<textarea id="admin-cancel-reason" rows="3" placeholder="Например: клиент передумал, ошибка в заказе, нет продукта..." style="width:100%;padding:10px;font-size:1rem;border:2px solid var(--border);border-radius:8px;resize:vertical;box-sizing:border-box;"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">' +
+        '<button type="button" class="btn btn-outline" id="admin-cancel-abort">Оставить заказ</button>' +
+        '<button type="button" class="btn btn-danger" id="admin-cancel-confirm" disabled style="opacity:0.5;cursor:not-allowed;">Отменить заказ</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  return new Promise(function(resolve) {
+    const reasonInput = overlay.querySelector('#admin-cancel-reason');
+    const confirmBtn = overlay.querySelector('#admin-cancel-confirm');
+    const abortBtn = overlay.querySelector('#admin-cancel-abort');
+
+    reasonInput.addEventListener('input', function() {
+      const has = reasonInput.value.trim().length > 0;
+      confirmBtn.disabled = !has;
+      confirmBtn.style.opacity = has ? '1' : '0.5';
+      confirmBtn.style.cursor = has ? 'pointer' : 'not-allowed';
+    });
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) { overlay.remove(); resolve(false); }
+    });
+    abortBtn.addEventListener('click', function() { overlay.remove(); resolve(false); });
+    confirmBtn.addEventListener('click', function() {
+      if (confirmBtn.disabled) return;
+      const reason = reasonInput.value.trim();
+      overlay.remove();
+      resolve(reason);
+    });
+    setTimeout(function() { reasonInput.focus(); }, 50);
+  }).then(async function(reason) {
+    if (!reason) return;
+    try {
+      await apiPost('cancelOrderWithReason', { order_id: orderId, cancel_reason: reason });
+      showToast('Заказ отменён', 'info');
+      closeModal('modal-order');
+      loadOrders();
+    } catch (err) {
+      showToast('Ошибка: ' + err.message, 'error');
+    }
+  });
 }
 
 /* ---------- MENU ---------- */
