@@ -655,18 +655,25 @@
   }
   .archive-detail-card .adc-table { font-size: 1.4rem; font-weight: 800; }
   .archive-detail-card .adc-meta { color: var(--text-muted); font-size: 0.9rem; margin-top: 4px; }
-  .archive-detail-card .adc-items { margin-bottom: 16px; }
-  .archive-detail-card .adc-item {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border);
+  .archive-detail-card .adc-items-list {
+    display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;
   }
-  .archive-detail-card .adc-item:last-child { border-bottom: none; }
-  .archive-detail-card .adc-item-name { flex: 1; min-width: 0; }
-  .archive-detail-card .adc-item-qty {
-    color: var(--text-muted); font-size: 0.85rem; white-space: nowrap; flex: none;
+  .archive-detail-card .adc-item-card {
+    background: var(--bg); border-radius: 8px; padding: 10px 12px;
+    border-left: 3px solid var(--primary);
   }
-  .archive-detail-card .adc-item-price {
-    font-weight: 700; color: var(--primary); white-space: nowrap; flex: none;
+  .archive-detail-card .adc-item-card-name {
+    font-weight: 600; font-size: 1rem; color: var(--text); line-height: 1.3;
+  }
+  .archive-detail-card .adc-item-card-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; margin-top: 6px;
+  }
+  .archive-detail-card .adc-item-card-qty {
+    color: var(--text-muted); font-size: 0.88rem;
+  }
+  .archive-detail-card .adc-item-card-sum {
+    font-weight: 700; color: var(--primary); font-size: 1.05rem; white-space: nowrap;
   }
   .archive-detail-card .adc-total {
     text-align: right; font-size: 1.5rem; font-weight: 800; color: var(--primary);
@@ -3224,9 +3231,10 @@ function renderActiveOrdersList() {
 
 /* ---------- ARCHIVE (today's orders with search) ---------- */
 // State for the archive screen
-var _archiveOrders = [];        // all today's orders (cached)
+var _archiveOrders = [];        // all today's completed orders (cached)
 var _archiveSelectedId = null;  // currently-selected order ID in the archive
 var _archiveSearchQuery = '';   // current search filter
+var _archiveDailyNumbers = {};  // map: orderId → daily sequence number (1, 2, 3...)
 
 // Show the archive screen — fetches today's orders and renders the list
 async function showArchive() {
@@ -3242,16 +3250,26 @@ async function showArchive() {
   var detailDiv = document.getElementById('archive-order-detail');
   if (detailDiv) detailDiv.innerHTML = '<div class="archive-empty-state"><div style="font-size:3rem;opacity:0.3;margin-bottom:8px;">📂</div><p>Выберите заказ слева, чтобы увидеть детали</p></div>';
   try {
-    // Fetch ALL today's orders (all statuses) for the current waiter
+    // Fetch ALL today's orders (all statuses) for the current waiter.
+    // We'll filter to completed-only for the archive display.
     var today = new Date().toISOString().substring(0, 10); // YYYY-MM-DD
     var data = await apiGet('getOrders', { status: 'all', waiter_id: state.currentUser.id });
     var allOrders = data.orders || [];
-    // Filter: today only
+    // Filter: today only + completed status
     _archiveOrders = allOrders.filter(function(o) {
       var orderDate = (o.created_at || '').substring(0, 10);
-      return orderDate === today;
+      return orderDate === today && o.status === 'completed';
     });
-    // Sort: newest first
+    // Assign daily sequence numbers (1, 2, 3...) based on creation time ascending.
+    // The earliest completed order of the day gets №1.
+    var byTimeAsc = _archiveOrders.slice().sort(function(a, b) {
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+    _archiveDailyNumbers = {}; // { orderId: dailyNumber }
+    byTimeAsc.forEach(function(o, idx) {
+      _archiveDailyNumbers[o.id] = idx + 1;
+    });
+    // Sort the displayed list: newest first
     _archiveOrders.sort(function(a, b) {
       return new Date(b.created_at) - new Date(a.created_at);
     });
@@ -3280,27 +3298,21 @@ function renderArchiveList() {
     });
   }
   if (filtered.length === 0) {
-    listDiv.innerHTML = '<div class="archive-empty-state"><p>' + (query ? 'Нет заказов с блюдом «' + escapeHtml(_archiveSearchQuery) + '»' : 'Нет заказов за сегодня') + '</p></div>';
+    listDiv.innerHTML = '<div class="archive-empty-state"><p>' + (query ? 'Нет заказов с блюдом «' + escapeHtml(_archiveSearchQuery) + '»' : 'Нет завершённых заказов за сегодня') + '</p></div>';
     return;
   }
   var html = '';
   filtered.forEach(function(order) {
-    var shortId = order.id.length > 6 ? order.id.substring(order.id.length - 6) : order.id;
-    var tableLabel = formatTableLabel(order);
-    // Apply table-label override if it exists
-    if (state.tableLabelOverride && state.tableLabelOverride[order.id]) {
-      tableLabel = state.tableLabelOverride[order.id];
-    }
+    var dailyNum = _archiveDailyNumbers[order.id] || '?';
     var total = Number(order.total) || 0;
-    var status = order.status || 'accepted';
-    var statusClass = status;
     var isActive = (_archiveSelectedId === order.id) ? ' active' : '';
+    // Compact row: № number / time / total — no table name, no status badge
+    // (archive shows only completed orders, so a status badge is redundant)
     html += '<div class="archive-order-row' + isActive + '" onclick="selectArchiveOrder(\'' + order.id + '\')">';
     html +=   '<div class="aor-info">';
-    html +=     '<div class="aor-num">№' + escapeHtml(shortId) + ' · ' + formatTime(order.created_at) + '</div>';
-    html +=     '<div class="aor-table">' + escapeHtml(tableLabel) + '</div>';
+    html +=     '<div class="aor-num">№' + escapeHtml(String(dailyNum)) + '</div>';
+    html +=     '<div class="aor-table" style="font-size:0.85rem;font-weight:500;color:var(--text-muted);">' + formatTime(order.created_at) + '</div>';
     html +=   '</div>';
-    html +=   '<span class="aor-status ' + statusClass + '">' + (status === 'completed' ? '✓' : status === 'cancelled' ? '✕' : status === 'paused' ? '⏸' : '•') + '</span>';
     html +=   '<div class="aor-total">' + formatMoney(total) + '</div>';
     html += '</div>';
   });
@@ -3338,56 +3350,60 @@ function selectArchiveOrder(orderId) {
 function renderArchiveDetail(order) {
   var detailDiv = document.getElementById('archive-order-detail');
   if (!detailDiv) return;
-  var shortId = order.id.length > 6 ? order.id.substring(order.id.length - 6) : order.id;
+  var dailyNum = _archiveDailyNumbers[order.id] || '?';
   var tableLabel = formatTableLabel(order);
   if (state.tableLabelOverride && state.tableLabelOverride[order.id]) {
     tableLabel = state.tableLabelOverride[order.id];
   }
   var items = order.items || [];
   var total = Number(order.total) || 0;
-  var status = order.status || 'accepted';
-  var statusLabel = status === 'completed' ? 'Завершён' :
-                    status === 'cancelled' ? 'Отменён' :
-                    status === 'paused' ? 'На паузе' :
-                    status === 'accepted' ? 'Принят' : status;
-  var statusColor = status === 'completed' ? 'var(--success)' :
-                    status === 'cancelled' ? 'var(--danger)' :
-                    status === 'paused' ? '#ff9800' :
-                    'var(--warning)';
-  // Build items HTML
+  // Build items HTML — each item as a card with name on top,
+  // then a row with [qty × price] on the left and line total on the right
   var itemsHtml = '';
   if (items.length === 0) {
     itemsHtml = '<p style="color:var(--text-muted);text-align:center;padding:20px;">В заказе нет позиций</p>';
   } else {
-    items.forEach(function(it) {
-      var nameLine = escapeHtml(it.name);
-      if (it.modification_name) nameLine += ' <span style="color:var(--primary);font-size:0.85rem;">· ' + escapeHtml(it.modification_name) + '</span>';
-      if (it.name_translation) nameLine += '<div style="font-size:0.8rem;color:var(--text-muted);font-style:italic;">' + escapeHtml(it.name_translation) + '</div>';
-      if (it.comment) nameLine += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">💬 ' + escapeHtml(it.comment) + '</div>';
+    itemsHtml = '<div class="adc-items-list">';
+    items.forEach(function(it, idx) {
       var lineTotal = Number(it.price) * Number(it.quantity);
-      itemsHtml += '<div class="adc-item">' +
-        '<div class="adc-item-name">' + nameLine + '</div>' +
-        '<div class="adc-item-qty">' + it.quantity + ' шт × ' + formatMoney(it.price) + '</div>' +
-        '<div class="adc-item-price">' + formatMoney(lineTotal) + '</div>' +
-      '</div>';
+      // Name line: dish name + optional modification badge
+      var nameLine = escapeHtml(it.name);
+      if (it.modification_name) nameLine += ' <span style="color:var(--primary);font-size:0.82rem;font-weight:600;">· ' + escapeHtml(it.modification_name) + '</span>';
+      // Sub-line: translation (if any)
+      var subLine = '';
+      if (it.name_translation) subLine += '<div style="font-size:0.8rem;color:var(--text-muted);font-style:italic;margin-top:2px;">' + escapeHtml(it.name_translation) + '</div>';
+      // Comment line (if any)
+      if (it.comment) subLine += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">💬 ' + escapeHtml(it.comment) + '</div>';
+      // Qty × price → line total, on one row
+      itemsHtml += '<div class="adc-item-card">';
+      itemsHtml +=   '<div class="adc-item-card-name">' + nameLine + '</div>';
+      itemsHtml +=   subLine;
+      itemsHtml +=   '<div class="adc-item-card-row">';
+      itemsHtml +=     '<span class="adc-item-card-qty">' + it.quantity + ' × ' + formatMoney(it.price) + '</span>';
+      itemsHtml +=     '<span class="adc-item-card-sum">' + formatMoney(lineTotal) + '</span>';
+      itemsHtml +=   '</div>';
+      itemsHtml += '</div>';
     });
+    itemsHtml += '</div>';
   }
-  // Build detail HTML
+  // Build detail HTML — header shows order number + table + time + guests
   var html = '<div class="archive-detail-card">';
   html += '<div class="adc-header">';
   html +=   '<div>';
-  html +=     '<div class="adc-table">' + escapeHtml(tableLabel) + '</div>';
-  html +=     '<div class="adc-meta">№' + escapeHtml(shortId) + ' · ' + formatDateTime(order.created_at) + ' · ' + order.guests + ' чел.</div>';
-  if (order.waiter_name) html += '<div class="adc-meta">Официант: ' + escapeHtml(order.waiter_name) + '</div>';
+  html +=     '<div class="adc-table">Заказ №' + escapeHtml(String(dailyNum)) + '</div>';
+  html +=     '<div class="adc-meta">' + escapeHtml(tableLabel) + ' · ' + formatDateTime(order.created_at) + ' · ' + order.guests + ' чел.</div>';
   if (order.waiter_note) html += '<div class="adc-meta" style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-radius:4px;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>';
   if (order.cancel_reason) html += '<div class="adc-meta" style="margin-top:6px;padding:6px 10px;background:#ffebee;border-radius:4px;color:var(--danger);">✕ Причина отмены: ' + escapeHtml(order.cancel_reason) + '</div>';
   html +=   '</div>';
-  html +=   '<span style="background:' + statusColor + ';color:#fff;padding:4px 12px;border-radius:12px;font-size:0.85rem;font-weight:700;white-space:nowrap;">' + statusLabel + '</span>';
   html += '</div>';
-  html += '<div class="adc-items">' + itemsHtml + '</div>';
+  // Items count summary
+  var itemsCount = items.length;
+  var totalQty = items.reduce(function(s, it) { return s + Number(it.quantity || 0); }, 0);
+  html += '<div style="margin-bottom:12px;font-size:0.9rem;color:var(--text-muted);"><b>' + itemsCount + '</b> поз. · <b>' + totalQty + '</b> шт всего</div>';
+  html += itemsHtml;
   if (order.payment_method) {
     var payLabel = order.payment_method === 'cash' ? '💵 Наличные' : order.payment_method === 'card' ? '💳 Карта' : order.payment_method === 'mixed' ? '💵 + 💳 Смешанная' : order.payment_method;
-    html += '<div style="margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:6px;font-size:0.9rem;"><b>Оплата:</b> ' + payLabel + '</div>';
+    html += '<div style="margin:12px 0;padding:10px 12px;background:var(--bg);border-radius:6px;font-size:0.95rem;"><b>Оплата:</b> ' + payLabel + '</div>';
   }
   html += '<div class="adc-total">Итого: ' + formatMoney(total) + '</div>';
   html += '</div>';
