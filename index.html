@@ -3792,31 +3792,35 @@ async function renderOrderDetail() {
     } else {
       // Compute bar-only status once before rendering items — if true, "Подано" buttons are hidden
       const orderBarOnly = isOrderBarOnly(order.items || []);
-      // Split items into TWO groups:
-      // 1. Original items — share the earliest created_at (the order creation time)
-      // 2. Added-later items — ALL items with a different timestamp, combined into ONE group
-      //    (regardless of whether they were added one-at-a-time or in a batch)
-      var firstGroupTime = null;
-      order.items.forEach(function(item) {
-        var t = item.created_at || '';
-        if (firstGroupTime === null || t < firstGroupTime) firstGroupTime = t;
+      // Group items by "add batch" — items added in the same button press share
+      // a created_at within a few seconds of each other. We use a 5-second window:
+      // if the gap between consecutive items is ≤5s, they belong to the same group.
+      // The first group = original order items; each subsequent group = one "Добавить в заказ" press.
+      var GROUP_WINDOW_MS = 5000; // 5 seconds
+      // Sort all items by created_at ascending
+      var sortedItems = (order.items || []).slice().sort(function(a, b) {
+        return new Date(a.created_at || 0) - new Date(b.created_at || 0);
       });
       var itemGroups = [];
-      var originalGroup = { time: firstGroupTime, items: [] };
-      var addedGroup = { time: 'added-later', items: [] };
-      order.items.forEach(function(item) {
-        var t = item.created_at || '';
-        if (t === firstGroupTime) {
-          originalGroup.items.push(item);
+      var currentGroup = null;
+      var prevTime = null;
+      sortedItems.forEach(function(item) {
+        var t = new Date(item.created_at || 0).getTime();
+        if (currentGroup && prevTime !== null && (t - prevTime) <= GROUP_WINDOW_MS) {
+          // Same group — within the window
+          currentGroup.items.push(item);
         } else {
-          addedGroup.items.push(item);
+          // New group
+          currentGroup = { items: [item] };
+          itemGroups.push(currentGroup);
         }
+        prevTime = t;
       });
-      itemGroups.push(originalGroup);
-      if (addedGroup.items.length > 0) itemGroups.push(addedGroup);
+      // The first group is the "original" order; all others are "added later"
+      var firstGroupTime = itemGroups.length > 0 ? new Date(itemGroups[0].items[0].created_at || 0).getTime() : null;
 
       itemGroups.forEach(function(group, groupIdx) {
-        var isAddedLater = group.time !== firstGroupTime;
+        var isAddedLater = groupIdx > 0; // first group = original, rest = added later
         // For added-later groups: collect the first non-empty comment from any
         // item — it will be shown ONCE at the bottom of the whole block.
         var groupComment = null;
@@ -3833,7 +3837,7 @@ async function renderOrderDetail() {
         if (isAddedLater) {
           groupWrapper = document.createElement('div');
           groupWrapper.className = 'order-added-group';
-          groupWrapper.style.cssText = 'background:#e8f5e9;border-left:4px solid var(--success);border-radius:8px;padding:10px 12px;margin-bottom:10px;';
+          groupWrapper.style.cssText = 'background:rgba(76,175,80,0.08);border-left:4px solid var(--success);border-radius:8px;padding:10px 12px;margin-bottom:10px;';
           itemsDiv.appendChild(groupWrapper);
         }
         group.items.forEach(function(item, itemIdx) {
