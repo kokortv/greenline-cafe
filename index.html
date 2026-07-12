@@ -574,6 +574,110 @@
   /* Add bottom padding so content isn't hidden behind the fixed footer */
   #screen-order .order-layout { padding-bottom: 70px; }
 
+  /* ===========================
+     ARCHIVE SCREEN — split layout with search
+     =========================== */
+  .archive-layout {
+    display: flex; gap: 0; align-items: flex-start;
+    min-height: calc(100vh - 130px);
+  }
+  .archive-panel-left {
+    flex: none; width: 340px; padding: 0 12px 12px 0;
+    border-right: 2px solid var(--border);
+    display: flex; flex-direction: column; max-height: calc(100vh - 130px);
+    position: sticky; top: 0;
+  }
+  .archive-panel-right {
+    flex: 1; padding: 0 0 12px 16px; overflow-y: auto;
+    max-height: calc(100vh - 130px);
+  }
+  .archive-search-box {
+    display: flex; gap: 6px; margin-bottom: 10px;
+  }
+  .archive-search-box input {
+    flex: 1; min-width: 0; padding: 10px 12px; font-size: 0.95rem;
+    border: 2px solid var(--border); border-radius: 8px;
+  }
+  .archive-search-box input:focus {
+    outline: none; border-color: var(--primary);
+  }
+  .archive-orders-list {
+    flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .archive-order-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; background: #fff; border: 1px solid var(--border);
+    border-radius: 8px; cursor: pointer; transition: all 0.15s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .archive-order-row:hover {
+    border-color: var(--primary); transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  .archive-order-row.active {
+    background: var(--primary); color: #fff; border-color: var(--primary);
+  }
+  .archive-order-row.active .aor-table,
+  .archive-order-row.active .aor-total { color: #fff; }
+  .archive-order-row .aor-info { flex: 1; min-width: 0; }
+  .archive-order-row .aor-num {
+    font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
+  }
+  .archive-order-row.active .aor-num { color: rgba(255,255,255,0.8); }
+  .archive-order-row .aor-table {
+    font-size: 1rem; font-weight: 700; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .archive-order-row .aor-total {
+    font-size: 1rem; font-weight: 700; color: var(--primary);
+    white-space: nowrap; flex: none;
+  }
+  .archive-order-row .aor-status {
+    font-size: 0.65rem; padding: 1px 6px; border-radius: 4px;
+    font-weight: 700; text-transform: uppercase; flex: none;
+  }
+  .archive-order-row .aor-status.completed { background: var(--success); color: #fff; }
+  .archive-order-row .aor-status.accepted { background: var(--warning); color: #fff; }
+  .archive-order-row .aor-status.cancelled { background: var(--danger); color: #fff; }
+  .archive-order-row .aor-status.paused { background: #ff9800; color: #fff; }
+  .archive-empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  .archive-detail-card {
+    background: #fff; border-radius: var(--radius); padding: 20px;
+    box-shadow: var(--shadow); margin-bottom: 16px;
+  }
+  .archive-detail-card .adc-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 16px; padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+  }
+  .archive-detail-card .adc-table { font-size: 1.4rem; font-weight: 800; }
+  .archive-detail-card .adc-meta { color: var(--text-muted); font-size: 0.9rem; margin-top: 4px; }
+  .archive-detail-card .adc-items { margin-bottom: 16px; }
+  .archive-detail-card .adc-item {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border);
+  }
+  .archive-detail-card .adc-item:last-child { border-bottom: none; }
+  .archive-detail-card .adc-item-name { flex: 1; min-width: 0; }
+  .archive-detail-card .adc-item-qty {
+    color: var(--text-muted); font-size: 0.85rem; white-space: nowrap; flex: none;
+  }
+  .archive-detail-card .adc-item-price {
+    font-weight: 700; color: var(--primary); white-space: nowrap; flex: none;
+  }
+  .archive-detail-card .adc-total {
+    text-align: right; font-size: 1.5rem; font-weight: 800; color: var(--primary);
+    padding-top: 12px; border-top: 2px solid var(--border);
+  }
+  @media (max-width: 768px) {
+    .archive-layout { flex-direction: column; }
+    .archive-panel-left { width: 100%; border-right: none; border-bottom: 2px solid var(--border); padding: 0 0 12px 0; max-height: 40vh; position: relative; }
+    .archive-panel-right { padding: 12px 0; max-height: none; }
+  }
+
   /* Mobile responsive tweaks for waiter page */
   @media (max-width: 768px) {
     .table-btn { font-size: clamp(1.2rem, 5vw, 1.8rem); }
@@ -709,6 +813,7 @@
   <div class="header-row header-bottom">
     <button class="badge shift-badge" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
     <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
+    <button class="badge" id="archive-btn" onclick="showArchive()" title="Архив заказов за сегодня" style="padding:4px 12px;font-weight:700;font-size:0.8rem;border-radius:18px;height:36px;white-space:nowrap;flex:none;cursor:pointer;background:rgba(255,255,255,0.15);color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;">📋 Архив</button>
     <button class="badge" id="qr-menu-btn" style="display:none;padding:4px;font-weight:700;font-size:0.75rem;border-radius:50%;width:36px;height:36px;white-space:nowrap;flex:none;cursor:pointer;" onclick="showWaiterQrMenu()" title="QR-код меню">QR</button>
     <button id="waiter-circle-badge" type="button" onclick="showWaiterQrMenu()" title="QR-код меню" style="margin-right:10px;flex:none;width:36px;height:36px;border-radius:50%;background:#ffd600;color:#000;display:none;align-items:center;justify-content:center;font-weight:800;font-size:11px;text-align:center;line-height:1;padding:3px;box-sizing:border-box;word-break:break-word;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.25);border:2px solid rgba(255,255,255,0.5);cursor:pointer;transition:transform 0.1s;"></button>
     <button class="badge" id="fullscreen-btn" onclick="toggleFullscreen()" title="Полноэкранный режим" style="padding:4px;font-size:0.95rem;border-radius:50%;width:36px;height:36px;white-space:nowrap;flex:none;cursor:pointer;background:rgba(255,255,255,0.15);color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;">⛶</button>
@@ -848,6 +953,33 @@
       <h2 class="section-title" style="margin:0;">Принятые заказы</h2>
     </div>
     <div id="active-orders-list"></div>
+  </div>
+
+  <!-- ARCHIVE SCREEN — today's orders with search -->
+  <div class="screen" id="screen-archive">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-outline" onclick="showScreen('home')">← На главную</button>
+      <h2 class="section-title" style="margin:0;">Архив заказов за сегодня</h2>
+    </div>
+    <div class="archive-layout">
+      <!-- LEFT: list of today's orders + search -->
+      <div class="archive-panel-left">
+        <div class="archive-search-box">
+          <input type="text" id="archive-search" placeholder="🔍 Поиск по названию блюда..." oninput="filterArchiveOrders()">
+          <button class="btn btn-outline" onclick="clearArchiveSearch()" title="Очистить" style="padding:6px 10px;flex:none;">✕</button>
+        </div>
+        <div id="archive-orders-list" class="archive-orders-list"></div>
+      </div>
+      <!-- RIGHT: order details -->
+      <div class="archive-panel-right">
+        <div id="archive-order-detail">
+          <div class="archive-empty-state">
+            <div style="font-size:3rem;opacity:0.3;margin-bottom:8px;">📂</div>
+            <p>Выберите заказ слева, чтобы увидеть детали</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ORDER DETAIL SCREEN (modify existing) -->
@@ -3088,6 +3220,178 @@ function renderActiveOrdersList() {
       '<div class="oc-actions">' + actions + '</div>';
     div.appendChild(card);
   });
+}
+
+/* ---------- ARCHIVE (today's orders with search) ---------- */
+// State for the archive screen
+var _archiveOrders = [];        // all today's orders (cached)
+var _archiveSelectedId = null;  // currently-selected order ID in the archive
+var _archiveSearchQuery = '';   // current search filter
+
+// Show the archive screen — fetches today's orders and renders the list
+async function showArchive() {
+  showScreen('archive');
+  // Clear any previous selection
+  _archiveSelectedId = null;
+  // Reset search
+  var searchInput = document.getElementById('archive-search');
+  if (searchInput) { searchInput.value = ''; _archiveSearchQuery = ''; }
+  // Show loading state
+  var listDiv = document.getElementById('archive-orders-list');
+  if (listDiv) listDiv.innerHTML = '<div class="archive-empty-state">Загрузка...</div>';
+  var detailDiv = document.getElementById('archive-order-detail');
+  if (detailDiv) detailDiv.innerHTML = '<div class="archive-empty-state"><div style="font-size:3rem;opacity:0.3;margin-bottom:8px;">📂</div><p>Выберите заказ слева, чтобы увидеть детали</p></div>';
+  try {
+    // Fetch ALL today's orders (all statuses) for the current waiter
+    var today = new Date().toISOString().substring(0, 10); // YYYY-MM-DD
+    var data = await apiGet('getOrders', { status: 'all', waiter_id: state.currentUser.id });
+    var allOrders = data.orders || [];
+    // Filter: today only
+    _archiveOrders = allOrders.filter(function(o) {
+      var orderDate = (o.created_at || '').substring(0, 10);
+      return orderDate === today;
+    });
+    // Sort: newest first
+    _archiveOrders.sort(function(a, b) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    renderArchiveList();
+  } catch (err) {
+    if (listDiv) listDiv.innerHTML = '<div class="archive-empty-state">Ошибка: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+// Render the left-side list of orders, applying the current search filter
+function renderArchiveList() {
+  var listDiv = document.getElementById('archive-orders-list');
+  if (!listDiv) return;
+  var query = _archiveSearchQuery.toLowerCase().trim();
+  // Filter orders by search query (dish name match)
+  var filtered = _archiveOrders;
+  if (query) {
+    filtered = _archiveOrders.filter(function(o) {
+      var items = o.items || [];
+      return items.some(function(it) {
+        var name = String(it.name || '').toLowerCase();
+        var trans = String(it.name_translation || '').toLowerCase();
+        var mod = String(it.modification_name || '').toLowerCase();
+        return name.indexOf(query) >= 0 || trans.indexOf(query) >= 0 || mod.indexOf(query) >= 0;
+      });
+    });
+  }
+  if (filtered.length === 0) {
+    listDiv.innerHTML = '<div class="archive-empty-state"><p>' + (query ? 'Нет заказов с блюдом «' + escapeHtml(_archiveSearchQuery) + '»' : 'Нет заказов за сегодня') + '</p></div>';
+    return;
+  }
+  var html = '';
+  filtered.forEach(function(order) {
+    var shortId = order.id.length > 6 ? order.id.substring(order.id.length - 6) : order.id;
+    var tableLabel = formatTableLabel(order);
+    // Apply table-label override if it exists
+    if (state.tableLabelOverride && state.tableLabelOverride[order.id]) {
+      tableLabel = state.tableLabelOverride[order.id];
+    }
+    var total = Number(order.total) || 0;
+    var status = order.status || 'accepted';
+    var statusClass = status;
+    var isActive = (_archiveSelectedId === order.id) ? ' active' : '';
+    html += '<div class="archive-order-row' + isActive + '" onclick="selectArchiveOrder(\'' + order.id + '\')">';
+    html +=   '<div class="aor-info">';
+    html +=     '<div class="aor-num">№' + escapeHtml(shortId) + ' · ' + formatTime(order.created_at) + '</div>';
+    html +=     '<div class="aor-table">' + escapeHtml(tableLabel) + '</div>';
+    html +=   '</div>';
+    html +=   '<span class="aor-status ' + statusClass + '">' + (status === 'completed' ? '✓' : status === 'cancelled' ? '✕' : status === 'paused' ? '⏸' : '•') + '</span>';
+    html +=   '<div class="aor-total">' + formatMoney(total) + '</div>';
+    html += '</div>';
+  });
+  listDiv.innerHTML = html;
+}
+
+// Filter orders in real-time as the user types in the search box
+function filterArchiveOrders() {
+  var input = document.getElementById('archive-search');
+  if (!input) return;
+  _archiveSearchQuery = input.value;
+  renderArchiveList();
+}
+
+// Clear the search field and show all orders
+function clearArchiveSearch() {
+  var input = document.getElementById('archive-search');
+  if (input) input.value = '';
+  _archiveSearchQuery = '';
+  renderArchiveList();
+}
+
+// Select an order from the list — show its details on the right
+function selectArchiveOrder(orderId) {
+  _archiveSelectedId = orderId;
+  // Re-render list to highlight the selected row
+  renderArchiveList();
+  // Find the order in the cached array
+  var order = _archiveOrders.find(function(o) { return o.id === orderId; });
+  if (!order) return;
+  renderArchiveDetail(order);
+}
+
+// Render the full order details on the right panel
+function renderArchiveDetail(order) {
+  var detailDiv = document.getElementById('archive-order-detail');
+  if (!detailDiv) return;
+  var shortId = order.id.length > 6 ? order.id.substring(order.id.length - 6) : order.id;
+  var tableLabel = formatTableLabel(order);
+  if (state.tableLabelOverride && state.tableLabelOverride[order.id]) {
+    tableLabel = state.tableLabelOverride[order.id];
+  }
+  var items = order.items || [];
+  var total = Number(order.total) || 0;
+  var status = order.status || 'accepted';
+  var statusLabel = status === 'completed' ? 'Завершён' :
+                    status === 'cancelled' ? 'Отменён' :
+                    status === 'paused' ? 'На паузе' :
+                    status === 'accepted' ? 'Принят' : status;
+  var statusColor = status === 'completed' ? 'var(--success)' :
+                    status === 'cancelled' ? 'var(--danger)' :
+                    status === 'paused' ? '#ff9800' :
+                    'var(--warning)';
+  // Build items HTML
+  var itemsHtml = '';
+  if (items.length === 0) {
+    itemsHtml = '<p style="color:var(--text-muted);text-align:center;padding:20px;">В заказе нет позиций</p>';
+  } else {
+    items.forEach(function(it) {
+      var nameLine = escapeHtml(it.name);
+      if (it.modification_name) nameLine += ' <span style="color:var(--primary);font-size:0.85rem;">· ' + escapeHtml(it.modification_name) + '</span>';
+      if (it.name_translation) nameLine += '<div style="font-size:0.8rem;color:var(--text-muted);font-style:italic;">' + escapeHtml(it.name_translation) + '</div>';
+      if (it.comment) nameLine += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">💬 ' + escapeHtml(it.comment) + '</div>';
+      var lineTotal = Number(it.price) * Number(it.quantity);
+      itemsHtml += '<div class="adc-item">' +
+        '<div class="adc-item-name">' + nameLine + '</div>' +
+        '<div class="adc-item-qty">' + it.quantity + ' шт × ' + formatMoney(it.price) + '</div>' +
+        '<div class="adc-item-price">' + formatMoney(lineTotal) + '</div>' +
+      '</div>';
+    });
+  }
+  // Build detail HTML
+  var html = '<div class="archive-detail-card">';
+  html += '<div class="adc-header">';
+  html +=   '<div>';
+  html +=     '<div class="adc-table">' + escapeHtml(tableLabel) + '</div>';
+  html +=     '<div class="adc-meta">№' + escapeHtml(shortId) + ' · ' + formatDateTime(order.created_at) + ' · ' + order.guests + ' чел.</div>';
+  if (order.waiter_name) html += '<div class="adc-meta">Официант: ' + escapeHtml(order.waiter_name) + '</div>';
+  if (order.waiter_note) html += '<div class="adc-meta" style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-radius:4px;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>';
+  if (order.cancel_reason) html += '<div class="adc-meta" style="margin-top:6px;padding:6px 10px;background:#ffebee;border-radius:4px;color:var(--danger);">✕ Причина отмены: ' + escapeHtml(order.cancel_reason) + '</div>';
+  html +=   '</div>';
+  html +=   '<span style="background:' + statusColor + ';color:#fff;padding:4px 12px;border-radius:12px;font-size:0.85rem;font-weight:700;white-space:nowrap;">' + statusLabel + '</span>';
+  html += '</div>';
+  html += '<div class="adc-items">' + itemsHtml + '</div>';
+  if (order.payment_method) {
+    var payLabel = order.payment_method === 'cash' ? '💵 Наличные' : order.payment_method === 'card' ? '💳 Карта' : order.payment_method === 'mixed' ? '💵 + 💳 Смешанная' : order.payment_method;
+    html += '<div style="margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:6px;font-size:0.9rem;"><b>Оплата:</b> ' + payLabel + '</div>';
+  }
+  html += '<div class="adc-total">Итого: ' + formatMoney(total) + '</div>';
+  html += '</div>';
+  detailDiv.innerHTML = html;
 }
 
 /* ---------- ORDER DETAIL ---------- */
