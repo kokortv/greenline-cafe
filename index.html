@@ -331,11 +331,9 @@
     border-left: 4px solid var(--info);
     opacity: 0.7;
   }
-  /* Added-later items inside an accepted order — distinct green tint */
-  .cart-item.added-later {
-    background: #f1f8f4;
-    border-left: 4px solid var(--success);
-  }
+  /* Added-later items are wrapped in .order-added-group (see renderOrderDetail).
+     The group block itself has the green highlight — individual items inside
+     keep their normal cart-item styling so the block reads as one unit. */
   .cart-item .ci-cat-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -3813,8 +3811,8 @@ async function renderOrderDetail() {
 
       itemGroups.forEach(function(group, groupIdx) {
         var isAddedLater = group.time !== firstGroupTime;
-        // If this is an "added later" group with multiple items, check if they share
-        // the same comment — if so, show it once for the group instead of per-item.
+        // For added-later groups: if multiple items share the same comment, show it once
+        // under the whole group. If only 1 item, show its comment under that item.
         var sharedComment = null;
         if (isAddedLater && group.items.length > 1) {
           var allSame = true;
@@ -3824,15 +3822,12 @@ async function renderOrderDetail() {
           }
           if (allSame && firstComment) sharedComment = firstComment;
         }
-        // Wrapper for added-later groups
+        // Wrapper for added-later groups — single highlighted block containing all items
+        var groupWrapper = null;
         if (isAddedLater) {
-          var groupWrapper = document.createElement('div');
+          groupWrapper = document.createElement('div');
           groupWrapper.className = 'order-added-group';
           groupWrapper.style.cssText = 'background:#e8f5e9;border-left:4px solid var(--success);border-radius:8px;padding:8px 10px;margin-bottom:10px;';
-          var groupLabel = document.createElement('div');
-          groupLabel.style.cssText = 'font-size:0.78rem;font-weight:700;color:var(--success);margin-bottom:6px;';
-          groupLabel.textContent = '➕ Добавлено позже';
-          groupWrapper.appendChild(groupLabel);
           itemsDiv.appendChild(groupWrapper);
         }
         group.items.forEach(function(item) {
@@ -3845,8 +3840,6 @@ async function renderOrderDetail() {
           let cardClass = 'cart-item';
           if (isServed) cardClass += ' served';
           else if (isReady) cardClass += ' ready';
-          // Added-later items get a distinct background
-          if (isAddedLater) cardClass += ' added-later';
           card.className = cardClass;
           card.dataset.itemId = item.id;
           // Build the dish name line: optional category badge + dish name + qty + status badge
@@ -3856,8 +3849,19 @@ async function renderOrderDetail() {
           // Quantity shown inline after the dish name
           const qtyBadge = ' <span style="color:var(--text-muted);font-weight:500;font-size:0.9rem;">· ' + item.quantity + ' шт</span>';
           const nameLine = formatItemLabel(item) + qtyBadge + statusBadge;
-          // Show per-item comment only if it's NOT the shared group comment
-          var showItemComment = item.comment && sharedComment === null;
+          // Show per-item comment only when:
+          //  - single added item (no shared comment logic applies)
+          //  - OR multiple items but each has a different comment
+          var showItemComment = false;
+          if (isAddedLater) {
+            // Single item in the group → show its comment under it
+            if (group.items.length === 1 && item.comment) showItemComment = true;
+            // Multiple items but no shared comment → show each item's own comment
+            if (group.items.length > 1 && sharedComment === null && item.comment) showItemComment = true;
+          } else {
+            // Original order items — show comment if present
+            if (item.comment) showItemComment = true;
+          }
           card.innerHTML =
             '<div class="ci-top">' +
               '<div class="ci-name">' + nameLine + '</div>' +
@@ -3886,11 +3890,11 @@ async function renderOrderDetail() {
             itemsDiv.appendChild(card);
           }
         });
-        // Shared group comment — shown once at the bottom of the group
+        // Shared group comment — shown ONCE at the bottom of the group block
         if (sharedComment) {
           var commentDiv = document.createElement('div');
-          commentDiv.style.cssText = 'margin-top:4px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);';
-          commentDiv.innerHTML = '<b>Пояснение к добавленным блюдам:</b> ' + escapeHtml(sharedComment);
+          commentDiv.style.cssText = 'margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);';
+          commentDiv.innerHTML = '<b>Пояснение:</b> ' + escapeHtml(sharedComment);
           groupWrapper.appendChild(commentDiv);
         }
       });
