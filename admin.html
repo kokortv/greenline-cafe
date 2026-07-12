@@ -701,10 +701,6 @@
         <input type="checkbox" id="set-sound">
         <label for="set-sound" style="margin:0;">Звуковые оповещения для официанта (когда блюдо готово)</label>
       </div>
-      <div class="form-group checkbox-field">
-        <input type="checkbox" id="set-dish-comments" checked>
-        <label for="set-dish-comments" style="margin:0;">Показывать комментарии к блюдам в заказе</label>
-      </div>
 
       <h3 style="margin:16px 0 8px;font-size:1rem;">Категории «бар» (без подачи)</h3>
       <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 8px;">
@@ -1625,7 +1621,6 @@ function populateSettingsForm() {
   document.getElementById('set-stock-threshold').value = APP_DATA.settings.stock_threshold || 5;
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
-  document.getElementById('set-dish-comments').checked = String(APP_DATA.settings.dish_comments) !== 'false';
   renderBarCategoriesList();
   updateTranslationLangLabel();
 }
@@ -1724,7 +1719,6 @@ async function saveSettings() {
     stock_tracking: document.getElementById('set-stock-tracking').checked ? 'true' : 'false',
     stock_threshold: document.getElementById('set-stock-threshold').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false',
-    dish_comments: document.getElementById('set-dish-comments').checked ? 'true' : 'false',
     bar_categories: JSON.stringify(collectBarCategories())
   };
   try {
@@ -2313,12 +2307,35 @@ async function viewOrder(orderId) {
         '<div><b>Создан:</b> ' + formatDateTime(order.created_at) + '</div>' +
         '<div><b>Завершён:</b> ' + (order.completed_at ? formatDateTime(order.completed_at) : '—') + '</div>' +
       '</div>' +
-      (order.waiter_note ? '<div style="margin-bottom:16px;padding:8px 12px;background:#fff8e1;border-radius:6px;font-size:0.9rem;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
+      // Order comment — editable by admin
+      '<div style="margin-bottom:16px;">' +
+        '<label style="display:block;font-weight:700;margin-bottom:4px;">Комментарий к заказу:</label>' +
+        '<div style="display:flex;gap:6px;align-items:flex-start;">' +
+          '<textarea id="admin-order-note" rows="2" placeholder="Нет комментария..." ' +
+            'style="flex:1;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:' + (order.waiter_note ? '#fff8e1' : '#fff') + ';">' + escapeHtml(order.waiter_note || '') + '</textarea>' +
+          '<button type="button" class="btn btn-primary" style="flex:none;padding:10px 14px;" onclick="adminSaveOrderNote(\'' + order.id + '\')" title="Сохранить комментарий">💾</button>' +
+        '</div>' +
+      '</div>' +
       cancelReasonHtml +
       editHintHtml +
       itemsHtml +
       '<div style="text-align:right;font-size:1.5rem;font-weight:800;color:var(--primary);">Итого: ' + formatMoney(order.total) + '</div>';
     openModal('modal-order');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Admin-only: save the order-level comment (waiter_note)
+async function adminSaveOrderNote(orderId) {
+  const ta = document.getElementById('admin-order-note');
+  if (!ta) return;
+  const note = ta.value;
+  try {
+    await apiPost('updateOrderNote', { order_id: orderId, note: note });
+    showToast('Комментарий сохранён', 'success');
+    // Update local state so the yellow background reflects "has note"
+    ta.style.background = note.trim() ? '#fff8e1' : '#fff';
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }

@@ -761,29 +761,32 @@
       <div class="order-panel-left">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <button class="btn btn-outline" id="order-back-btn" onclick="cancelNewOrder()">← Столы</button>
-          <div id="order-context" style="font-weight:600;font-size:0.9rem;text-align:right;"></div>
+          <div id="order-context" style="font-weight:700;font-size:1.15rem;text-align:right;color:var(--primary);"></div>
         </div>
         <div id="order-guests-section">
-          <h3 style="font-size:0.95rem;color:var(--text-muted);margin:8px 0;">Количество гостей</h3>
-          <!-- Editable stepper — shown for NEW orders only -->
-          <div class="guests-stepper" id="guests-stepper-editable">
-            <button onclick="changeGuests(-1)">−</button>
-            <div class="guests-value" id="guests-value">1</div>
-            <button onclick="changeGuests(1)">+</button>
+          <div style="display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap;">
+            <h3 style="font-size:0.95rem;color:var(--text-muted);margin:0;">Количество гостей</h3>
+            <span style="color:var(--text-muted);font-size:0.95rem;">—</span>
+            <!-- Editable stepper — shown for NEW orders only -->
+            <div class="guests-stepper" id="guests-stepper-editable">
+              <button onclick="changeGuests(-1)">−</button>
+              <div class="guests-value" id="guests-value" style="font-size:1.2rem;font-weight:700;">1</div>
+              <button onclick="changeGuests(1)">+</button>
+            </div>
+            <!-- Static display — shown when adding to an existing order (guests can't change) -->
+            <div id="guests-static-display" style="display:none;font-size:1.3rem;font-weight:800;color:var(--text);">1</div>
           </div>
-          <!-- Static display — shown when adding to an existing order (guests can't change) -->
-          <div id="guests-static-display" style="display:none;font-size:1.1rem;font-weight:700;padding:8px 0;">1</div>
         </div>
         <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Тип заказа</h3>
         <div class="grid grid-4" id="main-cats"></div>
         <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Добавленные блюда</h3>
         <div id="order-cart-items" style="flex:1;overflow-y:auto;min-height:60px;"></div>
         <div style="margin:8px 0;">
-          <textarea id="order-comment" rows="2" placeholder="Общий комментарий к заказу..." 
-            style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;"
-            oninput="state.orderComment = this.value;"></textarea>
-          <div style="display:flex;justify-content:flex-end;margin-top:4px;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="saveOrderCommentBtn()" title="Сохранить комментарий">💾 Сохранить</button>
+          <div style="display:flex;gap:6px;align-items:stretch;">
+            <textarea id="order-comment" rows="3" placeholder="Комментарий к заказу..." 
+              style="flex:1;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;"
+              oninput="state.orderComment = this.value;"></textarea>
+            <button type="button" class="btn btn-outline" style="flex:none;padding:0 14px;" onclick="saveOrderCommentBtn()" title="Сохранить комментарий">💾</button>
           </div>
         </div>
       </div>
@@ -1845,9 +1848,9 @@ function renderOrderCart() {
       // Per-item "пояснение" — only shown when adding to an existing order
       if (showPerItemNote) {
         html +=   '<div style="grid-column:1 / -1;margin-top:4px;">' +
-          '<input type="text" class="cart-item-note-input" placeholder="Пояснение к блюду..." value="' + escapeHtml(item.comment || '') + '" ' +
+          '<textarea rows="3" class="cart-item-note-input" placeholder="Пояснение..." ' +
             'oninput="setCartComment(' + idx + ', this.value)" ' +
-            'style="width:100%;padding:6px 10px;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;background:#fff8e1;color:var(--text);">' +
+            'style="width:100%;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(item.comment || '') + '</textarea>' +
         '</div>';
       }
       html += '</div>';
@@ -2481,12 +2484,6 @@ function renderCartItems() {
         '<input type="number" value="' + item.quantity + '" onchange="setCartQty(' + idx + ', Number(this.value))">' +
         '<button onclick="changeCartQty(' + idx + ', 1)">+</button>' +
       '</div>';
-    if (String(APP_DATA.settings.dish_comments) !== 'false') {
-      card.innerHTML += '<div class="ci-comment">' +
-        '<input type="text" placeholder="' + (item.needs_cooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment) + '" ' +
-        'onchange="setCartComment(' + idx + ', this.value)">' +
-      '</div>';
-    }
     div.appendChild(card);
   });
   document.getElementById('cart-grand-total').textContent = formatMoney(total);
