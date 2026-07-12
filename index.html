@@ -163,6 +163,17 @@
     padding-bottom: 8px;
     margin-bottom: 16px;
   }
+  /* Search box above subcat tabs in the order screen */
+  .menu-search-box {
+    display: flex; gap: 6px; margin-bottom: 8px;
+  }
+  .menu-search-box input {
+    flex: 1; min-width: 0; padding: 10px 12px; font-size: 0.95rem;
+    border: 2px solid var(--border); border-radius: 8px;
+  }
+  .menu-search-box input:focus {
+    outline: none; border-color: var(--primary);
+  }
   .subcat-tab {
     padding: 12px 22px;
     background: white;
@@ -924,6 +935,10 @@
       </div>
       <!-- RIGHT: menu -->
       <div class="order-panel-right">
+        <div class="menu-search-box">
+          <input type="text" id="menu-search" placeholder="🔍 Поиск блюда..." oninput="filterMenuItems()">
+          <button class="btn btn-outline" onclick="clearMenuSearch()" title="Очистить" style="padding:6px 10px;flex:none;">✕</button>
+        </div>
         <div class="subcat-tabs" id="subcat-tabs"></div>
         <div class="grid grid-auto" id="menu-items"></div>
       </div>
@@ -1968,6 +1983,11 @@ function openOrderScreen() {
   if (staticGuests) staticGuests.style.display = state.addingToOrder ? 'block' : 'none';
   const commentEl = document.getElementById('order-comment');
   if (commentEl) commentEl.value = state.orderComment || '';
+  // Clear the menu search field when (re)opening the order screen
+  const menuSearchEl = document.getElementById('menu-search');
+  if (menuSearchEl) menuSearchEl.value = '';
+  const menuTabsEl = document.getElementById('subcat-tabs');
+  if (menuTabsEl) menuTabsEl.style.display = '';
   renderMainCats();
   renderOrderCart();
   renderMenu(); // render the menu area (shows "select category" if mainCategory is null)
@@ -2218,6 +2238,9 @@ function selectMainCategory(cat) {
 
 function renderMenu() {
   const mainCat = state.mainCategory;
+  // Show/hide the menu search box based on whether a main category is selected
+  const searchBox = document.querySelector('.menu-search-box');
+  if (searchBox) searchBox.style.display = mainCat ? 'flex' : 'none';
   if (!mainCat) {
     // No category selected yet — clear the menu area and show a full-width prompt.
     // We override the grid layout on #menu-items with display:block so the
@@ -2384,6 +2407,94 @@ function minModPrice(item) {
   return item.modifications.reduce(function(min, m) {
     return Math.min(min, Number(m.price) || 0);
   }, Infinity);
+}
+
+// ===== Menu search =====
+// When the waiter types in the search box above the subcat tabs, we show a
+// flat list of all dishes (across all subcategories of the current main
+// category) whose name or translation matches the query. The subcat tabs
+// are hidden while searching. Clearing the search restores the normal view.
+function filterMenuItems() {
+  var input = document.getElementById('menu-search');
+  if (!input) return;
+  var query = input.value.toLowerCase().trim();
+  var tabsDiv = document.getElementById('subcat-tabs');
+  var itemsDiv = document.getElementById('menu-items');
+  if (!itemsDiv || !state.mainCategory) return;
+  if (!query) {
+    // No query → restore normal subcat view
+    if (tabsDiv) tabsDiv.style.display = '';
+    renderMenu();
+    return;
+  }
+  // Hide subcat tabs while searching
+  if (tabsDiv) tabsDiv.style.display = 'none';
+  // Find matching items across ALL subcategories of the current main category
+  // (plus direct items of the main category itself)
+  var mainCat = state.mainCategory;
+  var subcatIds = APP_DATA.categories
+    .filter(function(c) { return c.parent_id === mainCat.id; })
+    .map(function(c) { return c.id; });
+  var matches = APP_DATA.menu.filter(function(m) {
+    // Must belong to this main category (either directly or via a subcategory)
+    var belongsToMain = !m.category_id ||
+                        m.category_id === mainCat.id ||
+                        subcatIds.indexOf(m.category_id) >= 0;
+    if (!belongsToMain) return false;
+    // Match by name, translation, or modification name
+    var name = String(m.name || '').toLowerCase();
+    var trans = String(m.name_translation || '').toLowerCase();
+    if (name.indexOf(query) >= 0 || trans.indexOf(query) >= 0) return true;
+    if (m.modifications) {
+      for (var i = 0; i < m.modifications.length; i++) {
+        if (String(m.modifications[i].name || '').toLowerCase().indexOf(query) >= 0) return true;
+      }
+    }
+    return false;
+  });
+  // Sort matches by name
+  matches.sort(function(a, b) {
+    return String(a.name).localeCompare(String(b.name));
+  });
+  // Render
+  itemsDiv.style.display = '';
+  itemsDiv.innerHTML = '';
+  if (matches.length === 0) {
+    itemsDiv.innerHTML =
+      '<div style="text-align:center;padding:40px 20px;color:var(--text-muted);">' +
+        '<div style="font-size:2.4rem;opacity:0.35;margin-bottom:8px;">🔍</div>' +
+        '<p style="font-size:0.95rem;margin:0;">Ничего не найдено по запросу «' + escapeHtml(input.value) + '»</p>' +
+      '</div>';
+    return;
+  }
+  // Render matching items using the same card layout as renderMenu
+  matches.forEach(function(item) {
+    var card = document.createElement('div');
+    card.className = 'menu-item-card';
+    var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+    var priceLabel = hasMods
+      ? 'от ' + formatMoney(minModPrice(item))
+      : formatMoney(item.price);
+    card.innerHTML =
+      '<div class="item-name">' + escapeHtml(item.name) +
+        (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
+      '</div>' +
+      (item.name_translation ? '<div class="item-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
+      '<div class="item-price">' + priceLabel + '</div>' +
+      '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
+    card.querySelector('.item-add-btn').onclick = function() {
+      if (hasMods) showModificationPicker(item);
+      else addToCart(item);
+    };
+    itemsDiv.appendChild(card);
+  });
+}
+
+// Clear the menu search field and restore the normal subcat view
+function clearMenuSearch() {
+  var input = document.getElementById('menu-search');
+  if (input) input.value = '';
+  filterMenuItems();
 }
 
 // Show a modal/bottom-sheet with the list of modifications for a menu item.
