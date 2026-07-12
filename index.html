@@ -85,21 +85,27 @@
     z-index: 2;
   }
 
-  /* Virtual tables (Бар, С собой) — different color, shared */
+  /* Virtual tables (Бар, С собой) — distinct light-blue background so they
+     visually stand apart from numbered tables at a glance. */
   .table-btn.virtual {
-    background: #e3f2fd;
-    color: var(--info);
-    border-color: var(--info);
+    background: #e3f2fd !important;
+    color: var(--info) !important;
+    border-color: var(--info) !important;
+    border-style: dashed;
+    border-width: 2px;
   }
   .table-btn.virtual.has-order {
-    background: var(--info);
-    color: white;
-    border-color: var(--info);
+    background: var(--info) !important;
+    color: white !important;
+    border-color: var(--info) !important;
+    border-style: solid;
   }
-  .table-btn.virtual.has-order .table-label { color: white; }
+  .table-btn.virtual.has-order .table-label { color: white !important; }
   .table-btn.virtual.selected {
     background: var(--info) !important;
     color: white !important;
+    border-color: var(--info) !important;
+    border-style: solid;
     box-shadow: 0 0 0 4px rgba(25,118,210,0.3);
   }
 
