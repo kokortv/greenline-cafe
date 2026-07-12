@@ -352,6 +352,8 @@
     border-left: 5px solid var(--warning);
   }
   .order-card.completed { border-left-color: var(--success); opacity: 0.8; }
+  /* Virtual table orders — light-blue background + blue left border */
+  .order-card.virtual-order { border-left-color: var(--info) !important; background: #e3f2fd !important; }
   .order-card .oc-header {
     display: flex;
     justify-content: space-between;
@@ -1074,8 +1076,21 @@ let state = {
   // Map: { [orderId]: "custom label" }
   // Applied only to numbered tables, only while the order is open.
   // Cleared when the order is completed or cancelled.
-  tableLabelOverride: {}
+  // Persisted to localStorage so it survives page reloads.
+  tableLabelOverride: (function() {
+    try {
+      var raw = localStorage.getItem('tableLabelOverride');
+      return raw ? JSON.parse(raw) : {};
+    } catch(e) { return {}; }
+  })()
 };
+
+// Persist the table-label override map to localStorage
+function saveTableLabelOverride() {
+  try {
+    localStorage.setItem('tableLabelOverride', JSON.stringify(state.tableLabelOverride));
+  } catch(e) { /* ignore */ }
+}
 
 /* ---------- Boot ---------- */
 async function init() {
@@ -1611,13 +1626,15 @@ function renderHome() {
     // Look up the custom label for this table number (if any)
     const tableInfo = numberedTables.find(function(t) { return t.number === i; });
     const customLabel = tableInfo && tableInfo.label ? tableInfo.label : '';
-    const displayName = customLabel || String(i);
     // Find the current waiter's active order on this table (if any)
     const myOrder = state.activeOrders.find(function(o) {
       return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered') &&
              (o.status === 'accepted' || o.status === 'paused');
     });
     const hasOrder = !!myOrder;
+    // If there's a table-label override for this order, show it instead of the number
+    var override = myOrder ? (state.tableLabelOverride[myOrder.id] || null) : null;
+    const displayName = override || customLabel || String(i);
     // Find table status (free / mine / other)
     const ts = state.tableStatuses.find(function(t) { return t.table === i && t.type === 'numbered'; });
     const lockedByOther = ts && ts.status === 'other';
@@ -2700,6 +2717,20 @@ async function refreshActiveOrders() {
     state.activeOrders = newOrders;
     state.initialLoadDone = true;
 
+    // Clean up stale table-label overrides — remove entries for orders that
+    // are no longer active (completed/cancelled by admin, etc.)
+    if (state.tableLabelOverride) {
+      const activeIds = new Set(newOrders.map(function(o) { return o.id; }));
+      let changed = false;
+      Object.keys(state.tableLabelOverride).forEach(function(oid) {
+        if (!activeIds.has(oid)) {
+          delete state.tableLabelOverride[oid];
+          changed = true;
+        }
+      });
+      if (changed) saveTableLabelOverride();
+    }
+
     updateBadge();
     // Stale-while-revalidate: update UI immediately with new data
     if (document.getElementById('screen-home').classList.contains('active')) {
@@ -3012,9 +3043,18 @@ function renderActiveOrdersList() {
     });
     const orderBarOnly = isOrderBarOnly(items);
     const canComplete = allServed || orderBarOnly;
+    // Apply table-label override if set for this order (numbered tables only)
+    const override = state.tableLabelOverride[order.id];
+    const tableLabel = override || formatTableLabel(order);
+    // Virtual/tab orders get a light-blue background + blue left border
+    const isVirtualOrder = order.table_type === 'virtual' || order.table_type === 'tab';
     const card = document.createElement('div');
-    card.className = 'order-card' + (isPaused ? ' paused' : '');
-    card.style.cssText = isPaused ? 'border-left:5px solid var(--warning);background:#fffde7;' : '';
+    card.className = 'order-card' + (isPaused ? ' paused' : '') + (isVirtualOrder ? ' virtual-order' : '');
+    if (isPaused) {
+      card.style.cssText = 'border-left:5px solid var(--warning);background:#fffde7;';
+    } else if (isVirtualOrder) {
+      card.style.cssText = 'border-left:5px solid var(--info);background:#e3f2fd;';
+    }
     let actions =
       '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть / изменить</button>';
     if (isPaused) {
@@ -3031,7 +3071,7 @@ function renderActiveOrdersList() {
     }
     card.innerHTML =
       '<div class="oc-header">' +
-        '<div class="oc-table">' + escapeHtml(formatTableLabel(order)) +
+        '<div class="oc-table">' + escapeHtml(tableLabel) +
           (isPaused ? ' <span class="pill pill-warning">пауза</span>' : '') +
         '</div>' +
         '<div class="oc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
@@ -3137,25 +3177,16 @@ function saveEditTableLabel(newLabel) {
   } else {
     state.tableLabelOverride[state.currentOrder.id] = trimmed;
   }
-  // Re-render just the info card to show the new label
-  renderOrderDetailInfoCard();
+  saveTableLabelOverride();
+  // Re-render to show the new label
+  renderOrderDetail();
+  // Also update the home screen table blocks + active orders list if visible
+  if (document.getElementById('screen-home').classList.contains('active')) renderHome();
+  if (document.getElementById('screen-orders').classList.contains('active')) renderActiveOrdersList();
 }
 
 function cancelEditTableLabel() {
   // Just re-render — discards the in-progress input
-  renderOrderDetailInfoCard();
-}
-
-// Re-renders ONLY the order-detail info card (without re-fetching the order).
-// Used after a table-label edit so we don't blow away other UI state.
-function renderOrderDetailInfoCard() {
-  if (!state.currentOrder) return;
-  var order = state.currentOrder;
-  var infoDiv = document.getElementById('order-detail-info');
-  if (!infoDiv) return;
-  // Reuse the same rendering logic as renderOrderDetail but skip the items list.
-  // Easiest: re-call renderOrderDetail — it fetches fresh data and re-renders
-  // everything. The label override is in state, so it will be applied.
   renderOrderDetail();
 }
 
@@ -3773,7 +3804,7 @@ async function confirmCompleteOrder() {
     closePaymentModal();
     // Clear the table-label override for this order (the custom name was
     // only valid while the order was open)
-    if (state.tableLabelOverride) delete state.tableLabelOverride[orderId];
+    if (state.tableLabelOverride) { delete state.tableLabelOverride[orderId]; saveTableLabelOverride(); }
     await refreshActiveOrders();
     if (state.currentOrderId === orderId) {
       state.currentOrderId = null;
@@ -3846,7 +3877,7 @@ async function cancelOrder() {
       });
       showToast('Заказ отменён', 'info');
       // Clear the table-label override (cancelled order → table name resets)
-      if (state.tableLabelOverride) delete state.tableLabelOverride[state.currentOrderId];
+      if (state.tableLabelOverride) { delete state.tableLabelOverride[state.currentOrderId]; saveTableLabelOverride(); }
       state.currentOrderId = null;
       await refreshActiveOrders();
       showScreen('home');
