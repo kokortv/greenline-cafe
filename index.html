@@ -85,27 +85,21 @@
     z-index: 2;
   }
 
-  /* Virtual tables (Бар, С собой) — distinct light-blue background so they
-     visually stand apart from numbered tables at a glance. */
+  /* Virtual tables (Бар, С собой) — different color, shared */
   .table-btn.virtual {
-    background: #e3f2fd !important;
-    color: var(--info) !important;
-    border-color: var(--info) !important;
-    border-style: dashed;
-    border-width: 2px;
+    background: #e3f2fd;
+    color: var(--info);
+    border-color: var(--info);
   }
   .table-btn.virtual.has-order {
-    background: var(--info) !important;
-    color: white !important;
-    border-color: var(--info) !important;
-    border-style: solid;
+    background: var(--info);
+    color: white;
+    border-color: var(--info);
   }
-  .table-btn.virtual.has-order .table-label { color: white !important; }
+  .table-btn.virtual.has-order .table-label { color: white; }
   .table-btn.virtual.selected {
     background: var(--info) !important;
     color: white !important;
-    border-color: var(--info) !important;
-    border-style: solid;
     box-shadow: 0 0 0 4px rgba(25,118,210,0.3);
   }
 
@@ -1075,7 +1069,12 @@ let state = {
   dismissedReadyAlerts: new Set(), // alert keys the waiter dismissed
   pollingTimer: null,
   badgePollingTimer: null,
-  tableStatuses: []              // from getTables(): [{table, type, status, waiter_name}]
+  tableStatuses: [],              // from getTables(): [{table, type, status, waiter_name}]
+  // Waiter's temporary per-order table-label overrides.
+  // Map: { [orderId]: "custom label" }
+  // Applied only to numbered tables, only while the order is open.
+  // Cleared when the order is completed or cancelled.
+  tableLabelOverride: {}
 };
 
 /* ---------- Boot ---------- */
@@ -1792,7 +1791,11 @@ function openOrderScreen() {
     let label = '';
     if (state.selectedTabId) label = 'Счёт: ' + (state.selectedTabName || '');
     else if (state.selectedTableType === 'virtual') label = state.selectedVirtualLabel || state.selectedVirtualBase || 'Виртуальный';
-    else label = 'Столик ' + state.selectedTable;
+    else {
+      // Numbered table — use the override if we have one for the current order
+      const override = state.currentOrderId ? state.tableLabelOverride[state.currentOrderId] : null;
+      label = override || ('Столик ' + state.selectedTable);
+    }
     ctxEl.textContent = label;
   }
   // Update back button label based on context
@@ -3079,6 +3082,83 @@ function openOrderDetail(orderId) {
   showScreen('order-detail');
 }
 
+// ===== Editable table label (numbered tables only) =====
+// The waiter can rename a numbered table while an order is open — the custom
+// name lives in state.tableLabelOverride[orderId] and is cleared when the
+// order completes or is cancelled. Not persisted to the DB.
+
+// Replaces the label span + pencil button with an inline text input + checkmark.
+function startEditTableLabel() {
+  var span = document.getElementById('order-table-label-text');
+  var editBtn = document.getElementById('order-table-label-edit-btn');
+  if (!span || !editBtn) return;
+  var currentText = span.textContent;
+  var parent = span.parentNode;
+  // Build the edit row
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'order-table-label-input';
+  input.value = currentText;
+  input.style.cssText = 'font-size:1.5rem;font-weight:700;padding:4px 8px;border:2px solid var(--primary);border-radius:6px;flex:1;min-width:0;color:var(--text);background:#fff;';
+  // Replace span + edit button with input + checkmark + cancel
+  var checkBtn = document.createElement('button');
+  checkBtn.type = 'button';
+  checkBtn.innerHTML = '✓';
+  checkBtn.title = 'Сохранить название';
+  checkBtn.style.cssText = 'background:var(--success);color:#fff;border:none;border-radius:6px;width:36px;height:36px;font-size:1.2rem;font-weight:700;cursor:pointer;flex:none;';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.innerHTML = '✕';
+  cancelBtn.title = 'Отмена';
+  cancelBtn.style.cssText = 'background:var(--text-muted);color:#fff;border:none;border-radius:6px;width:36px;height:36px;font-size:1.2rem;font-weight:700;cursor:pointer;flex:none;';
+  // Remove existing children
+  parent.removeChild(span);
+  parent.removeChild(editBtn);
+  parent.appendChild(input);
+  parent.appendChild(checkBtn);
+  parent.appendChild(cancelBtn);
+  input.focus();
+  input.select();
+  // Wire up
+  checkBtn.onclick = function() { saveEditTableLabel(input.value); };
+  cancelBtn.onclick = function() { cancelEditTableLabel(); };
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); saveEditTableLabel(input.value); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEditTableLabel(); }
+  };
+}
+
+function saveEditTableLabel(newLabel) {
+  if (!state.currentOrder) return;
+  var trimmed = (newLabel || '').trim();
+  if (!trimmed) {
+    // Empty → remove override, revert to default
+    delete state.tableLabelOverride[state.currentOrder.id];
+  } else {
+    state.tableLabelOverride[state.currentOrder.id] = trimmed;
+  }
+  // Re-render just the info card to show the new label
+  renderOrderDetailInfoCard();
+}
+
+function cancelEditTableLabel() {
+  // Just re-render — discards the in-progress input
+  renderOrderDetailInfoCard();
+}
+
+// Re-renders ONLY the order-detail info card (without re-fetching the order).
+// Used after a table-label edit so we don't blow away other UI state.
+function renderOrderDetailInfoCard() {
+  if (!state.currentOrder) return;
+  var order = state.currentOrder;
+  var infoDiv = document.getElementById('order-detail-info');
+  if (!infoDiv) return;
+  // Reuse the same rendering logic as renderOrderDetail but skip the items list.
+  // Easiest: re-call renderOrderDetail — it fetches fresh data and re-renders
+  // everything. The label override is in state, so it will be applied.
+  renderOrderDetail();
+}
+
 async function renderOrderDetail() {
   if (!state.currentOrderId) return;
   // Don't re-render while the waiter is actively typing in a comment field —
@@ -3135,11 +3215,36 @@ async function renderOrderDetail() {
       commentBlock =
         '<div style="margin-top:8px;font-size:0.85rem;color:var(--text-muted);font-style:italic;">Без комментария к заказу</div>';
     }
+    // Card color depends on table type:
+    // - numbered tables: white card with red left border (existing)
+    // - virtual tables: light-blue card with blue left border (so they stand out)
+    const isVirtual = order.table_type === 'virtual' || order.table_type === 'tab';
+    const cardBg = isVirtual
+      ? 'linear-gradient(135deg, #e3f2fd 0%, #f5fbff 100%)'
+      : 'linear-gradient(135deg, #fff 0%, #fafafa 100%)';
+    const cardBorder = isVirtual ? 'var(--info)' : 'var(--primary)';
+    // For numbered tables, show a pencil-edit icon next to the table label.
+    // The label is editable while the order is open — edit is stored in
+    // state.tableLabelOverride and applies only until the order completes.
+    const tableLabel = formatTableLabel(order);
+    let tableLabelHtml;
+    if (order.table_type === 'numbered' || !order.table_type) {
+      // Use the override if it exists for this order
+      const override = state.tableLabelOverride && state.tableLabelOverride[order.id];
+      const displayLabel = override || tableLabel;
+      tableLabelHtml =
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span id="order-table-label-text" style="font-size:1.5rem;font-weight:700;">' + escapeHtml(displayLabel) + '</span>' +
+          '<button type="button" id="order-table-label-edit-btn" onclick="startEditTableLabel()" title="Изменить название стола" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;font-size:1rem;line-height:1;">✎</button>' +
+        '</div>';
+    } else {
+      tableLabelHtml = '<div style="font-size:1.5rem;font-weight:700;">' + escapeHtml(tableLabel) + '</div>';
+    }
     infoDiv.innerHTML =
-      '<div class="card" style="background:linear-gradient(135deg, #fff 0%, #fafafa 100%);border-left:4px solid var(--primary);margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">' +
+      '<div class="card" style="background:' + cardBg + ';border-left:4px solid ' + cardBorder + ';margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<div>' +
-            '<div style="font-size:1.5rem;font-weight:700;">' + escapeHtml(formatTableLabel(order)) + '</div>' +
+            tableLabelHtml +
             '<div style="color:var(--text-muted);margin-top:2px;">' +
               order.guests + ' чел. · ' + formatTime(order.created_at) +
             '</div>' +
@@ -3666,6 +3771,9 @@ async function confirmCompleteOrder() {
     const methodLabel = method === 'cash' ? 'наличные' : (method === 'card' ? 'карта' : 'смешанная');
     showToast('Заказ завершён (' + methodLabel + ')', 'success');
     closePaymentModal();
+    // Clear the table-label override for this order (the custom name was
+    // only valid while the order was open)
+    if (state.tableLabelOverride) delete state.tableLabelOverride[orderId];
     await refreshActiveOrders();
     if (state.currentOrderId === orderId) {
       state.currentOrderId = null;
@@ -3737,6 +3845,8 @@ async function cancelOrder() {
         cancel_reason: result.reason
       });
       showToast('Заказ отменён', 'info');
+      // Clear the table-label override (cancelled order → table name resets)
+      if (state.tableLabelOverride) delete state.tableLabelOverride[state.currentOrderId];
       state.currentOrderId = null;
       await refreshActiveOrders();
       showScreen('home');
