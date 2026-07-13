@@ -233,6 +233,7 @@
   }
   .sidebar-parent {
     justify-content: space-between;
+    width: 100%;
   }
   .sidebar-parent span:first-child {
     display: flex;
@@ -337,8 +338,7 @@
   .stock-table th.st-th-name,   .stock-table td.st-td-name   { width: 24%; }
   .stock-table th.st-th-cat,    .stock-table td.st-td-cat    { width: 17%; }
   .stock-table th.st-th-num,    .stock-table td.st-td-num    { width: 11%; text-align: right; }
-  .stock-table th.st-th-center, .stock-table td.st-td-center { width: 11%; text-align: center; }
-  .stock-table th.st-th-action, .stock-table td.st-td-action { width: 15%; padding: 6px 4px; }
+  .stock-table th.st-th-center, .stock-table td.st-td-center { width: 14%; text-align: center; }
 
   .stock-table th {
     background: var(--primary);
@@ -410,8 +410,7 @@
     .stock-table th.st-th-name,   .stock-table td.st-td-name   { width: 30%; }
     .stock-table th.st-th-cat,    .stock-table td.st-td-cat    { width: 20%; }
     .stock-table th.st-th-num,    .stock-table td.st-td-num    { width: 12%; }
-    .stock-table th.st-th-center, .stock-table td.st-td-center { width: 12%; }
-    .stock-table th.st-th-action, .stock-table td.st-td-action { width: 14%; }
+    .stock-table th.st-th-center, .stock-table td.st-td-center { width: 16%; }
   }
   @media (max-width: 480px) {
     .stats-grid { grid-template-columns: 1fr; }
@@ -551,7 +550,7 @@
             <span class="sidebar-arrow" id="stock-arrow">▶</span>
           </button>
           <div class="sidebar-subitems" id="stock-subitems" style="display:none;">
-            <button class="sidebar-subitem active" data-stocksub="items" onclick="openStockSub('items')">Товары</button>
+            <button class="sidebar-subitem active" data-stocksub="items" onclick="openStockSub('items')">Остатки</button>
             <button class="sidebar-subitem" data-stocksub="deliveries" onclick="openStockSub('deliveries')">Поставки</button>
             <button class="sidebar-subitem" data-stocksub="suppliers" onclick="openStockSub('suppliers')">Поставщики</button>
             <button class="sidebar-subitem" data-stocksub="warehouses" onclick="openStockSub('warehouses')">Склады</button>
@@ -564,9 +563,17 @@
         <button class="sidebar-item" data-tab="qrmenu" onclick="switchTab('qrmenu')">
           <span class="sidebar-icon">📱</span> QR-меню
         </button>
-        <button class="sidebar-item" data-tab="statistics" onclick="switchTab('statistics')">
-          <span class="sidebar-icon">📊</span> Статистика
-        </button>
+        <!-- Statistics — parent with sub-items, same pattern as Stock -->
+        <div class="sidebar-group" id="sidebar-group-statistics">
+          <button class="sidebar-item sidebar-parent" data-tab="statistics" onclick="switchTab('statistics')">
+            <span class="sidebar-icon">📊</span> Статистика
+            <span class="sidebar-arrow" id="statistics-arrow">▶</span>
+          </button>
+          <div class="sidebar-subitems" id="statistics-subitems" style="display:none;">
+            <button class="sidebar-subitem active" data-statssub="overview" onclick="openStatisticsSub('overview')">Обзор</button>
+            <button class="sidebar-subitem" data-statssub="shifts" onclick="openStatisticsSub('shifts')">Кассовые смены</button>
+          </div>
+        </div>
         <button class="sidebar-item" data-tab="settings" onclick="switchTab('settings')">
           <span class="sidebar-icon">⚙️</span> Настройки
         </button>
@@ -803,7 +810,7 @@
   <!-- STOCK TAB — main "Склад" with sub-content (navigation is in the sidebar) -->
   <div class="tab-content" id="tab-stock" style="display:none;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <h2 class="section-title" style="margin:0;" id="stock-section-title">Склад — Товары</h2>
+      <h2 class="section-title" style="margin:0;" id="stock-section-title">Склад — Остатки</h2>
       <button class="btn btn-primary" id="stock-refresh-btn" onclick="refreshStockSubTab()">↻ Обновить</button>
     </div>
     <!-- Sub-tab contents (navigation moved to sidebar) -->
@@ -1051,12 +1058,25 @@
 
   <!-- STATISTICS TAB -->
   <div class="tab-content" id="tab-statistics" style="display:none;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 class="section-title" style="margin:0;">📊 Статистика</h2>
-      <button class="btn btn-outline" onclick="renderStatistics()">↻ Обновить</button>
+    <!-- Sub-section: Overview (charts + summary) -->
+    <div class="statssub-content" id="statssub-overview">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 class="section-title" style="margin:0;">📊 Обзор статистики</h2>
+        <button class="btn btn-outline" onclick="renderStatistics()">↻ Обновить</button>
+      </div>
+      <div id="statistics-content">
+        <div class="empty-state"><h3>Загрузка статистики...</h3></div>
+      </div>
     </div>
-    <div id="statistics-content">
-      <div class="empty-state"><h3>Загрузка статистики...</h3></div>
+    <!-- Sub-section: Cash shifts -->
+    <div class="statssub-content" id="statssub-shifts" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 class="section-title" style="margin:0;">💰 Кассовые смены</h2>
+        <button class="btn btn-outline" onclick="renderStatisticsShifts()">↻ Обновить</button>
+      </div>
+      <div id="statistics-shifts-content">
+        <div class="empty-state"><h3>Загрузка...</h3></div>
+      </div>
     </div>
   </div>
 
@@ -1557,6 +1577,14 @@ function switchTab(name) {
     // Collapse Stock sub-items when navigating to another section
     expandStockSidebar(false);
   }
+  // Same pattern for Statistics sub-group
+  if (name === 'statistics') {
+    expandStatisticsSidebar(true);
+    if (!window._currentStatsSub) window._currentStatsSub = 'overview';
+    switchStatisticsSub(window._currentStatsSub);
+  } else {
+    expandStatisticsSidebar(false);
+  }
   if (name === 'orders') { loadOrders(); startOrdersPolling(); }
   else { stopOrdersPolling(); }
   if (name === 'menu') renderMenuList();
@@ -1571,7 +1599,7 @@ function switchTab(name) {
     if (typeof updateCirclePreview === 'function') updateCirclePreview();
     if (typeof updateLivePreview === 'function') updateLivePreview();
   }
-  if (name === 'statistics') renderStatistics();
+  // Statistics sub-tab switching is handled above by switchStatisticsSub()
   // On mobile, close the sidebar after selecting a tab
   closeSidebarOnMobile();
 }
@@ -1596,6 +1624,41 @@ function expandStockSidebar(expand) {
     subitems.style.display = 'none';
     if (arrow) arrow.textContent = '▶';
   }
+}
+
+// ===== Statistics sub-section (same pattern as Stock) =====
+function openStatisticsSub(sub) {
+  switchTab('statistics');
+  switchStatisticsSub(sub);
+}
+
+function expandStatisticsSidebar(expand) {
+  const subitems = document.getElementById('statistics-subitems');
+  const arrow = document.getElementById('statistics-arrow');
+  if (!subitems) return;
+  if (expand) {
+    subitems.style.display = 'flex';
+    if (arrow) arrow.textContent = '▼';
+  } else {
+    subitems.style.display = 'none';
+    if (arrow) arrow.textContent = '▶';
+  }
+}
+
+function switchStatisticsSub(sub) {
+  window._currentStatsSub = sub;
+  // Toggle active state on the sidebar sub-items
+  document.querySelectorAll('[data-statssub]').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.statssub === sub);
+  });
+  // Show/hide sub-content
+  document.querySelectorAll('.statssub-content').forEach(function(c) { c.style.display = 'none'; });
+  const target = document.getElementById('statssub-' + sub);
+  if (target) target.style.display = 'block';
+  // Load data
+  if (sub === 'overview') renderStatistics();
+  if (sub === 'shifts') renderStatisticsShifts();
+  closeSidebarOnMobile();
 }
 
 // Toggle the sidebar open/closed (for mobile)
@@ -3655,7 +3718,7 @@ function switchStockSub(sub) {
   const titleEl = document.getElementById('stock-section-title');
   if (titleEl) {
     const labels = {
-      items: 'Склад — Товары',
+      items: 'Склад — Остатки',
       deliveries: 'Склад — Поставки',
       suppliers: 'Склад — Поставщики',
       warehouses: 'Склад — Склады',
@@ -3705,7 +3768,6 @@ async function loadStockReport() {
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
     html += '<th class="st-th-center">Поставки</th>';
-    html += '<th class="st-th-action">Пополнить</th>';
     html += '</tr></thead><tbody>';
     // Keep a reference to the items so sortStockBy() can re-render the body
     window._stockItems = items;
@@ -3750,25 +3812,25 @@ function renderStockRow(it, tracking) {
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
   // Сумма = остаток × себестоимость
   row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
-  // Поставки — кликабельная ссылка если есть, серый текст если нет
+  // Поставки — кликабельная ссылка "поставки" (expandable inline), или "—"
   if (hasDeliveries) {
     row += '<td class="st-td-center">' +
-      '<a href="#" style="color:var(--primary);font-weight:600;text-decoration:underline;" ' +
-      'onclick="event.preventDefault();showDeliveriesForMenuItem(\'' + it.id + '\', ' + JSON.stringify(escapeHtml(it.name)) + ')">' +
-      deliveriesCount + ' пост.</a></td>';
+      '<a href="#" style="color:var(--primary);font-weight:600;text-decoration:underline;cursor:pointer;" ' +
+      'onclick="event.preventDefault();toggleStockDeliveries(\'' + it.id + '\', this)">поставки</a></td>';
   } else {
     row += '<td class="st-td-center" style="color:var(--text-muted);">—</td>';
   }
-  // Пополнить
-  row += '<td class="st-td-action"><div style="display:flex;align-items:center;gap:4px;">' +
-    '<input type="number" id="stock-input-' + it.id + '" min="0" step="1" placeholder="0" ' +
-      'style="flex:1;min-width:0;padding:8px 4px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;text-align:center;" ' +
-      'onkeydown="if(event.key===\'Enter\'){event.preventDefault();replenishFromInput(\'' + it.id + '\');}">' +
-    '<button type="button" class="replenish-btn" title="Пополнить" ' +
-      'style="flex:none;width:32px;height:32px;border-radius:6px;border:none;background:var(--success);color:#fff;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.15);" ' +
-      'onclick="replenishFromInput(\'' + it.id + '\')">+</button>' +
-    '</div></td>';
   row += '</tr>';
+  // Expandable row for delivery history (hidden by default)
+  if (hasDeliveries) {
+    row += '<tr id="stock-deliveries-' + it.id + '" style="display:none;">';
+    row += '<td colspan="6" style="padding:0;">';
+    row += '<div id="stock-deliveries-content-' + it.id + '" style="padding:8px 12px;background:var(--bg);">';
+    row += '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
+    row += '</div>';
+    row += '</td>';
+    row += '</tr>';
+  }
   return row;
 }
 
@@ -4721,6 +4783,58 @@ async function deleteDeliveryUI(id) {
 }
 
 // Show a modal with the deliveries that contain a specific menu item
+// Toggle the expandable delivery history row under a stock item
+async function toggleStockDeliveries(menuItemId, linkEl) {
+  var row = document.getElementById('stock-deliveries-' + menuItemId);
+  if (!row) return;
+  if (row.style.display !== 'none') {
+    // Already open — close it
+    row.style.display = 'none';
+    if (linkEl) linkEl.textContent = 'поставки';
+    return;
+  }
+  // Open it — load delivery data if not yet loaded
+  row.style.display = 'table-row';
+  if (linkEl) linkEl.textContent = 'скрыть';
+  var contentDiv = document.getElementById('stock-deliveries-content-' + menuItemId);
+  if (!contentDiv) return;
+  // Check if already loaded (skip if content is not "Загрузка...")
+  if (contentDiv.getAttribute('data-loaded') === 'true') return;
+  contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
+  try {
+    var data = await apiGet('getDeliveriesForMenuItem', { menu_item_id: menuItemId });
+    var deliveries = data.deliveries || [];
+    if (deliveries.length === 0) {
+      contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Поставок нет</p>';
+      return;
+    }
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">';
+    html += '<thead><tr style="background:#fff;border-bottom:2px solid var(--border);">';
+    html += '<th style="padding:6px 8px;text-align:left;">Дата поставки</th>';
+    html += '<th style="padding:6px 8px;text-align:left;">Поставщик</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Количество</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Цена за ед.</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Сумма</th>';
+    html += '</tr></thead><tbody>';
+    deliveries.forEach(function(d) {
+      (d.items || []).forEach(function(it) {
+        html += '<tr style="border-bottom:1px solid var(--border);">';
+        html += '<td style="padding:6px 8px;">' + escapeHtml(formatDateTime(d.delivery_date)) + '</td>';
+        html += '<td style="padding:6px 8px;">' + escapeHtml(d.supplier_name || '—') + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right;">' + it.quantity + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right;">' + formatMoney(it.unit_price) + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right;font-weight:700;">' + formatMoney(it.total_price) + '</td>';
+        html += '</tr>';
+      });
+    });
+    html += '</tbody></table>';
+    contentDiv.innerHTML = html;
+    contentDiv.setAttribute('data-loaded', 'true');
+  } catch (err) {
+    contentDiv.innerHTML = '<p style="color:var(--danger);font-size:0.85rem;">Ошибка: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
 async function showDeliveriesForMenuItem(menuItemId, itemName) {
   const contentEl = document.getElementById('item-deliveries-content');
   const nameEl = document.getElementById('item-deliveries-name');
@@ -4764,13 +4878,8 @@ async function renderStatistics() {
   try {
     const data = await apiGet('getOrders', { status: 'all' });
     const orders = (data.orders || []).filter(function(o) { return o.status === 'completed'; });
-    // Fetch all shifts for the "Кассовые смены" table
-    const shiftsData = await apiGet('getAllShifts', {});
-    const allShifts = (shiftsData.shifts || []).slice().sort(function(a, b) {
-      return new Date(b.opened_at || 0) - new Date(a.opened_at || 0);
-    });
-    if (orders.length === 0 && allShifts.length === 0) {
-      content.innerHTML = '<div class="empty-state"><h3>Нет данных</h3><p>Завершённых заказов и смен пока нет. Статистика появится после первых продаж.</p></div>';
+    if (orders.length === 0) {
+      content.innerHTML = '<div class="empty-state"><h3>Нет данных</h3><p>Завершённых заказов пока нет. Статистика появится после первых продаж.</p></div>';
       return;
     }
     // === 1. Revenue by day (last 7 days) ===
@@ -4933,54 +5042,69 @@ async function renderStatistics() {
       html += '</div>';
     }
 
-    // === Cash shifts table ===
-    if (allShifts.length > 0) {
-      html += '<div class="settings-card" style="margin-bottom:16px;">';
-      html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">💰 Кассовые смены</h3>';
-      html += '<div style="overflow-x:auto;">';
-      html += '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">';
-      html += '<thead><tr style="background:var(--primary);color:#fff;">';
-      html += '<th style="padding:8px;text-align:center;width:40px;">#</th>';
-      html += '<th style="padding:8px;text-align:left;">Официант</th>';
-      html += '<th style="padding:8px;text-align:left;">Смена открыта</th>';
-      html += '<th style="padding:8px;text-align:left;">Смена закрыта</th>';
-      html += '<th style="padding:8px;text-align:right;">Начало смены</th>';
-      html += '<th style="padding:8px;text-align:right;">В кассе</th>';
-      html += '<th style="padding:8px;text-align:right;">Разница</th>';
-      html += '</tr></thead><tbody>';
-      allShifts.forEach(function(s, idx) {
-        var isOpen = s.status === 'open' || !s.closed_at;
-        var openingCash = Number(s.opening_cash) || 0;
-        var cashTotal = Number(s.cash_total) || 0;
-        var closingCash = openingCash + cashTotal;
-        var diff = cashTotal; // разница = на сколько касса изменилась = cash_total
-        var rowBg = '';
-        var diffColor = '';
-        if (isOpen) {
-          rowBg = 'background:#fff8e1;';
-          diffColor = 'color:var(--warning);';
-        } else if (diff > 0) {
-          rowBg = 'background:#e8f5e9;';
-          diffColor = 'color:var(--success);font-weight:700;';
-        } else if (diff < 0) {
-          rowBg = 'background:#ffebee;';
-          diffColor = 'color:var(--danger);font-weight:700;';
-        }
-        html += '<tr style="' + rowBg + 'border-bottom:1px solid var(--border);">';
-        html += '<td style="padding:8px;text-align:center;font-weight:600;">' + (idx + 1) + '</td>';
-        html += '<td style="padding:8px;">' + escapeHtml(s.waiter_name || '—') + '</td>';
-        html += '<td style="padding:8px;">' + (s.opened_at ? formatDateTime(s.opened_at) : '—') + '</td>';
-        html += '<td style="padding:8px;">' + (isOpen ? '<span style="color:var(--warning);font-weight:600;">не закрыта</span>' : formatDateTime(s.closed_at)) + '</td>';
-        html += '<td style="padding:8px;text-align:right;">' + formatMoney(openingCash) + '</td>';
-        html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : formatMoney(closingCash)) + '</td>';
-        html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + (isOpen ? '—' : (diff >= 0 ? '+' : '') + formatMoney(diff)) + '</td>';
-        html += '</tr>';
-      });
-      html += '</tbody></table>';
-      html += '</div>';
-      html += '</div>';
-    }
+    content.innerHTML = html;
+  } catch (err) {
+    content.innerHTML = '<div class="empty-state"><h3>Ошибка</h3><p>' + escapeHtml(err.message) + '</p></div>';
+  }
+}
 
+// Render the Cash Shifts sub-section
+async function renderStatisticsShifts() {
+  const content = document.getElementById('statistics-shifts-content');
+  if (!content) return;
+  content.innerHTML = '<div class="empty-state"><h3>Загрузка...</h3></div>';
+  try {
+    const shiftsData = await apiGet('getAllShifts', {});
+    const allShifts = (shiftsData.shifts || []).slice().sort(function(a, b) {
+      return new Date(b.opened_at || 0) - new Date(a.opened_at || 0);
+    });
+    if (allShifts.length === 0) {
+      content.innerHTML = '<div class="empty-state"><h3>Нет смен</h3><p>Кассовые смены появятся после первого открытия смены официантом.</p></div>';
+      return;
+    }
+    var html = '<div class="settings-card" style="margin-bottom:16px;">';
+    html += '<div style="overflow-x:auto;">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">';
+    html += '<thead><tr style="background:var(--primary);color:#fff;">';
+    html += '<th style="padding:8px;text-align:center;width:40px;">#</th>';
+    html += '<th style="padding:8px;text-align:left;">Официант</th>';
+    html += '<th style="padding:8px;text-align:left;">Смена открыта</th>';
+    html += '<th style="padding:8px;text-align:left;">Смена закрыта</th>';
+    html += '<th style="padding:8px;text-align:right;">Начало смены</th>';
+    html += '<th style="padding:8px;text-align:right;">В кассе</th>';
+    html += '<th style="padding:8px;text-align:right;">Разница</th>';
+    html += '</tr></thead><tbody>';
+    allShifts.forEach(function(s, idx) {
+      var isOpen = s.status === 'open' || !s.closed_at;
+      var openingCash = Number(s.opening_cash) || 0;
+      var cashTotal = Number(s.cash_total) || 0;
+      var closingCash = openingCash + cashTotal;
+      var diff = cashTotal;
+      var rowBg = '';
+      var diffColor = '';
+      if (isOpen) {
+        rowBg = 'background:#fff8e1;';
+        diffColor = 'color:var(--warning);';
+      } else if (diff > 0) {
+        rowBg = 'background:#e8f5e9;';
+        diffColor = 'color:var(--success);font-weight:700;';
+      } else if (diff < 0) {
+        rowBg = 'background:#ffebee;';
+        diffColor = 'color:var(--danger);font-weight:700;';
+      }
+      html += '<tr style="' + rowBg + 'border-bottom:1px solid var(--border);">';
+      html += '<td style="padding:8px;text-align:center;font-weight:600;">' + (idx + 1) + '</td>';
+      html += '<td style="padding:8px;">' + escapeHtml(s.waiter_name || '—') + '</td>';
+      html += '<td style="padding:8px;">' + (s.opened_at ? formatDateTime(s.opened_at) : '—') + '</td>';
+      html += '<td style="padding:8px;">' + (isOpen ? '<span style="color:var(--warning);font-weight:600;">не закрыта</span>' : formatDateTime(s.closed_at)) + '</td>';
+      html += '<td style="padding:8px;text-align:right;">' + formatMoney(openingCash) + '</td>';
+      html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : formatMoney(closingCash)) + '</td>';
+      html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + (isOpen ? '—' : (diff >= 0 ? '+' : '') + formatMoney(diff)) + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '</div>';
+    html += '</div>';
     content.innerHTML = html;
   } catch (err) {
     content.innerHTML = '<div class="empty-state"><h3>Ошибка</h3><p>' + escapeHtml(err.message) + '</p></div>';
