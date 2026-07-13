@@ -564,6 +564,9 @@
         <button class="sidebar-item" data-tab="qrmenu" onclick="switchTab('qrmenu')">
           <span class="sidebar-icon">📱</span> QR-меню
         </button>
+        <button class="sidebar-item" data-tab="statistics" onclick="switchTab('statistics')">
+          <span class="sidebar-icon">📊</span> Статистика
+        </button>
         <button class="sidebar-item" data-tab="settings" onclick="switchTab('settings')">
           <span class="sidebar-icon">⚙️</span> Настройки
         </button>
@@ -681,14 +684,6 @@
           Полезно для заведений без кухни (только бар/кофейня).
         </p>
       </div>
-      <div class="form-group">
-        <label>Касса (наличные)</label>
-        <input type="number" id="set-cash-register" min="0" step="0.01" value="0" placeholder="0">
-        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">
-          Текущая сумма наличных в кассе. Официанты видят это при открытии смены.
-          При закрытии смены наличные за смену плюсуются автоматически.
-        </p>
-      </div>
       <div class="form-group checkbox-field">
         <input type="checkbox" id="set-stock-tracking">
         <label for="set-stock-tracking" style="margin:0;">Учитывать товары на складе</label>
@@ -711,6 +706,24 @@
       <div id="bar-categories-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
       <datalist id="bar-categories-datalist"></datalist>
       <button type="button" class="btn btn-outline" style="width:100%;" onclick="addBarCategoryRow()">+ Добавить категорию</button>
+
+      <h3 style="margin:16px 0 8px;font-size:1rem;">Отладка и статистика</h3>
+      <div class="form-group checkbox-field">
+        <input type="checkbox" id="set-debug-mode">
+        <label for="set-debug-mode" style="margin:0;">Режим отладки (показать кнопку удаления заказов)</label>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;width:100%;">
+          В режиме отладки у каждого заказа появляется кнопка 🗑 для безвозвратного удаления.
+          Используйте при настройке системы, чтобы убрать тестовые заказы.
+        </p>
+      </div>
+      <div style="margin-top:12px;padding:12px;background:#ffebee;border-radius:8px;border:1px solid var(--danger);">
+        <h4 style="margin:0 0 8px;font-size:0.95rem;color:var(--danger);">⚠ Опасная зона</h4>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 10px;">
+          Сброс статистики удалит ВСЕ завершённые и отменённые заказы. Это действие необратимо.
+          Используйте только после завершения настройки и тестирования.
+        </p>
+        <button class="btn btn-danger" onclick="resetOrderStatistics()" style="width:100%;">🗑 Сбросить статистику заказов</button>
+      </div>
 
       <button class="btn btn-primary btn-lg" onclick="withLoading(this, 'Сохраняем...', function() { return saveSettings(); })" style="width:100%;margin-top:16px;">Сохранить настройки</button>
     </div>
@@ -1034,6 +1047,17 @@
         if (typeof updateLivePreview === 'function') updateLivePreview();
       })();
     </script>
+  </div>
+
+  <!-- STATISTICS TAB -->
+  <div class="tab-content" id="tab-statistics" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 class="section-title" style="margin:0;">📊 Статистика</h2>
+      <button class="btn btn-outline" onclick="renderStatistics()">↻ Обновить</button>
+    </div>
+    <div id="statistics-content">
+      <div class="empty-state"><h3>Загрузка статистики...</h3></div>
+    </div>
   </div>
 
     </div><!-- /.admin-content -->
@@ -1547,6 +1571,7 @@ function switchTab(name) {
     if (typeof updateCirclePreview === 'function') updateCirclePreview();
     if (typeof updateLivePreview === 'function') updateLivePreview();
   }
+  if (name === 'statistics') renderStatistics();
   // On mobile, close the sidebar after selecting a tab
   closeSidebarOnMobile();
 }
@@ -1616,11 +1641,11 @@ function populateSettingsForm() {
   document.getElementById('set-poll-waiter').value = APP_DATA.settings.poll_interval_waiter || 20;
   document.getElementById('set-poll-cook').value = APP_DATA.settings.poll_interval_cook || 10;
   document.getElementById('set-cook-enabled').checked = String(APP_DATA.settings.cook_enabled) !== 'false';
-  document.getElementById('set-cash-register').value = APP_DATA.settings.cash_register || 0;
   document.getElementById('set-stock-tracking').checked = String(APP_DATA.settings.stock_tracking) === 'true';
   document.getElementById('set-stock-threshold').value = APP_DATA.settings.stock_threshold || 5;
   document.getElementById('set-sound').checked = APP_DATA.settings.sound_notifications === 'true' ||
     APP_DATA.settings.sound_notifications === true;
+  document.getElementById('set-debug-mode').checked = String(APP_DATA.settings.debug_mode) === 'true';
   renderBarCategoriesList();
   updateTranslationLangLabel();
 }
@@ -1715,10 +1740,10 @@ async function saveSettings() {
     poll_interval_waiter: String(pollWaiter),
     poll_interval_cook: String(pollCook),
     cook_enabled: document.getElementById('set-cook-enabled').checked ? 'true' : 'false',
-    cash_register: document.getElementById('set-cash-register').value,
     stock_tracking: document.getElementById('set-stock-tracking').checked ? 'true' : 'false',
     stock_threshold: document.getElementById('set-stock-threshold').value,
     sound_notifications: document.getElementById('set-sound').checked ? 'true' : 'false',
+    debug_mode: document.getElementById('set-debug-mode').checked ? 'true' : 'false',
     bar_categories: JSON.stringify(collectBarCategories())
   };
   try {
@@ -2224,6 +2249,8 @@ function renderOrders() {
       (order.status === 'accepted' || order.status === 'paused' ?
         '<button class="btn btn-success" style="padding:6px 10px;" onclick="withLoading(this, \'...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">✓</button> ' : '') +
       '<button class="btn btn-danger" style="padding:6px 10px;" onclick="cancelOrderAdmin(\'' + order.id + '\')" title="Отменить заказ">✕</button>' +
+      (String(APP_DATA.settings.debug_mode) === 'true' ?
+        ' <button class="btn btn-danger" style="padding:6px 10px;background:#b71c1c;" onclick="deleteOrderAdmin(\'' + order.id + '\')" title="Удалить заказ (безвозвратно)">🗑</button>' : '') +
     '</td>';
     html += '</tr>';
   });
@@ -2501,6 +2528,49 @@ async function cancelOrderAdmin(orderId) {
       showToast('Ошибка: ' + err.message, 'error');
     }
   });
+}
+
+// Delete a single order permanently (debug mode only).
+// Removes order_items + order record from the DB.
+async function deleteOrderAdmin(orderId) {
+  const ok = await confirmDialog('Удалить этот заказ БЕЗВОЗВРАТНО? Заказ и все его позиции будут стёрты из базы данных.', 'Удаление заказа', 'Удалить навсегда', 'Отмена', 'btn-danger');
+  if (!ok) return;
+  try {
+    await apiPost('deleteOrder', { order_id: orderId });
+    showToast('Заказ удалён', 'info');
+    closeModal('modal-order');
+    loadOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Reset ALL order statistics — deletes completed + cancelled orders only.
+// Active (accepted/paused) orders are preserved.
+async function resetOrderStatistics() {
+  const ok = await confirmDialog(
+    'Удалить ВСЕ завершённые и отменённые заказы? Это действие необратимо. Активные заказы будут сохранены.',
+    'Сброс статистики',
+    'Удалить всю статистику',
+    'Отмена',
+    'btn-danger'
+  );
+  if (!ok) return;
+  try {
+    const data = await apiGet('getOrders', { status: 'all' });
+    const toDelete = (data.orders || []).filter(function(o) {
+      return o.status === 'completed' || o.status === 'cancelled';
+    });
+    let deleted = 0;
+    for (const order of toDelete) {
+      await apiPost('deleteOrder', { order_id: order.id });
+      deleted++;
+    }
+    showToast('Удалено заказов: ' + deleted, 'info');
+    loadOrders();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
 }
 
 /* ---------- MENU ---------- */
@@ -4683,6 +4753,184 @@ async function showDeliveriesForMenuItem(menuItemId, itemName) {
     contentEl.innerHTML = html;
   } catch (err) {
     contentEl.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
+  }
+}
+
+/* ---------- STATISTICS ---------- */
+async function renderStatistics() {
+  const content = document.getElementById('statistics-content');
+  if (!content) return;
+  content.innerHTML = '<div class="empty-state"><h3>Загрузка статистики...</h3></div>';
+  try {
+    const data = await apiGet('getOrders', { status: 'all' });
+    const orders = (data.orders || []).filter(function(o) { return o.status === 'completed'; });
+    if (orders.length === 0) {
+      content.innerHTML = '<div class="empty-state"><h3>Нет данных</h3><p>Завершённых заказов пока нет. Статистика появится после первых продаж.</p></div>';
+      return;
+    }
+    // === 1. Revenue by day (last 7 days) ===
+    var dayMap = {}; // { 'YYYY-MM-DD': { cash: n, card: n, total: n, count: n } }
+    orders.forEach(function(o) {
+      var d = (o.completed_at || o.created_at || '').substring(0, 10);
+      if (!d) return;
+      if (!dayMap[d]) dayMap[d] = { cash: 0, card: 0, total: 0, count: 0 };
+      var total = Number(o.total) || 0;
+      dayMap[d].total += total;
+      dayMap[d].count++;
+      if (o.payment_method === 'cash') dayMap[d].cash += total;
+      else if (o.payment_method === 'card') dayMap[d].card += total;
+      else { dayMap[d].cash += Number(o.cash_amount) || 0; dayMap[d].card += Number(o.card_amount) || 0; }
+    });
+    // Build last 7 days
+    var days = [];
+    var now = new Date();
+    for (var i = 6; i >= 0; i--) {
+      var dt = new Date(now.getTime() - i * 86400000);
+      var key = dt.toISOString().substring(0, 10);
+      var info = dayMap[key] || { cash: 0, card: 0, total: 0, count: 0 };
+      var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+      days.push({
+        label: dayNames[dt.getDay()],
+        date: key.substring(8) + '.' + key.substring(5, 7),
+        total: info.total,
+        cash: info.cash,
+        card: info.card,
+        count: info.count
+      });
+    }
+    var maxDay = Math.max.apply(null, days.map(function(d) { return d.total; }));
+    if (maxDay === 0) maxDay = 1;
+
+    // === 2. Revenue by hour (today) ===
+    var todayKey = now.toISOString().substring(0, 10);
+    var hourMap = {}; // { hour: total }
+    orders.forEach(function(o) {
+      var d = (o.completed_at || o.created_at || '');
+      if (d.substring(0, 10) !== todayKey) return;
+      var h = new Date(d).getHours();
+      if (!hourMap[h]) hourMap[h] = 0;
+      hourMap[h] += Number(o.total) || 0;
+    });
+    var hours = [];
+    for (var h = 0; h < 24; h++) {
+      if (hourMap[h] !== undefined) {
+        hours.push({ label: h + ':00', total: hourMap[h] });
+      }
+    }
+    var maxHour = Math.max.apply(null, hours.length > 0 ? hours.map(function(h) { return h.total; }) : [1]);
+    if (maxHour === 0) maxHour = 1;
+
+    // === 3. Popular dishes ===
+    var dishMap = {}; // { name: { count, revenue } }
+    orders.forEach(function(o) {
+      (o.items || []).forEach(function(it) {
+        var name = it.name || '?';
+        var qty = Number(it.quantity) || 1;
+        var price = Number(it.price) || 0;
+        if (!dishMap[name]) dishMap[name] = { count: 0, revenue: 0 };
+        dishMap[name].count += qty;
+        dishMap[name].revenue += price * qty;
+      });
+    });
+    var dishes = Object.keys(dishMap).map(function(name) {
+      return { name: name, count: dishMap[name].count, revenue: dishMap[name].revenue };
+    }).sort(function(a, b) { return b.count - a.count; }).slice(0, 10);
+    var maxDish = dishes.length > 0 ? dishes[0].count : 1;
+    if (maxDish === 0) maxDish = 1;
+
+    // === Totals ===
+    var totalRevenue = 0, totalCash = 0, totalCard = 0, totalOrders = 0, totalGuests = 0;
+    orders.forEach(function(o) {
+      totalRevenue += Number(o.total) || 0;
+      totalOrders++;
+      totalGuests += Number(o.guests) || 0;
+      if (o.payment_method === 'cash') totalCash += Number(o.total) || 0;
+      else if (o.payment_method === 'card') totalCard += Number(o.total) || 0;
+      else { totalCash += Number(o.cash_amount) || 0; totalCard += Number(o.card_amount) || 0; }
+    });
+    var avgCheck = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    // === Build HTML ===
+    var html = '';
+    // Summary cards
+    html += '<div class="stats-grid" style="margin-bottom:20px;">';
+    html += statCard('Выручка', formatMoney(totalRevenue), 'var(--success)');
+    html += statCard('Заказов', totalOrders, 'var(--info)');
+    html += statCard('Средний чек', formatMoney(avgCheck), 'var(--primary)');
+    html += statCard('Гостей', totalGuests, 'var(--accent-dark)');
+    html += statCard('💵 Наличные', formatMoney(totalCash), 'var(--success)');
+    html += statCard('💳 Карта', formatMoney(totalCard), 'var(--info)');
+    html += '</div>';
+
+    // Chart 1: Revenue by day (bar chart)
+    html += '<div class="settings-card" style="margin-bottom:16px;">';
+    html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">📈 Выручка по дням (последние 7 дней)</h3>';
+    html += '<div style="display:flex;align-items:flex-end;gap:6px;height:200px;padding:0 4px;">';
+    days.forEach(function(d) {
+      var pct = (d.total / maxDay) * 100;
+      var cashPct = maxDay > 0 ? (d.cash / d.total) * 100 : 0;
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">';
+      html += '<div style="font-size:0.72rem;font-weight:700;color:var(--text);">' + (d.total > 0 ? formatMoney(d.total).replace(' ₾','').replace(' ₽','') : '—') + '</div>';
+      html += '<div style="width:100%;height:160px;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px 6px 0 0;overflow:hidden;background:#f0f0f0;">';
+      if (d.total > 0) {
+        html += '<div style="width:100%;height:' + pct + '%;display:flex;flex-direction:column;">';
+        html += '<div style="width:100%;flex:' + (100 - cashPct) + ';background:var(--info);"></div>';
+        html += '<div style="width:100%;flex:' + cashPct + ';background:var(--success);"></div>';
+        html += '</div>';
+      }
+      html += '</div>';
+      html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);">' + d.label + '</div>';
+      html += '<div style="font-size:0.68rem;color:var(--text-muted);">' + d.date + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<div style="display:flex;gap:16px;margin-top:12px;font-size:0.82rem;">';
+    html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:12px;background:var(--success);border-radius:3px;"></span>Наличные</span>';
+    html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:12px;background:var(--info);border-radius:3px;"></span>Карта</span>';
+    html += '</div>';
+    html += '</div>';
+
+    // Chart 2: Revenue by hour (today)
+    if (hours.length > 0) {
+      html += '<div class="settings-card" style="margin-bottom:16px;">';
+      html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">🕐 Выручка по часам (сегодня)</h3>';
+      html += '<div style="display:flex;align-items:flex-end;gap:4px;height:160px;padding:0 4px;">';
+      hours.forEach(function(h) {
+        var pct = (h.total / maxHour) * 100;
+        html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">';
+        html += '<div style="font-size:0.68rem;font-weight:600;color:var(--text);">' + formatMoney(h.total).replace(' ₾','').replace(' ₽','') + '</div>';
+        html += '<div style="width:100%;height:120px;display:flex;align-items:flex-end;">';
+        html += '<div style="width:100%;height:' + pct + '%;background:var(--primary);border-radius:4px 4px 0 0;"></div>';
+        html += '</div>';
+        html += '<div style="font-size:0.68rem;color:var(--text-muted);">' + h.label + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+      html += '</div>';
+    }
+
+    // Chart 3: Popular dishes (horizontal bar)
+    if (dishes.length > 0) {
+      html += '<div class="settings-card" style="margin-bottom:16px;">';
+      html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">🍽 Популярные блюда (топ-10)</h3>';
+      dishes.forEach(function(d) {
+        var pct = (d.count / maxDish) * 100;
+        html += '<div style="margin-bottom:8px;">';
+        html += '<div style="display:flex;justify-content:space-between;font-size:0.88rem;margin-bottom:2px;">';
+        html += '<span style="font-weight:600;">' + escapeHtml(d.name) + '</span>';
+        html += '<span style="color:var(--text-muted);">' + d.count + ' шт · ' + formatMoney(d.revenue) + '</span>';
+        html += '</div>';
+        html += '<div style="width:100%;height:8px;background:#f0f0f0;border-radius:4px;overflow:hidden;">';
+        html += '<div style="width:' + pct + '%;height:100%;background:var(--primary);border-radius:4px;"></div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    content.innerHTML = html;
+  } catch (err) {
+    content.innerHTML = '<div class="empty-state"><h3>Ошибка</h3><p>' + escapeHtml(err.message) + '</p></div>';
   }
 }
 
