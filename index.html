@@ -2672,8 +2672,9 @@ function removeModificationFromCart(itemId, modId) {
   if (entry.quantity <= 0) {
     state.cart.splice(idx, 1);
   }
-  // Re-render the cart panel (bottom bar with total)
+  // Re-render the cart panel + the order cart list (left panel "Добавленные блюда")
   renderCartPanel();
+  renderOrderCart();
 
   // Brief red flash on the row
   const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + modId + '"]');
