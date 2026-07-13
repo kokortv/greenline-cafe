@@ -4189,6 +4189,7 @@ async function completeOrder() {
 }
 
 let _pendingCompleteOrderId = null;
+let _pendingCompleteTotal = 0; // fresh total from server (may differ from state.activeOrders if items were just added)
 let _selectedPaymentMethod = null;
 
 async function completeOrderById(orderId) {
@@ -4222,6 +4223,7 @@ async function completeOrderById(orderId) {
     return;
   }
   _pendingCompleteOrderId = orderId;
+  _pendingCompleteTotal = Number(order.total) || 0; // store fresh total for payment calculation
   _selectedPaymentMethod = null;
 
   // Reset payment modal state
@@ -4290,9 +4292,8 @@ function calculateChange() {
   const changeDisplay = document.getElementById('change-display');
   if (!cashInput || !changeDisplay) return;
   const received = Number(cashInput.value) || 0;
-  const order = state.activeOrders.find(function(o) { return o.id === _pendingCompleteOrderId; });
-  if (!order) return;
-  const total = Number(order.total) || 0;
+  // Use the fresh total fetched in completeOrderById
+  const total = _pendingCompleteTotal || 0;
   if (received === 0) {
     changeDisplay.textContent = 'Сдача: —';
     changeDisplay.style.background = '';
@@ -4323,9 +4324,9 @@ function calculateMixedTotal() {
   const cash = Number(cashEl.value) || 0;
   const card = Number(cardEl.value) || 0;
   const sum = cash + card;
-  const order = state.activeOrders.find(function(o) { return o.id === _pendingCompleteOrderId; });
-  if (!order) return;
-  const total = Number(order.total) || 0;
+  // Use the fresh total fetched in completeOrderById — state.activeOrders
+  // may be stale if items were just added to the order.
+  const total = _pendingCompleteTotal || 0;
   if (sum === 0) {
     totalEl.innerHTML = 'Итого: —';
     totalEl.style.background = '#f5f5f5';
@@ -4358,9 +4359,8 @@ function onMixedPaymentInput(which) {
   var cashEl = document.getElementById('mixed-cash-amount');
   var cardEl = document.getElementById('mixed-card-amount');
   if (!cashEl || !cardEl) return;
-  var order = state.activeOrders.find(function(o) { return o.id === _pendingCompleteOrderId; });
-  if (!order) return;
-  var total = Number(order.total) || 0;
+  // Use the fresh total fetched in completeOrderById
+  var total = _pendingCompleteTotal || 0;
   if (which === 'cash') {
     var cash = Number(cashEl.value) || 0;
     var remainder = total - cash;
@@ -4390,8 +4390,9 @@ async function confirmCompleteOrder() {
   const orderId = _pendingCompleteOrderId;
   const method = _selectedPaymentMethod;
   let cashAmount = 0, cardAmount = 0;
-  const order = state.activeOrders.find(function(o) { return o.id === orderId; });
-  const total = Number(order?.total) || 0;
+  // Use the fresh total stored by completeOrderById — state.activeOrders may
+  // be stale (items were added but polling hasn't updated the cached total yet).
+  const total = _pendingCompleteTotal || 0;
 
   if (method === 'cash') {
     cashAmount = total;
@@ -4400,7 +4401,7 @@ async function confirmCompleteOrder() {
   } else if (method === 'mixed') {
     cashAmount = Number(document.getElementById('mixed-cash-amount').value) || 0;
     cardAmount = Number(document.getElementById('mixed-card-amount').value) || 0;
-    if (cashAmount + cardAmount !== total) {
+    if (Math.round((cashAmount + cardAmount) * 100) !== Math.round(total * 100)) {
       showToast('Сумма наличных и карты должна равняться ' + formatMoney(total), 'warning');
       return;
     }
