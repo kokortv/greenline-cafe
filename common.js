@@ -1901,6 +1901,8 @@ async function apiGet(action, params) {
       return await getOrder(params.id);
     case 'getActiveShift':
       return await getActiveShift(params.waiter_id);
+    case 'getAllShifts':
+      return { shifts: await dbSelect('shifts') };
     case 'getStockReport':
       return await getStockReport();
     case 'getTablesConfig':

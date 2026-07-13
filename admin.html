@@ -399,7 +399,7 @@
     .filter-bar { flex-wrap: wrap; gap: 8px; }
     .filter-bar select, .filter-bar input { min-width: 100%; }
     .settings-card { max-width: 100%; padding: 14px; }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
     .user-row { flex-wrap: wrap; gap: 8px; }
     .user-row .user-name { min-width: 100%; }
     /* Stock table on mobile: keep the table-layout intact with horizontal scroll,
@@ -4764,8 +4764,13 @@ async function renderStatistics() {
   try {
     const data = await apiGet('getOrders', { status: 'all' });
     const orders = (data.orders || []).filter(function(o) { return o.status === 'completed'; });
-    if (orders.length === 0) {
-      content.innerHTML = '<div class="empty-state"><h3>Нет данных</h3><p>Завершённых заказов пока нет. Статистика появится после первых продаж.</p></div>';
+    // Fetch all shifts for the "Кассовые смены" table
+    const shiftsData = await apiGet('getAllShifts', {});
+    const allShifts = (shiftsData.shifts || []).slice().sort(function(a, b) {
+      return new Date(b.opened_at || 0) - new Date(a.opened_at || 0);
+    });
+    if (orders.length === 0 && allShifts.length === 0) {
+      content.innerHTML = '<div class="empty-state"><h3>Нет данных</h3><p>Завершённых заказов и смен пока нет. Статистика появится после первых продаж.</p></div>';
       return;
     }
     // === 1. Revenue by day (last 7 days) ===
@@ -4853,7 +4858,7 @@ async function renderStatistics() {
     // === Build HTML ===
     var html = '';
     // Summary cards
-    html += '<div class="stats-grid" style="margin-bottom:20px;">';
+    html += '<div class="stats-grid" style="margin-bottom:20px;grid-template-columns:repeat(6,1fr);">';
     html += statCard('Выручка', formatMoney(totalRevenue), 'var(--success)');
     html += statCard('Заказов', totalOrders, 'var(--info)');
     html += statCard('Средний чек', formatMoney(avgCheck), 'var(--primary)');
@@ -4925,6 +4930,54 @@ async function renderStatistics() {
         html += '</div>';
         html += '</div>';
       });
+      html += '</div>';
+    }
+
+    // === Cash shifts table ===
+    if (allShifts.length > 0) {
+      html += '<div class="settings-card" style="margin-bottom:16px;">';
+      html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">💰 Кассовые смены</h3>';
+      html += '<div style="overflow-x:auto;">';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">';
+      html += '<thead><tr style="background:var(--primary);color:#fff;">';
+      html += '<th style="padding:8px;text-align:center;width:40px;">#</th>';
+      html += '<th style="padding:8px;text-align:left;">Официант</th>';
+      html += '<th style="padding:8px;text-align:left;">Смена открыта</th>';
+      html += '<th style="padding:8px;text-align:left;">Смена закрыта</th>';
+      html += '<th style="padding:8px;text-align:right;">Начало смены</th>';
+      html += '<th style="padding:8px;text-align:right;">В кассе</th>';
+      html += '<th style="padding:8px;text-align:right;">Разница</th>';
+      html += '</tr></thead><tbody>';
+      allShifts.forEach(function(s, idx) {
+        var isOpen = s.status === 'open' || !s.closed_at;
+        var openingCash = Number(s.opening_cash) || 0;
+        var cashTotal = Number(s.cash_total) || 0;
+        var closingCash = openingCash + cashTotal;
+        var diff = cashTotal; // разница = на сколько касса изменилась = cash_total
+        var rowBg = '';
+        var diffColor = '';
+        if (isOpen) {
+          rowBg = 'background:#fff8e1;';
+          diffColor = 'color:var(--warning);';
+        } else if (diff > 0) {
+          rowBg = 'background:#e8f5e9;';
+          diffColor = 'color:var(--success);font-weight:700;';
+        } else if (diff < 0) {
+          rowBg = 'background:#ffebee;';
+          diffColor = 'color:var(--danger);font-weight:700;';
+        }
+        html += '<tr style="' + rowBg + 'border-bottom:1px solid var(--border);">';
+        html += '<td style="padding:8px;text-align:center;font-weight:600;">' + (idx + 1) + '</td>';
+        html += '<td style="padding:8px;">' + escapeHtml(s.waiter_name || '—') + '</td>';
+        html += '<td style="padding:8px;">' + (s.opened_at ? formatDateTime(s.opened_at) : '—') + '</td>';
+        html += '<td style="padding:8px;">' + (isOpen ? '<span style="color:var(--warning);font-weight:600;">не закрыта</span>' : formatDateTime(s.closed_at)) + '</td>';
+        html += '<td style="padding:8px;text-align:right;">' + formatMoney(openingCash) + '</td>';
+        html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : formatMoney(closingCash)) + '</td>';
+        html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + (isOpen ? '—' : (diff >= 0 ? '+' : '') + formatMoney(diff)) + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      html += '</div>';
       html += '</div>';
     }
 
