@@ -190,7 +190,7 @@
   .admin-sidebar {
     flex: none;
     width: 240px;
-    background: #1a1d29;
+    background: #f8fafc;
     border-right: none;
     height: 100vh;
     position: fixed;
@@ -198,7 +198,7 @@
     left: 0;
     overflow-y: auto;
     z-index: 50;
-    box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+    box-shadow: 1px 0 4px rgba(0,0,0,0.06);
   }
   .sidebar-nav {
     display: flex;
@@ -212,7 +212,7 @@
     padding: 12px 20px;
     font-size: 0.92rem;
     font-weight: 500;
-    color: #a0a4b0;
+    color: #64748b;
     background: none;
     border: none;
     border-left: 3px solid transparent;
@@ -224,13 +224,13 @@
     box-sizing: border-box;
   }
   .sidebar-item:hover {
-    background: rgba(255,255,255,0.06);
-    color: #fff;
+    background: #f1f5f9;
+    color: #1e293b;
   }
   .sidebar-item.active {
-    color: #fff;
+    color: #4f46e5;
     border-left-color: #6366f1;
-    background: rgba(99,102,241,0.15);
+    background: #eef2ff;
   }
   .sidebar-icon {
     font-size: 1.15rem;
@@ -241,16 +241,17 @@
   .sidebar-group { width: 100%; }
   .sidebar-parent {
     width: 100%;
+    justify-content: space-between;
   }
-  .sidebar-parent span:first-child {
-    display: flex;
+  .sidebar-parent > span:first-child {
+    display: inline-flex;
     align-items: center;
     gap: 12px;
-    flex: 1;
   }
   .sidebar-arrow {
     font-size: 0.65rem;
-    color: #6b7280;
+    color: #94a3b8;
+    flex: none;
   }
   .sidebar-subitems {
     display: flex;
@@ -260,10 +261,10 @@
   .sidebar-subitem {
     padding: 8px 16px;
     font-size: 0.85rem;
-    color: #6b7280;
+    color: #94a3b8;
     background: none;
     border: none;
-    border-left: 2px solid #374151;
+    border-left: 2px solid #e2e8f0;
     cursor: pointer;
     text-align: left;
     transition: all 0.2s;
@@ -271,11 +272,11 @@
     box-sizing: border-box;
   }
   .sidebar-subitem:hover {
-    color: #fff;
-    background: rgba(255,255,255,0.04);
+    color: #1e293b;
+    background: #f1f5f9;
   }
   .sidebar-subitem.active {
-    color: #818cf8;
+    color: #4f46e5;
     border-left-color: #6366f1;
     font-weight: 600;
   }
@@ -357,7 +358,7 @@
   .stock-table th.st-th-center, .stock-table td.st-td-center { width: 14%; text-align: center; }
 
   .stock-table th {
-    background: var(--primary);
+    background: #475569;
     color: #fff;
     font-weight: 600;
     font-size: 0.92rem;
@@ -393,6 +394,53 @@
   .stock-table .st-font-xs { font-size: 0.72rem; line-height: 1.2; }
   /* Category column is always a touch smaller — it's secondary info */
   .stock-table td.st-td-cat { color: var(--text-muted); }
+
+  /* ===== Unified admin table — used by ALL data tables in the admin panel ===== */
+  .admin-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    font-size: 0.88rem;
+  }
+  .admin-table thead th {
+    background: #475569;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.82rem;
+    padding: 10px 12px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.02em;
+  }
+  .admin-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.3;
+  }
+  .admin-table tbody tr:last-child td { border-bottom: none; }
+  .admin-table tbody tr:hover { background: #f9fafb; }
+  /* Wrap tables in scrollable container on narrow screens */
+  .admin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+
+  /* ===== Unified delete/destroy button ===== */
+  .btn-delete {
+    background: #ef4444; color: #fff; border: none;
+    border-radius: 8px; padding: 6px 10px;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    line-height: 1; transition: background 0.2s; flex: none;
+  }
+  .btn-delete:hover { background: #dc2626; }
+  .btn-delete:active { transform: scale(0.95); }
 
   /* Mobile responsive for admin */
   @media (max-width: 768px) {
@@ -544,9 +592,9 @@
   <div class="admin-layout">
     <!-- Sidebar navigation -->
     <aside class="admin-sidebar" id="admin-sidebar">
-      <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);">
-        <div style="font-size:1.1rem;font-weight:700;color:#fff;" id="sidebar-restaurant-name">Ресторан</div>
-        <div style="font-size:0.75rem;color:#6b7280;margin-top:2px;">Панель администратора</div>
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+        <div style="font-size:1.1rem;font-weight:700;color:#1e293b;" id="sidebar-restaurant-name">Ресторан</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">Панель администратора</div>
       </div>
       <nav class="sidebar-nav">
         <button class="sidebar-item active" data-tab="orders" onclick="switchTab('orders')">
@@ -567,7 +615,7 @@
         <!-- Stock — parent with sub-items. Subitems are hidden by default and only shown when Stock is opened. -->
         <div class="sidebar-group" id="sidebar-group-stock">
           <button class="sidebar-item sidebar-parent" data-tab="stock" onclick="switchTab('stock')">
-            <span class="sidebar-icon">📦</span> Склад
+            <span><span class="sidebar-icon">📦</span> Склад</span>
             <span class="sidebar-arrow" id="stock-arrow">▶</span>
           </button>
           <div class="sidebar-subitems" id="stock-subitems" style="display:none;">
@@ -587,7 +635,7 @@
         <!-- Statistics — parent with sub-items, same pattern as Stock -->
         <div class="sidebar-group" id="sidebar-group-statistics">
           <button class="sidebar-item sidebar-parent" data-tab="statistics" onclick="switchTab('statistics')">
-            <span class="sidebar-icon">📊</span> Статистика
+            <span><span class="sidebar-icon">📊</span> Статистика</span>
             <span class="sidebar-arrow" id="statistics-arrow">▶</span>
           </button>
           <div class="sidebar-subitems" id="statistics-subitems" style="display:none;">
@@ -808,7 +856,7 @@
           <input type="text" id="sound-url-cook_new_order" placeholder="/sounds/cook_new_order.mp3" style="flex:1;min-width:200px;">
           <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveSoundUrl('cook_new_order'); })">Сохранить</button>
           <button class="btn btn-outline" onclick="playSoundPreview('cook_new_order')">▶ Прослушать</button>
-          <button class="btn btn-danger" onclick="deleteSoundConfirm('cook_new_order')">Удалить</button>
+          <button class="btn-delete" onclick="deleteSoundConfirm('cook_new_order')">Удалить</button>
         </div>
         <p style="font-size:0.85rem;margin-top:6px;color:var(--text-muted);" id="sound-status-cook_new_order"></p>
       </div>
@@ -822,7 +870,7 @@
           <input type="text" id="sound-url-waiter_ready" placeholder="/sounds/waiter_ready.mp3" style="flex:1;min-width:200px;">
           <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveSoundUrl('waiter_ready'); })">Сохранить</button>
           <button class="btn btn-outline" onclick="playSoundPreview('waiter_ready')">▶ Прослушать</button>
-          <button class="btn btn-danger" onclick="deleteSoundConfirm('waiter_ready')">Удалить</button>
+          <button class="btn-delete" onclick="deleteSoundConfirm('waiter_ready')">Удалить</button>
         </div>
         <p style="font-size:0.85rem;margin-top:6px;color:var(--text-muted);" id="sound-status-waiter_ready"></p>
       </div>
@@ -1789,7 +1837,7 @@ function addBarCategoryRow(value) {
   input.setAttribute('list', 'bar-categories-datalist');
   const delBtn = document.createElement('button');
   delBtn.type = 'button';
-  delBtn.className = 'btn btn-danger';
+  delBtn.className = 'btn-delete';
   delBtn.style.cssText = 'padding:8px 12px;';
   delBtn.textContent = '✕';
   delBtn.title = 'Удалить';
@@ -2304,16 +2352,16 @@ function renderOrders() {
   const hasGuests = sorted.some(function(o) { return o.guests && o.guests > 0; });
   const hasPayment = sorted.some(function(o) { return o.payment_method && o.payment_method !== ''; });
 
-  let html = '<table style="width:100%;border-collapse:collapse;table-layout:auto;">';
-  html += '<thead><tr style="background:var(--primary);color:#fff;">';
-  html += '<th style="padding:10px;text-align:left;">Заказ</th>';
-  if (hasGuests) html += '<th style="padding:10px;text-align:left;">Гостей</th>';
-  if (hasWaiter) html += '<th style="padding:10px;text-align:left;">Официант</th>';
-  if (hasPayment) html += '<th style="padding:10px;text-align:left;">Оплата</th>';
-  html += '<th style="padding:10px;text-align:left;">Создан</th>';
-  html += '<th style="padding:10px;text-align:right;">Сумма</th>';
-  html += '<th style="padding:10px;text-align:left;">Статус</th>';
-  html += '<th style="padding:10px;text-align:center;"></th>';
+  let html = '<table class="admin-table">';
+  html += '<thead><tr>';
+  html += '<th style="text-align:left;">Заказ</th>';
+  if (hasGuests) html += '<th style="text-align:left;">Гостей</th>';
+  if (hasWaiter) html += '<th style="text-align:left;">Официант</th>';
+  if (hasPayment) html += '<th style="text-align:left;">Оплата</th>';
+  html += '<th style="text-align:left;">Создан</th>';
+  html += '<th style="text-align:right;">Сумма</th>';
+  html += '<th style="text-align:left;">Статус</th>';
+  html += '<th style="text-align:center;"></th>';
   html += '</tr></thead><tbody>';
 
   sorted.forEach(function(order) {
@@ -2321,18 +2369,18 @@ function renderOrders() {
     const dailyNum = adminState.dailyNumbers[order.id] || '?';
     html += '<tr style="' + rowStyle + 'border-bottom:1px solid var(--border);">';
     html += '<td style="padding:10px;font-weight:700;">Заказ №' + escapeHtml(String(dailyNum)) + '<div style="font-size:0.78rem;font-weight:500;color:var(--text-muted);margin-top:2px;">' + escapeHtml(formatTableLabel(order)) + '</div></td>';
-    if (hasGuests) html += '<td style="padding:10px;">' + (order.guests || 0) + '</td>';
-    if (hasWaiter) html += '<td style="padding:10px;">' + escapeHtml(order.waiter_name || '—') + '</td>';
+    if (hasGuests) html += '<td>' + (order.guests || 0) + '</td>';
+    if (hasWaiter) html += '<td>' + escapeHtml(order.waiter_name || '—') + '</td>';
     if (hasPayment) {
       let payLabel = '—';
       if (order.payment_method === 'cash') payLabel = '💵 ' + formatMoney(order.cash_amount || order.total);
       else if (order.payment_method === 'card') payLabel = '💳 ' + formatMoney(order.card_amount || order.total);
       else if (order.payment_method === 'mixed') payLabel = '💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
-      html += '<td style="padding:10px;">' + payLabel + '</td>';
+      html += '<td>' + payLabel + '</td>';
     }
     html += '<td style="padding:10px;font-size:0.9rem;color:var(--text-muted);">' + formatDateTime(order.created_at) + '</td>';
     html += '<td style="padding:10px;text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(order.total) + '</td>';
-    html += '<td style="padding:10px;">' +
+    html += '<td>' +
       (order.status === 'accepted' ?
         '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
        order.status === 'paused' ?
@@ -2341,13 +2389,13 @@ function renderOrders() {
         '<span class="pill" style="background:var(--danger);color:white;" title="' + escapeHtml(order.cancel_reason || '') + '">✕ Отменён</span>' :
         '<span class="pill pill-success"><span class="status-dot completed"></span>Завершён</span>') +
     '</td>';
-    html += '<td style="padding:10px;text-align:center;">' +
+    html += '<td style="text-align:center;">' +
       '<button class="btn btn-outline" style="padding:6px 10px;" onclick="viewOrder(\'' + order.id + '\')">👁</button> ' +
       (order.status === 'accepted' || order.status === 'paused' ?
         '<button class="btn btn-success" style="padding:6px 10px;" onclick="withLoading(this, \'...\', function() { return completeOrderAdmin(\'' + order.id + '\'); })">✓</button> ' : '') +
-      '<button class="btn btn-danger" style="padding:6px 10px;" onclick="cancelOrderAdmin(\'' + order.id + '\')" title="Отменить заказ">✕</button>' +
+      '<button class="btn-delete" onclick="cancelOrderAdmin(\'' + order.id + '\')" title="Отменить заказ">✕</button>' +
       (String(APP_DATA.settings.debug_mode) === 'true' ?
-        ' <button class="btn btn-danger" style="padding:6px 10px;background:#b71c1c;" onclick="deleteOrderAdmin(\'' + order.id + '\')" title="Удалить заказ (безвозвратно)">🗑</button>' : '') +
+        ' <button class="btn-delete" onclick="deleteOrderAdmin(\'' + order.id + '\')" title="Удалить заказ (безвозвратно)">🗑</button>' : '') +
     '</td>';
     html += '</tr>';
   });
@@ -2406,7 +2454,7 @@ async function viewOrder(orderId) {
       }
 
       itemsHtml = '<div style="overflow-x:auto;margin:12px 0;-webkit-overflow-scrolling:touch;">' +
-        '<table class="admin-order-table" style="width:100%;table-layout:fixed;border-collapse:collapse;"><thead><tr>';
+        '<table class="admin-table"><thead><tr>';
       cols.forEach(function(c) {
         itemsHtml += '<th style="width:' + c.width + '%;padding:8px;text-align:left;background:var(--primary);color:#fff;font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + c.name + '</th>';
       });
@@ -2430,10 +2478,10 @@ async function viewOrder(orderId) {
         rowCells.push('<td style="padding:8px;white-space:nowrap;">' + qtyCell + '</td>');
         rowCells.push('<td style="padding:8px;white-space:nowrap;">' + formatMoney(it.price) + '</td>');
         rowCells.push('<td style="padding:8px;white-space:nowrap;font-weight:600;">' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>');
-        if (showReadyCol) rowCells.push('<td style="padding:8px;text-align:center;">' + (it.is_ready ? '✓' : '—') + '</td>');
-        if (showServedCol) rowCells.push('<td style="padding:8px;text-align:center;">' + (it.is_served ? '✓' : '—') + '</td>');
+        if (showReadyCol) rowCells.push('<td style="text-align:center;">' + (it.is_ready ? '✓' : '—') + '</td>');
+        if (showServedCol) rowCells.push('<td style="text-align:center;">' + (it.is_served ? '✓' : '—') + '</td>');
         if (hasComments) rowCells.push('<td style="padding:8px;word-break:break-word;overflow-wrap:anywhere;white-space:normal;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(it.comment || '') + '</td>');
-        if (canEdit) rowCells.push('<td style="padding:8px;text-align:center;"><button class="btn btn-danger" style="padding:4px 8px;font-size:0.85rem;" onclick="adminRemoveItem(\'' + it.id + '\', \'' + order.id + '\')" title="Удалить позицию">✕</button></td>');
+        if (canEdit) rowCells.push('<td style="text-align:center;"><button class="btn-delete" style="padding:4px 8px;" onclick="adminRemoveItem(\'' + it.id + '\', \'' + order.id + '\')" title="Удалить позицию">✕</button></td>');
         itemsHtml += '<tr style="border-bottom:1px solid var(--border);">' + rowCells.join('') + '</tr>';
       });
       itemsHtml += '</tbody></table></div>';
@@ -2934,7 +2982,7 @@ function renderMenuList() {
     // Actions — both buttons in one cell, no header
     html += '<td style="padding:12px;text-align:center;white-space:nowrap;vertical-align:top;">' +
       '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button> ' +
-      '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
+      '<button class="btn-delete" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
       '</td>';
     html += '</tr>';
   });
@@ -3509,7 +3557,7 @@ function renderCategoryList() {
       '<div class="cat-name">' + escapeHtml(mc.name) + '</div>' +
       '<div class="cat-actions">' +
         '<button class="btn btn-outline" onclick="openCategoryModal(false, \'' + mc.id + '\')">✎</button>' +
-        '<button class="btn btn-danger" onclick="deleteCategory(\'' + mc.id + '\')">✕</button>' +
+        '<button class="btn-delete" onclick="deleteCategory(\'' + mc.id + '\')">✕</button>' +
       '</div>';
     div.appendChild(mainRow);
 
@@ -3530,7 +3578,7 @@ function renderCategoryList() {
         '<div class="cat-name">↳ ' + escapeHtml(sc.name) + '</div>' +
         '<div class="cat-actions">' +
           '<button class="btn btn-outline" onclick="openCategoryModal(true, \'' + sc.id + '\')">✎</button>' +
-          '<button class="btn btn-danger" onclick="deleteCategory(\'' + sc.id + '\')">✕</button>' +
+          '<button class="btn-delete" onclick="deleteCategory(\'' + sc.id + '\')">✕</button>' +
         '</div>';
       div.appendChild(subRow);
     });
@@ -4130,7 +4178,7 @@ function renderVirtualTableList() {
       'placeholder="Например: Бар" style="flex:1;min-width:0;padding:8px;font-size:1rem;" ' +
       (openShifts ? 'disabled' : '') + '>';
     if (!openShifts) {
-      html += '<button type="button" class="btn btn-danger" style="padding:6px 10px;" title="Удалить" onclick="removeVirtualTableRow(this)">✕</button>';
+      html += '<button type="button" class="btn-delete" title="Удалить" onclick="removeVirtualTableRow(this)">✕</button>';
     }
     html += '</div>';
   });
@@ -4230,7 +4278,7 @@ async function loadSuppliersList() {
       return;
     }
     suppliers.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
-    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    let html = '<table class="admin-table"><thead><tr>';
     html += '<th style="width:22%;">Имя поставщика</th>';
     html += '<th style="width:15%;">Телефон</th>';
     html += '<th style="width:25%;">Комментарий</th>';
@@ -4251,7 +4299,7 @@ async function loadSuppliersList() {
       html += '<td style="text-align:right;' + debtColor + '">' + (st.debt > 0 ? formatMoney(st.debt) : '—') + '</td>';
       html += '<td style="text-align:center;white-space:nowrap;">' +
         '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openSupplierModal(\'' + s.id + '\')">✎</button> ' +
-        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteSupplierUI(\'' + s.id + '\')">✕</button>' +
+        '<button class="btn-delete" title="Удалить" onclick="deleteSupplierUI(\'' + s.id + '\')">✕</button>' +
         '</td>';
       html += '</tr>';
     });
@@ -4399,7 +4447,7 @@ async function loadWarehousesList() {
       return;
     }
     warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
-    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    let html = '<table class="admin-table"><thead><tr>';
     html += '<th style="width:10%;">№</th>';
     html += '<th style="width:30%;">Название склада</th>';
     html += '<th style="width:35%;">Комментарий</th>';
@@ -4415,7 +4463,7 @@ async function loadWarehousesList() {
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(total) + '</td>';
       html += '<td style="text-align:center;white-space:nowrap;">' +
         '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openWarehouseModal(\'' + w.id + '\')">✎</button> ' +
-        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteWarehouseUI(\'' + w.id + '\')">✕</button>' +
+        '<button class="btn-delete" title="Удалить" onclick="deleteWarehouseUI(\'' + w.id + '\')">✕</button>' +
         '</td>';
       html += '</tr>';
     });
@@ -4494,7 +4542,7 @@ async function loadAccountsList() {
       return;
     }
     accounts.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
-    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    let html = '<table class="admin-table"><thead><tr>';
     html += '<th style="width:30%;">Название счёта</th>';
     html += '<th style="width:10%;">Валюта</th>';
     html += '<th style="width:18%;">Тип</th>';
@@ -4510,7 +4558,7 @@ async function loadAccountsList() {
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(a.initial_balance || 0, a.currency) + '</td>';
       html += '<td style="text-align:center;white-space:nowrap;">' +
         '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openAccountModal(\'' + a.id + '\')">✎</button> ' +
-        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteAccountUI(\'' + a.id + '\')">✕</button>' +
+        '<button class="btn-delete" title="Удалить" onclick="deleteAccountUI(\'' + a.id + '\')">✕</button>' +
         '</td>';
       html += '</tr>';
     });
@@ -4595,7 +4643,7 @@ async function loadDeliveriesList() {
       div.innerHTML = '<div class="empty-state"><h3>Нет поставок</h3><p>Нажмите «+ Добавить поставку»</p></div>';
       return;
     }
-    let html = '<table style="width:100%;table-layout:fixed;"><thead><tr>';
+    let html = '<table class="admin-table"><thead><tr>';
     html += '<th style="width:5%;">№</th>';
     html += '<th style="width:13%;">Дата</th>';
     html += '<th style="width:15%;">Поставщик</th>';
@@ -4637,7 +4685,7 @@ async function loadDeliveriesList() {
       html += '<td style="text-align:right;' + debtColor + '">' + (debt > 0 ? formatMoney(debt) : '—') + '</td>';
       html += '<td style="text-align:center;white-space:nowrap;">' +
         '<button class="btn btn-outline" style="padding:6px 9px;" title="Изменить" onclick="openDeliveryModal(\'' + d.id + '\')">✎</button> ' +
-        '<button class="btn btn-danger" style="padding:6px 9px;margin-left:4px;" title="Удалить" onclick="deleteDeliveryUI(\'' + d.id + '\')">✕</button>' +
+        '<button class="btn-delete" title="Удалить" onclick="deleteDeliveryUI(\'' + d.id + '\')">✕</button>' +
         '</td>';
       html += '</tr>';
     });
@@ -4925,7 +4973,7 @@ async function toggleStockDeliveries(menuItemId, linkEl) {
       contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Поставок нет</p>';
       return;
     }
-    var html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">';
+    var html = '<table class="admin-table">';
     html += '<thead><tr style="background:#fff;border-bottom:2px solid var(--border);">';
     html += '<th style="padding:6px 8px;text-align:left;">Дата поставки</th>';
     html += '<th style="padding:6px 8px;text-align:left;">Поставщик</th>';
@@ -4965,7 +5013,7 @@ async function showDeliveriesForMenuItem(menuItemId, itemName) {
       contentEl.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Поставок нет</p>';
       return;
     }
-    let html = '<table style="width:100%;"><thead><tr>';
+    let html = '<table class="admin-table"><thead><tr>';
     html += '<th>№</th><th>Дата</th><th>Поставщик</th><th>Кол-во</th><th>Цена</th><th>Сумма</th>';
     html += '</tr></thead><tbody>';
     deliveries.forEach(function(d) {
@@ -5181,8 +5229,8 @@ async function renderStatisticsShifts() {
     }
     var html = '<div style="margin-bottom:16px;width:100%;">';
     html += '<div style="overflow-x:auto;width:100%;">';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">';
-    html += '<thead><tr style="background:var(--primary);color:#fff;">';
+    html += '<table class="admin-table">';
+    html += '<thead><tr>';
     html += '<th style="padding:8px;text-align:center;width:40px;">#</th>';
     html += '<th style="padding:8px;text-align:left;">Официант</th>';
     html += '<th style="padding:8px;text-align:left;">Смена открыта</th>';
@@ -5211,10 +5259,10 @@ async function renderStatisticsShifts() {
       }
       html += '<tr style="' + rowBg + 'border-bottom:1px solid var(--border);">';
       html += '<td style="padding:8px;text-align:center;font-weight:600;">' + (idx + 1) + '</td>';
-      html += '<td style="padding:8px;">' + escapeHtml(s.waiter_name || '—') + '</td>';
-      html += '<td style="padding:8px;">' + (s.opened_at ? formatDateTime(s.opened_at) : '—') + '</td>';
-      html += '<td style="padding:8px;">' + (isOpen ? '<span style="color:var(--warning);font-weight:600;">не закрыта</span>' : formatDateTime(s.closed_at)) + '</td>';
-      html += '<td style="padding:8px;text-align:right;">' + formatMoney(openingCash) + '</td>';
+      html += '<td>' + escapeHtml(s.waiter_name || '—') + '</td>';
+      html += '<td>' + (s.opened_at ? formatDateTime(s.opened_at) : '—') + '</td>';
+      html += '<td>' + (isOpen ? '<span style="color:var(--warning);font-weight:600;">не закрыта</span>' : formatDateTime(s.closed_at)) + '</td>';
+      html += '<td style="text-align:right;">' + formatMoney(openingCash) + '</td>';
       html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : formatMoney(closingCash)) + '</td>';
       html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + (isOpen ? '—' : (diff >= 0 ? '+' : '') + formatMoney(diff)) + '</td>';
       html += '</tr>';
@@ -5300,7 +5348,7 @@ function renderStaffList() {
         '<button class="btn btn-outline" onclick="openUserModal(\'' + u.id + '\')">✎ Изменить</button>' +
         '<button class="btn btn-info" onclick="openPasswordModal(\'' + u.id + '\')">🔑 Пароль</button>' +
         toggleBtn +
-        '<button class="btn btn-danger" onclick="deleteUserBtn(\'' + u.id + '\')">✕</button>';
+        '<button class="btn-delete" onclick="deleteUserBtn(\'' + u.id + '\')">✕</button>';
       div.appendChild(row);
     });
   }
