@@ -423,9 +423,14 @@
     padding: 10px 12px;
     border-bottom: 1px solid #f0f0f0;
     vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .admin-table tbody td.wrap {
+    white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
-    line-height: 1.3;
   }
   .admin-table tbody tr:last-child td { border-bottom: none; }
   .admin-table tbody tr:hover { background: #f9fafb; }
@@ -2389,8 +2394,8 @@ function renderOrders() {
   sorted.forEach(function(order) {
     const rowStyle = order.status === 'paused' ? 'background:#fffde7;' : '';
     const dailyNum = adminState.dailyNumbers[order.id] || '?';
-    html += '<tr style="' + rowStyle + 'border-bottom:1px solid var(--border);">';
-    html += '<td style="padding:10px;font-weight:700;">Заказ №' + escapeHtml(String(dailyNum)) + '<div style="font-size:0.78rem;font-weight:500;color:var(--text-muted);margin-top:2px;">' + escapeHtml(formatTableLabel(order)) + '</div></td>';
+    html += '<tr style="' + rowStyle + '">';
+    html += '<td style="font-weight:700;">Заказ №' + escapeHtml(String(dailyNum)) + '<div style="font-size:0.78rem;font-weight:500;color:var(--text-muted);margin-top:2px;">' + escapeHtml(formatTableLabel(order)) + '</div></td>';
     if (hasGuests) html += '<td>' + (order.guests || 0) + '</td>';
     if (hasWaiter) html += '<td>' + escapeHtml(order.waiter_name || '—') + '</td>';
     if (hasPayment) {
@@ -2400,8 +2405,8 @@ function renderOrders() {
       else if (order.payment_method === 'mixed') payLabel = '💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
       html += '<td>' + payLabel + '</td>';
     }
-    html += '<td style="padding:10px;font-size:0.9rem;color:var(--text-muted);">' + formatDateTime(order.created_at) + '</td>';
-    html += '<td style="padding:10px;text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(order.total) + '</td>';
+    html += '<td style="font-size:0.9rem;color:var(--text-muted);">' + formatDateTime(order.created_at) + '</td>';
+    html += '<td style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(order.total) + '</td>';
     html += '<td>' +
       (order.status === 'accepted' ?
         '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
@@ -2478,7 +2483,7 @@ async function viewOrder(orderId) {
       itemsHtml = '<div style="overflow-x:auto;margin:12px 0;-webkit-overflow-scrolling:touch;">' +
         '<table class="admin-table"><thead><tr>';
       cols.forEach(function(c) {
-        itemsHtml += '<th style="width:' + c.width + '%;padding:8px;text-align:left;background:var(--primary);color:#fff;font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + c.name + '</th>';
+        itemsHtml += '<th style="width:' + c.width + '%;text-align:' + (c.align || 'left') + ';">' + c.name + '</th>';
       });
       itemsHtml += '</tr></thead><tbody>';
       items.forEach(function(it) {
@@ -2496,15 +2501,15 @@ async function viewOrder(orderId) {
           qtyCell = String(it.quantity);
         }
         var rowCells = [];
-        rowCells.push('<td style="padding:8px;word-break:break-word;overflow-wrap:anywhere;white-space:normal;">' + nameCell + '</td>');
-        rowCells.push('<td style="padding:8px;white-space:nowrap;">' + qtyCell + '</td>');
-        rowCells.push('<td style="padding:8px;white-space:nowrap;">' + formatMoney(it.price) + '</td>');
-        rowCells.push('<td style="padding:8px;white-space:nowrap;font-weight:600;">' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>');
+        rowCells.push('<td style="word-break:break-word;overflow-wrap:anywhere;">' + nameCell + '</td>');
+        rowCells.push('<td style="white-space:nowrap;">' + qtyCell + '</td>');
+        rowCells.push('<td style="white-space:nowrap;text-align:right;">' + formatMoney(it.price) + '</td>');
+        rowCells.push('<td style="white-space:nowrap;text-align:right;font-weight:600;">' + formatMoney(Number(it.price) * Number(it.quantity)) + '</td>');
         if (showReadyCol) rowCells.push('<td style="text-align:center;">' + (it.is_ready ? '✓' : '—') + '</td>');
         if (showServedCol) rowCells.push('<td style="text-align:center;">' + (it.is_served ? '✓' : '—') + '</td>');
-        if (hasComments) rowCells.push('<td style="padding:8px;word-break:break-word;overflow-wrap:anywhere;white-space:normal;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(it.comment || '') + '</td>');
-        if (canEdit) rowCells.push('<td style="text-align:center;"><button class="btn-icon btn-icon-delete" onclick="adminRemoveItem(\'' + it.id + '\', \'' + order.id + '\')" title="Удалить позицию">✕</button></td>');
-        itemsHtml += '<tr style="border-bottom:1px solid var(--border);">' + rowCells.join('') + '</tr>';
+        if (hasComments) rowCells.push('<td style="word-break:break-word;overflow-wrap:anywhere;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(it.comment || '') + '</td>');
+        if (canEdit) rowCells.push('<td style="text-align:center;white-space:nowrap;"><button class="btn-icon btn-icon-delete" onclick="adminRemoveItem(\'' + it.id + '\', \'' + order.id + '\')" title="Удалить">✕</button></td>');
+        itemsHtml += '<tr>' + rowCells.join('') + '</tr>';
       });
       itemsHtml += '</tbody></table></div>';
     } else {
@@ -3578,7 +3583,7 @@ function renderCategoryList() {
       '<div class="drag-handle" title="Перетащите">⠿</div>' +
       '<div class="cat-name">' + escapeHtml(mc.name) + '</div>' +
       '<div class="cat-actions">' +
-        '<button class="btn btn-outline" onclick="openCategoryModal(false, \'' + mc.id + '\')">✎</button>' +
+        '<button class="btn-icon btn-icon-edit" onclick="openCategoryModal(false, \'' + mc.id + '\')" title="Изменить">✎</button>' +
         '<button class="btn-icon btn-icon-delete" onclick="deleteCategory(\'' + mc.id + '\')" title="Удалить">✕</button>' +
       '</div>';
     div.appendChild(mainRow);
@@ -3599,7 +3604,7 @@ function renderCategoryList() {
         '<div class="drag-handle" title="Перетащите">⠿</div>' +
         '<div class="cat-name">↳ ' + escapeHtml(sc.name) + '</div>' +
         '<div class="cat-actions">' +
-          '<button class="btn btn-outline" onclick="openCategoryModal(true, \'' + sc.id + '\')">✎</button>' +
+          '<button class="btn-icon btn-icon-edit" onclick="openCategoryModal(true, \'' + sc.id + '\')" title="Изменить">✎</button>' +
           '<button class="btn-icon btn-icon-delete" onclick="deleteCategory(\'' + sc.id + '\')" title="Удалить">✕</button>' +
         '</div>';
       div.appendChild(subRow);
@@ -4301,18 +4306,18 @@ async function loadSuppliersList() {
     }
     suppliers.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
     let html = '<table class="admin-table"><thead><tr>';
-    html += '<th style="width:22%;">Имя поставщика</th>';
-    html += '<th style="width:15%;">Телефон</th>';
-    html += '<th style="width:25%;">Комментарий</th>';
-    html += '<th style="width:10%;text-align:right;">Поставок</th>';
-    html += '<th style="width:13%;text-align:right;">Сумма поставок</th>';
-    html += '<th style="width:13%;text-align:right;">Задолженность</th>';
-    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '<th style="width:20%;">Имя поставщика</th>';
+    html += '<th style="width:14%;">Телефон</th>';
+    html += '<th style="width:22%;">Комментарий</th>';
+    html += '<th style="width:9%;text-align:right;">Поставок</th>';
+    html += '<th style="width:12%;text-align:right;">Сумма</th>';
+    html += '<th style="width:12%;text-align:right;">Долг</th>';
+    html += '<th style="width:11%;text-align:center;">Действия</th>';
     html += '</tr></thead><tbody>';
     suppliers.forEach(function(s) {
       const st = stats[s.id] || { count: 0, total: 0, debt: 0 };
       const debtColor = st.debt > 0 ? 'color:var(--danger);font-weight:700;' : '';
-      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<tr>'
       html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(s.name) + '</td>';
       html += '<td style="word-break:break-word;">' + escapeHtml(s.phone || '—') + '</td>';
       html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(s.comment || '—') + '</td>';
@@ -4478,7 +4483,7 @@ async function loadWarehousesList() {
     html += '</tr></thead><tbody>';
     warehouses.forEach(function(w, idx) {
       const total = whStats[w.id] || 0;
-      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<tr>'
       html += '<td>' + (idx + 1) + '</td>';
       html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(w.name) + '</td>';
       html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(w.comment || '—') + '</td>';
@@ -4573,7 +4578,7 @@ async function loadAccountsList() {
     html += '</tr></thead><tbody>';
     const typeLabels = { cash: 'Наличный', card: 'Карта', bank: 'Безналичный' };
     accounts.forEach(function(a) {
-      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<tr>'
       html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(a.name) + '</td>';
       html += '<td>' + escapeHtml(a.currency || '₾') + '</td>';
       html += '<td>' + escapeHtml(typeLabels[a.type] || a.type) + '</td>';
@@ -4695,7 +4700,7 @@ async function loadDeliveriesList() {
         ? (itemsCount === 1 ? escapeHtml(firstItemName) : escapeHtml(firstItemName) + ' +' + (itemsCount - 1))
         : '—';
 
-      html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">';
+      html += '<tr>'
       html += '<td>' + (d.number || '—') + '</td>';
       html += '<td style="font-size:0.85rem;">' + escapeHtml(formatDateTime(d.delivery_date)) + '</td>';
       html += '<td style="word-break:break-word;">' + escapeHtml(d.supplier_name || '—') + '</td>';
