@@ -1311,7 +1311,13 @@ async function getStockReport() {
   const stockTracking = String(await getSetting('stock_tracking')) === 'true';
   const threshold = Number(await getSetting('stock_threshold')) || 5;
   const allMenu = await dbSelect('menu');
-  const menu = allMenu.filter(function(m) { return m.is_active === true || m.is_active === 'true'; });
+  // Only show items that have a price > 0 — items with price 0/null are
+  // likely category headers (e.g. "вареники", "вторые блюда") that shouldn't
+  // appear in the stock table.
+  const menu = allMenu.filter(function(m) {
+    return (m.is_active === true || m.is_active === 'true') &&
+           Number(m.price) > 0;
+  });
 
   // Get all categories (to look up category names by id)
   const categories = await dbSelect('categories');

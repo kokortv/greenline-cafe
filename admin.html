@@ -231,6 +231,7 @@
     font-size: 1.1rem;
     flex: none;
   }
+  .sidebar-group { width: 100%; }
   .sidebar-parent {
     justify-content: space-between;
     width: 100%;
@@ -273,6 +274,8 @@
     flex: 1;
     min-width: 0;
     padding: 16px 20px;
+    width: calc(100vw - 220px);
+    max-width: calc(100vw - 220px);
   }
   /* Mobile sidebar toggle button (hidden on desktop) */
   .sidebar-toggle {
@@ -312,6 +315,8 @@
     }
     .admin-content {
       padding: 50px 12px 20px;
+      width: 100% !important;
+      max-width: 100% !important;
     }
   }
 
@@ -1374,7 +1379,16 @@
         <label>Поставщик *</label>
         <div style="display:flex;gap:6px;">
           <select id="delivery-supplier" style="flex:1;"></select>
-          <button type="button" class="btn btn-outline" style="padding:8px 10px;" onclick="openSupplierModal(null, true)" title="Добавить нового поставщика">+</button>
+          <button type="button" class="btn btn-outline" style="padding:8px 10px;" onclick="toggleInlineSupplier()" title="Добавить нового поставщика">+</button>
+        </div>
+        <!-- Inline supplier form (hidden by default) -->
+        <div id="inline-supplier-form" style="display:none;margin-top:8px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+          <input type="text" id="inline-supplier-name" placeholder="Название поставщика" style="margin-bottom:6px;">
+          <input type="text" id="inline-supplier-phone" placeholder="Телефон" style="margin-bottom:6px;">
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveInlineSupplier()" style="flex:1;">Добавить</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="toggleInlineSupplier()">Отмена</button>
+          </div>
         </div>
       </div>
       <div class="form-group">
@@ -4254,6 +4268,47 @@ function openSupplierModal(id, returnToDelivery) {
   openModal('modal-supplier');
 }
 
+// Toggle inline supplier form inside the delivery modal
+function toggleInlineSupplier() {
+  var form = document.getElementById('inline-supplier-form');
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  if (form.style.display === 'block') {
+    var nameInput = document.getElementById('inline-supplier-name');
+    if (nameInput) nameInput.focus();
+  }
+}
+
+// Save a new supplier from the inline form inside the delivery modal
+async function saveInlineSupplier() {
+  var name = document.getElementById('inline-supplier-name').value.trim();
+  if (!name) { showToast('Введите название поставщика', 'warning'); return; }
+  var phone = document.getElementById('inline-supplier-phone').value.trim();
+  try {
+    var newId = 'sup_' + Date.now().toString(36);
+    await apiPost('saveSupplier', { id: newId, name: name, phone: phone, address: '', comment: '', is_active: true });
+    // Add to APP_DATA.suppliers
+    if (!APP_DATA.suppliers) APP_DATA.suppliers = [];
+    APP_DATA.suppliers.push({ id: newId, name: name, phone: phone, address: '', comment: '', is_active: true });
+    // Refresh the supplier dropdown
+    var sel = document.getElementById('delivery-supplier');
+    if (sel) {
+      var opt = document.createElement('option');
+      opt.value = newId;
+      opt.textContent = name;
+      sel.appendChild(opt);
+      sel.value = newId;
+    }
+    showToast('Поставщик добавлен', 'success');
+    // Clear and hide the form
+    document.getElementById('inline-supplier-name').value = '';
+    document.getElementById('inline-supplier-phone').value = '';
+    toggleInlineSupplier();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
 async function saveSupplierUI() {
   const id = document.getElementById('supplier-id').value;
   const name = document.getElementById('supplier-name').value.trim();
@@ -4644,24 +4699,66 @@ function addDeliveryItemRow(data) {
   const list = document.getElementById('delivery-items-list');
   const row = document.createElement('div');
   row.className = 'delivery-item-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 70px 100px 100px 32px;gap:6px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;';
-  // Build the menu item datalist for autocomplete
-  const menuItems = APP_DATA.menu || [];
-  const dataListId = 'delivery-menu-items-list';
-  // Compose options HTML lazily (only once per page) — we just render a select
-  let menuOptions = '<option value="">— из меню или своё название —</option>';
-  menuItems.forEach(function(m) {
-    menuOptions += '<option value="' + escapeHtmlAttr(m.id) + '">' + escapeHtmlAttr(m.name) + '</option>';
-  });
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 70px 100px 100px 32px;gap:6px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
   row.innerHTML =
-    '<input type="text" class="di-name" placeholder="Наименование" value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;">' +
+    '<input type="text" class="di-name" placeholder="Начните вводить название..." value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;" oninput="searchDeliveryItems(this)" onfocus="searchDeliveryItems(this)" onblur="setTimeout(function(){hideDeliverySuggestions();},200)">' +
     '<input type="text" class="di-pack" placeholder="Фасовка" value="' + escapeHtmlAttr((data && data.pack) || '') + '" title="Фасовка (коробка, упаковка)">' +
     '<input type="number" class="di-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
     '<input type="number" class="di-price" min="0" step="0.01" placeholder="Цена за ед." value="' + ((data && data.unit_price) || '') + '" title="Цена за единицу" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
     '<input type="number" class="di-total" min="0" step="0.01" placeholder="Сумма" value="' + ((data && data.total_price) || '') + '" title="Общая сумма" style="font-weight:700;" oninput="updateDeliveryTotal();">' +
     '<button type="button" class="btn btn-outline" style="padding:4px 8px;color:var(--danger);" onclick="this.parentElement.remove();updateDeliveryTotal();" title="Удалить товар">✕</button>';
-  // Hidden menu_item_id (we'll detect it from the name input on save — for now keep it simple)
   list.appendChild(row);
+}
+
+// Autocomplete: search menu items as the user types in the delivery item name field
+function searchDeliveryItems(input) {
+  var query = input.value.toLowerCase().trim();
+  // Remove any existing suggestion box
+  hideDeliverySuggestions();
+  if (query.length < 1) return;
+  // Find matching menu items
+  var matches = (APP_DATA.menu || []).filter(function(m) {
+    var name = String(m.name || '').toLowerCase();
+    return name.indexOf(query) >= 0;
+  }).slice(0, 8); // limit to 8 results
+  if (matches.length === 0) return;
+  // Build suggestion box
+  var box = document.createElement('div');
+  box.id = 'delivery-suggestions';
+  box.style.cssText = 'position:absolute;z-index:1000;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);max-height:200px;overflow-y:auto;width:100%;top:100%;left:0;';
+  matches.forEach(function(m) {
+    var item = document.createElement('div');
+    item.style.cssText = 'padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.9rem;';
+    item.innerHTML = escapeHtml(m.name) + ' <span style="color:var(--text-muted);font-size:0.8rem;">' + formatMoney(m.price) + '</span>';
+    item.onmousedown = function(e) {
+      e.preventDefault();
+      input.value = m.name;
+      // Auto-fill price if empty
+      var row = input.closest('.delivery-item-row');
+      if (row) {
+        var priceEl = row.querySelector('.di-price');
+        var cost = Number(m.cost) || Number(m.price) || 0;
+        if (priceEl && !priceEl.value) priceEl.value = cost.toFixed(2);
+        updateDeliveryItemTotal(input);
+        updateDeliveryTotal();
+      }
+      hideDeliverySuggestions();
+    };
+    item.onmouseenter = function() { this.style.background = 'var(--bg)'; };
+    item.onmouseleave = function() { this.style.background = ''; };
+    box.appendChild(item);
+  });
+  // Position relative to the input's row
+  var row = input.closest('.delivery-item-row');
+  if (row) {
+    row.style.position = 'relative';
+    row.appendChild(box);
+  }
+}
+
+function hideDeliverySuggestions() {
+  var box = document.getElementById('delivery-suggestions');
+  if (box) box.remove();
 }
 
 // Recompute a single row's "total" = qty × price
@@ -5062,8 +5159,8 @@ async function renderStatisticsShifts() {
       content.innerHTML = '<div class="empty-state"><h3>Нет смен</h3><p>Кассовые смены появятся после первого открытия смены официантом.</p></div>';
       return;
     }
-    var html = '<div class="settings-card" style="margin-bottom:16px;">';
-    html += '<div style="overflow-x:auto;">';
+    var html = '<div style="margin-bottom:16px;width:100%;">';
+    html += '<div style="overflow-x:auto;width:100%;">';
     html += '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;">';
     html += '<thead><tr style="background:var(--primary);color:#fff;">';
     html += '<th style="padding:8px;text-align:center;width:40px;">#</th>';
