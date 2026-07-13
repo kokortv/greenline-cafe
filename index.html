@@ -860,6 +860,248 @@
   .home-order-card .hoc-actions .btn {
     flex: 1;
   }
+
+  /* ====================================================================
+     MODERN WAITER DESIGN (toggleable via ⭐ button)
+     All styles below use body.modern-design selector so they can be
+     easily removed by deleting this entire block.
+     ==================================================================== */
+  body.modern-design {
+    --md-primary: #6366f1;
+    --md-primary-dark: #4f46e5;
+    --md-bg: #f8fafc;
+    --md-card: #ffffff;
+    --md-text: #1e293b;
+    --md-text-muted: #64748b;
+    --md-border: #e2e8f0;
+    --md-success: #10b981;
+    --md-danger: #ef4444;
+    --md-warning: #f59e0b;
+    --md-radius: 14px;
+    --md-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+    --md-shadow-lg: 0 10px 30px rgba(0,0,0,0.08);
+  }
+  /* Header → modern dark */
+  body.modern-design .app-header {
+    background: #1e293b;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
+  body.modern-design .app-header h1 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  body.modern-design .header-pill {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 7px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  body.modern-design .header-pill:hover { background: rgba(255,255,255,0.15); }
+  body.modern-design .header-pill-active { background: rgba(99,102,241,0.25); border-color: rgba(99,102,241,0.4); }
+  body.modern-design .header-pill-count {
+    background: #6366f1; color: #fff; border-radius: 6px;
+    min-width: 18px; height: 18px; font-size: 0.72rem; padding: 0 5px;
+  }
+  body.modern-design #design-toggle-btn {
+    background: rgba(251,191,36,0.2); border-color: rgba(251,191,36,0.4);
+  }
+  body.modern-design .user-chip {
+    background: rgba(255,255,255,0.08); border-radius: 10px; padding: 7px 14px;
+    font-size: 0.82rem;
+  }
+  /* Main background */
+  body.modern-design { background: var(--md-bg); color: var(--md-text); }
+  body.modern-design .app-main { background: var(--md-bg); }
+  /* Section titles */
+  body.modern-design .section-title {
+    font-size: 1.3rem; font-weight: 700; color: var(--md-text);
+    letter-spacing: -0.01em;
+  }
+  /* Table buttons → modern cards */
+  body.modern-design .table-btn {
+    border-radius: var(--md-radius);
+    border: 2px solid var(--md-border);
+    background: var(--md-card);
+    box-shadow: var(--md-shadow);
+    font-size: 1.6rem; font-weight: 700;
+    color: var(--md-primary);
+    transition: all 0.25s;
+  }
+  body.modern-design .table-btn:hover {
+    border-color: var(--md-primary); transform: translateY(-2px);
+    box-shadow: var(--md-shadow-lg);
+  }
+  body.modern-design .table-btn.has-order {
+    background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+    color: #fff; border-color: transparent;
+  }
+  body.modern-design .table-btn.has-order .table-label { color: rgba(255,255,255,0.85); }
+  body.modern-design .table-btn.has-order .table-order-info .toi-time { color: rgba(255,255,255,0.8); }
+  body.modern-design .table-btn.has-order .table-order-info .toi-total { color: #fff; }
+  body.modern-design .table-btn.selected {
+    background: var(--md-primary) !important; color: #fff !important;
+    border-color: var(--md-primary-dark) !important;
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.2);
+  }
+  body.modern-design .table-btn.virtual {
+    background: #eff6ff; border-color: #bfdbfe; color: #2563eb;
+  }
+  body.modern-design .table-btn.virtual.has-order {
+    background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  }
+  body.modern-design .table-btn .table-label {
+    font-size: 0.72rem; font-weight: 500; color: var(--md-text-muted);
+  }
+  /* Order screen layout */
+  body.modern-design .order-panel-left {
+    background: var(--md-card); border-right: 1px solid var(--md-border);
+    box-shadow: 1px 0 4px rgba(0,0,0,0.03);
+  }
+  body.modern-design .order-panel-right { background: var(--md-bg); }
+  /* Main category buttons */
+  body.modern-design .main-cat-btn {
+    border-radius: 10px; border: 1.5px solid var(--md-border);
+    background: var(--md-card); font-weight: 600; font-size: 0.9rem;
+    color: var(--md-text); transition: all 0.2s;
+  }
+  body.modern-design .main-cat-btn:hover { border-color: var(--md-primary); }
+  body.modern-design .main-cat-btn.selected {
+    background: var(--md-primary); color: #fff; border-color: var(--md-primary-dark);
+    box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+  }
+  /* Subcat tabs */
+  body.modern-design .subcat-tab {
+    border-radius: 8px; border: 1.5px solid var(--md-border);
+    background: var(--md-card); font-size: 0.85rem; font-weight: 500;
+    color: var(--md-text-muted); padding: 8px 14px; transition: all 0.2s;
+  }
+  body.modern-design .subcat-tab:hover { border-color: var(--md-primary); color: var(--md-primary); }
+  body.modern-design .subcat-tab.active {
+    background: var(--md-primary); color: #fff; border-color: var(--md-primary-dark);
+  }
+  /* Menu item cards */
+  body.modern-design .menu-item-card {
+    border-radius: var(--md-radius); border: 1px solid var(--md-border);
+    background: var(--md-card); box-shadow: var(--md-shadow);
+    padding: 12px; transition: all 0.2s;
+  }
+  body.modern-design .menu-item-card:hover { box-shadow: var(--md-shadow-lg); transform: translateY(-1px); }
+  body.modern-design .menu-item-card .item-name { font-size: 1rem; font-weight: 600; color: var(--md-text); }
+  body.modern-design .menu-item-card .item-price { color: var(--md-primary); font-weight: 700; font-size: 1.1rem; }
+  body.modern-design .menu-item-card .item-add-btn {
+    background: var(--md-success); color: #fff; border-radius: 10px;
+    font-weight: 600; font-size: 0.9rem; padding: 8px; transition: all 0.2s;
+  }
+  body.modern-design .menu-item-card .item-add-btn:hover { background: #059669; }
+  /* Cart rows */
+  body.modern-design .cart-row-modern {
+    border-radius: 10px; border-left: 3px solid var(--md-primary);
+    background: var(--md-card); box-shadow: var(--md-shadow);
+  }
+  body.modern-design .cart-qty-btn {
+    background: var(--md-card); color: var(--md-primary); border-radius: 8px;
+    box-shadow: var(--md-shadow); width: 30px; height: 30px;
+  }
+  body.modern-design .cart-qty-btn:hover { background: var(--md-primary); color: #fff; }
+  body.modern-design .cart-row-modern-total { color: var(--md-primary); }
+  /* Order footer */
+  body.modern-design .order-footer {
+    background: var(--md-card); border-top: 1px solid var(--md-border);
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.04);
+  }
+  body.modern-design .order-footer-total { color: var(--md-primary); }
+  body.modern-design #accept-order-btn {
+    background: var(--md-success); border-radius: 10px; font-weight: 700;
+  }
+  body.modern-design #accept-order-btn:hover { background: #059669; }
+  /* Guests stepper */
+  body.modern-design .guests-stepper button {
+    background: var(--md-primary); border-radius: 10px;
+    width: 34px; height: 34px; font-size: 1.1rem;
+  }
+  body.modern-design .guests-stepper .guests-value { color: var(--md-text); }
+  /* Search box */
+  body.modern-design .menu-search-box input {
+    border: 1.5px solid var(--md-border); border-radius: 10px;
+    font-size: 0.9rem;
+  }
+  body.modern-design .menu-search-box input:focus {
+    border-color: var(--md-primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  }
+  /* Order detail cards */
+  body.modern-design .cart-item {
+    border-radius: 10px; border-left: 4px solid var(--md-primary);
+    box-shadow: var(--md-shadow);
+  }
+  body.modern-design .cart-item.ready { border-left-color: var(--md-success); }
+  body.modern-design .cart-item.served { border-left-color: #3b82f6; }
+  body.modern-design .order-added-group {
+    background: rgba(16,185,129,0.06); border-left-color: var(--md-success);
+    border-radius: 10px;
+  }
+  /* Buttons */
+  body.modern-design .btn {
+    border-radius: 10px; font-weight: 600; font-size: 0.9rem;
+    min-height: 40px;
+  }
+  body.modern-design .btn-primary { background: var(--md-primary); }
+  body.modern-design .btn-primary:hover { background: var(--md-primary-dark); box-shadow: 0 2px 8px rgba(99,102,241,0.3); }
+  body.modern-design .btn-success { background: var(--md-success); }
+  body.modern-design .btn-success:hover { background: #059669; }
+  body.modern-design .btn-danger { background: var(--md-danger); }
+  body.modern-design .btn-danger:hover { background: #dc2626; }
+  body.modern-design .btn-info { background: #3b82f6; }
+  body.modern-design .btn-outline { border: 1.5px solid var(--md-border); color: var(--md-text); }
+  body.modern-design .btn-outline:hover { border-color: var(--md-primary); color: var(--md-primary); }
+  /* Archive layout */
+  body.modern-design .archive-order-row {
+    border-radius: 10px; border: 1px solid var(--md-border);
+    box-shadow: var(--md-shadow);
+  }
+  body.modern-design .archive-order-row:hover { border-color: var(--md-primary); }
+  body.modern-design .archive-order-row.active {
+    background: var(--md-primary); border-color: var(--md-primary-dark);
+  }
+  body.modern-design .archive-search-box input {
+    border: 1.5px solid var(--md-border); border-radius: 10px;
+  }
+  body.modern-design .archive-search-box input:focus {
+    border-color: var(--md-primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  }
+  body.modern-design .archive-detail-card {
+    border-radius: var(--md-radius); box-shadow: var(--md-shadow);
+    border: 1px solid var(--md-border);
+  }
+  /* Cart total display */
+  body.modern-design .cart-total-display {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-radius: var(--md-radius); color: #fff;
+  }
+  body.modern-design .cart-total-display .amount { color: #fff; }
+  body.modern-design .cart-total-display .label { color: rgba(255,255,255,0.6); }
+  /* Inputs */
+  body.modern-design input, body.modern-design textarea, body.modern-design select {
+    border: 1.5px solid var(--md-border); border-radius: 10px;
+    font-size: 0.9rem; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  body.modern-design input:focus, body.modern-design textarea:focus, body.modern-design select:focus {
+    border-color: var(--md-primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  }
+  /* Pills */
+  body.modern-design .pill { border-radius: 8px; font-size: 0.78rem; }
+  body.modern-design .pill-warning { background: #fef3c7; color: #92400e; }
+  body.modern-design .pill-success { background: #d1fae5; color: #065f46; }
+  /* Modals */
+  body.modern-design .modal {
+    border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  }
+  body.modern-design .modal-backdrop { backdrop-filter: blur(3px); }
+  /* END OF MODERN DESIGN BLOCK
+     ==================================================================== */
 </style>
 </head>
 <body>
@@ -875,6 +1117,7 @@
       <span class="header-pill-count" id="active-orders-count">0</span>
     </button>
     <button class="header-pill" id="archive-btn" onclick="showArchive()" title="Архив заказов за сегодня">📋 Архив</button>
+    <button class="header-pill" id="design-toggle-btn" onclick="toggleWaiterDesign()" title="Переключить дизайн">⭐</button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -1400,9 +1643,12 @@ async function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = state.currentUser.name;
-  // QR menu button and circle badge were removed from the header per request.
-  // (The QR feature is still available via the admin panel — waiters no longer
-  //  have a shortcut in their own header.)
+  // Sync design toggle button state with body class
+  var designBtn = document.getElementById('design-toggle-btn');
+  if (designBtn && document.body.classList.contains('modern-design')) {
+    designBtn.style.background = 'rgba(251,191,36,0.3)';
+    designBtn.style.borderColor = 'rgba(251,191,36,0.5)';
+  }
   requestWakeLock();
   await initServiceWorker();
   if (APP_DATA.settings.sound_notifications !== 'false') {
@@ -1513,6 +1759,28 @@ function getContrastColorWaiter(hex) {
 // On iOS Safari this won't hide Safari's chrome fully — only adding the
 // page to the Home Screen (PWA install) achieves that. On Android Chrome
 // and desktop browsers, Fullscreen API hides everything.
+// ===== Modern design toggle (⭐ button) =====
+// Toggles body.modern-design class — all modern styles are in a separate
+// CSS block marked "MODERN WAITER DESIGN" and can be removed cleanly.
+function toggleWaiterDesign() {
+  document.body.classList.toggle('modern-design');
+  var isOn = document.body.classList.contains('modern-design');
+  try { localStorage.setItem('waiter-modern-design', isOn ? 'true' : 'false'); } catch(e) {}
+  var btn = document.getElementById('design-toggle-btn');
+  if (btn) {
+    btn.style.background = isOn ? 'rgba(251,191,36,0.3)' : '';
+    btn.style.borderColor = isOn ? 'rgba(251,191,36,0.5)' : '';
+  }
+  showToast(isOn ? 'Современный дизайн включён ⭐' : 'Классический дизайн', 'info');
+}
+
+// Apply saved design on page load
+try {
+  if (localStorage.getItem('waiter-modern-design') === 'true') {
+    document.body.classList.add('modern-design');
+  }
+} catch(e) {}
+
 function toggleFullscreen() {
   try {
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
