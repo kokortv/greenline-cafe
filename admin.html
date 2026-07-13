@@ -9,11 +9,12 @@
 <style>
   .admin-tabs { margin-bottom: 20px; }
   .settings-card {
-    background: white;
-    border-radius: var(--radius);
+    background: #fff;
+    border-radius: 16px;
     padding: 24px;
-    box-shadow: var(--shadow);
-    max-width: 600px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    max-width: 100%;
+    border: 1px solid #e5e7eb;
   }
   .settings-card .form-group { margin-bottom: 18px; }
 
@@ -179,7 +180,7 @@
   }
 
   /* ============================================================
-     ADMIN SIDEBAR LAYOUT
+     ADMIN LAYOUT — modern fixed sidebar + scrollable content
      ============================================================ */
   .admin-layout {
     display: flex;
@@ -188,94 +189,103 @@
   }
   .admin-sidebar {
     flex: none;
-    width: 220px;
-    background: #fff;
-    border-right: 1px solid var(--border);
-    min-height: calc(100vh - 60px);
-    position: sticky;
+    width: 240px;
+    background: #1a1d29;
+    border-right: none;
+    height: 100vh;
+    position: fixed;
     top: 0;
+    left: 0;
     overflow-y: auto;
-    z-index: 10;
+    z-index: 50;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.15);
   }
   .sidebar-nav {
     display: flex;
     flex-direction: column;
-    padding: 8px 0;
+    padding: 12px 0;
   }
   .sidebar-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text-muted);
+    gap: 12px;
+    padding: 12px 20px;
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: #a0a4b0;
     background: none;
     border: none;
     border-left: 3px solid transparent;
     cursor: pointer;
     text-align: left;
-    transition: all 0.15s;
+    transition: all 0.2s;
     white-space: nowrap;
+    width: 100%;
+    box-sizing: border-box;
   }
   .sidebar-item:hover {
-    background: var(--bg);
-    color: var(--text);
+    background: rgba(255,255,255,0.06);
+    color: #fff;
   }
   .sidebar-item.active {
-    color: var(--primary);
-    border-left-color: var(--primary);
-    background: rgba(211, 47, 47, 0.05);
+    color: #fff;
+    border-left-color: #6366f1;
+    background: rgba(99,102,241,0.15);
   }
   .sidebar-icon {
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     flex: none;
+    width: 24px;
+    text-align: center;
   }
   .sidebar-group { width: 100%; }
   .sidebar-parent {
-    justify-content: space-between;
     width: 100%;
   }
   .sidebar-parent span:first-child {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    flex: 1;
   }
   .sidebar-arrow {
-    font-size: 0.7rem;
-    color: var(--text-muted);
+    font-size: 0.65rem;
+    color: #6b7280;
   }
   .sidebar-subitems {
     display: flex;
     flex-direction: column;
-    padding-left: 28px;
+    padding-left: 36px;
   }
   .sidebar-subitem {
     padding: 8px 16px;
-    font-size: 0.88rem;
-    color: var(--text-muted);
+    font-size: 0.85rem;
+    color: #6b7280;
     background: none;
     border: none;
-    border-left: 2px solid var(--border);
+    border-left: 2px solid #374151;
     cursor: pointer;
     text-align: left;
-    transition: all 0.15s;
+    transition: all 0.2s;
+    width: 100%;
+    box-sizing: border-box;
   }
   .sidebar-subitem:hover {
-    color: var(--text);
-    background: var(--bg);
+    color: #fff;
+    background: rgba(255,255,255,0.04);
   }
   .sidebar-subitem.active {
-    color: var(--primary);
-    border-left-color: var(--primary);
+    color: #818cf8;
+    border-left-color: #6366f1;
     font-weight: 600;
   }
   .admin-content {
     flex: 1;
     min-width: 0;
-    padding: 16px 20px;
-    width: calc(100vw - 220px);
-    max-width: calc(100vw - 220px);
+    padding: 24px 28px;
+    margin-left: 240px;
+    width: calc(100vw - 240px);
+    max-width: calc(100vw - 240px);
   }
   /* Mobile sidebar toggle button (hidden on desktop) */
   .sidebar-toggle {
@@ -286,7 +296,7 @@
     z-index: 100;
     padding: 8px 14px;
     font-size: 0.9rem;
-    background: var(--primary);
+    background: #6366f1;
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -317,6 +327,7 @@
       padding: 50px 12px 20px;
       width: 100% !important;
       max-width: 100% !important;
+      margin-left: 0 !important;
     }
   }
 
@@ -461,10 +472,11 @@
     margin-bottom: 20px;
   }
   .stat-card {
-    background: white;
-    border-radius: var(--radius);
-    padding: 18px;
-    box-shadow: var(--shadow);
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    border: 1px solid #e5e7eb;
     text-align: center;
   }
   .stat-card .stat-value {
@@ -532,6 +544,10 @@
   <div class="admin-layout">
     <!-- Sidebar navigation -->
     <aside class="admin-sidebar" id="admin-sidebar">
+      <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);">
+        <div style="font-size:1.1rem;font-weight:700;color:#fff;" id="sidebar-restaurant-name">Ресторан</div>
+        <div style="font-size:0.75rem;color:#6b7280;margin-top:2px;">Панель администратора</div>
+      </div>
       <nav class="sidebar-nav">
         <button class="sidebar-item active" data-tab="orders" onclick="switchTab('orders')">
           <span class="sidebar-icon">📋</span> Заказы
@@ -1557,9 +1573,13 @@ async function submitLogin() {
 }
 
 function startApp() {
-  document.getElementById('app-header').style.display = 'flex';
+  // Admin doesn't use the top app-header — the restaurant name is shown in the sidebar
+  document.getElementById('app-header').style.display = 'none';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = adminState.currentUser.name;
+  // Set restaurant name in the sidebar
+  var sidebarName = document.getElementById('sidebar-restaurant-name');
+  if (sidebarName && APP_DATA.settings) sidebarName.textContent = APP_DATA.settings.restaurant_name || 'Ресторан';
   requestWakeLock();
   populateSettingsForm();
   populateCategoryFilter();
