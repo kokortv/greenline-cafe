@@ -1363,7 +1363,13 @@
 <div class="modal-backdrop" id="modal-order">
   <div class="modal" style="max-width:700px;">
     <h2>Заказ <span id="ord-detail-id"></span></h2>
+    <!-- Tab switcher -->
+    <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid #e2e8f0;">
+      <button class="btn btn-outline" id="order-tab-bill" onclick="switchOrderTab('bill')" style="border:none;border-bottom:2px solid #6366f1;border-radius:0;margin-bottom:-2px;background:none;color:#6366f1;font-weight:600;padding:8px 16px;">Счёт</button>
+      <button class="btn btn-outline" id="order-tab-history" onclick="switchOrderTab('history')" style="border:none;border-radius:0;background:none;color:#64748b;padding:8px 16px;">История</button>
+    </div>
     <div id="ord-detail-content"></div>
+    <div id="ord-history-content" style="display:none;"></div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('modal-order')">Закрыть</button>
     </div>
@@ -2270,7 +2276,13 @@ function printQrMenu() {
 /* ---------- ORDERS ---------- */
 async function loadOrders() {
   adminState.filterStatus = document.getElementById('filter-status').value;
-  adminState.filterDate = document.getElementById('filter-date').value;
+  // If date filter is empty, default to today
+  var dateInput = document.getElementById('filter-date');
+  if (!dateInput.value) {
+    var today = new Date().toISOString().substring(0, 10);
+    dateInput.value = today;
+  }
+  adminState.filterDate = dateInput.value;
   try {
     const data = await apiGet('getOrders', { status: adminState.filterStatus });
     let orders = data.orders || [];
@@ -2431,12 +2443,84 @@ function renderOrders() {
 }
 
 function clearFilters() {
-  document.getElementById('filter-status').value = 'accepted';
+  document.getElementById('filter-status').value = 'all';
   document.getElementById('filter-date').value = '';
-  loadOrders();
+  loadOrders(); // loadOrders will default date to today
+}
+
+// Switch between "Счёт" and "История" tabs in the order modal
+var _currentOrderViewId = null; // remember which order is being viewed
+function switchOrderTab(tab) {
+  var billContent = document.getElementById('ord-detail-content');
+  var historyContent = document.getElementById('ord-history-content');
+  var billTab = document.getElementById('order-tab-bill');
+  var historyTab = document.getElementById('order-tab-history');
+  if (tab === 'bill') {
+    if (billContent) billContent.style.display = 'block';
+    if (historyContent) historyContent.style.display = 'none';
+    if (billTab) { billTab.style.borderBottom = '2px solid #6366f1'; billTab.style.color = '#6366f1'; billTab.style.fontWeight = '600'; }
+    if (historyTab) { historyTab.style.borderBottom = 'none'; historyTab.style.color = '#64748b'; historyTab.style.fontWeight = '400'; }
+  } else {
+    if (billContent) billContent.style.display = 'none';
+    if (historyContent) historyContent.style.display = 'block';
+    if (billTab) { billTab.style.borderBottom = 'none'; billTab.style.color = '#64748b'; billTab.style.fontWeight = '400'; }
+    if (historyTab) { historyTab.style.borderBottom = '2px solid #6366f1'; historyTab.style.color = '#6366f1'; historyTab.style.fontWeight = '600'; }
+    // Load history if we have an order ID
+    if (_currentOrderViewId) renderOrderHistory(_currentOrderViewId);
+  }
+}
+
+// Render the order history (timeline of actions)
+async function renderOrderHistory(orderId) {
+  var content = document.getElementById('ord-history-content');
+  if (!content) return;
+  content.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    var data = await apiGet('getOrderLogs', { order_id: orderId });
+    var logs = data.logs || [];
+    if (logs.length === 0) {
+      content.innerHTML = '<div class="empty-state"><h3>Нет записей</h3><p>История действий пуста.</p></div>';
+      return;
+    }
+    // Build a timeline
+    var actionIcons = {
+      'created': '🟢',
+      'item_added': '➕',
+      'item_removed': '➖',
+      'qty_changed': '🔄',
+      'completed': '✅',
+      'cancelled': '❌',
+      'note_changed': '💬'
+    };
+    var html = '<div style="display:flex;flex-direction:column;gap:0;">';
+    logs.forEach(function(log, idx) {
+      var icon = actionIcons[log.action] || '•';
+      var isLast = idx === logs.length - 1;
+      html += '<div style="display:flex;gap:12px;position:relative;padding-bottom:' + (isLast ? '0' : '16px') + ';">';
+      // Vertical line (except for last item)
+      if (!isLast) {
+        html += '<div style="position:absolute;left:15px;top:32px;bottom:0;width:2px;background:#e2e8f0;"></div>';
+      }
+      // Icon circle
+      html += '<div style="flex:none;width:32px;height:32px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:0.9rem;z-index:1;">' + icon + '</div>';
+      // Content
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-size:0.88rem;font-weight:600;color:#1e293b;">' + escapeHtml(log.details || log.action) + '</div>';
+      html += '<div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">' + formatDateTime(log.created_at) + '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    content.innerHTML = html;
+  } catch (err) {
+    content.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + escapeHtml(err.message) + '</p>';
+  }
 }
 
 async function viewOrder(orderId) {
+  _currentOrderViewId = orderId; // remember for history tab
+  // Reset to "Счёт" tab
+  switchOrderTab('bill');
   try {
     const order = await apiGet('getOrder', { id: orderId });
     // Show daily sequence number (Заказ №1, №2, ...) — falls back to short ID

@@ -484,6 +484,12 @@ async function createOrder(orderData) {
   // Deduct stock if tracking enabled
   await deductStock(items);
 
+  // Log: order created
+  var tableLabel = orderData.table_type === 'virtual' ? orderData.table_number :
+                   orderData.table_type === 'tab' ? 'счёт ' + orderData.table_number :
+                   'столик ' + orderData.table_number;
+  await logOrderAction(orderId, 'created', 'Открыт счёт — ' + tableLabel + ' (' + items.length + ' позиций, ' + (orderData.guests || 1) + ' чел.)');
+
   return await getOrder(orderId);
 }
 
@@ -505,6 +511,11 @@ async function updateOrderStatus(orderId, status, paymentMethod, cashAmount, car
     }
   }
   await dbUpdate('orders', orderId, updates);
+  // Log completion or cancellation
+  if (status === 'completed') {
+    var payLabel = paymentMethod === 'cash' ? 'наличные' : (paymentMethod === 'card' ? 'карта' : (paymentMethod === 'mixed' ? 'смешанная' : paymentMethod || ''));
+    await logOrderAction(orderId, 'completed', 'Закрыт чек (оплата: ' + payLabel + ')');
+  }
   return await getOrder(orderId);
 }
 
@@ -556,6 +567,12 @@ async function addItemToOrder(itemData) {
   // Deduct stock
   await deductStock([{ menu_item_id: itemData.menu_item_id, quantity: itemData.quantity }]);
 
+  // Log: item added
+  await logOrderAction(itemData.order_id, 'item_added',
+    'Добавлено: ' + (itemData.name || '?') + ' ×' + (itemData.quantity || 1) +
+    (itemData.modification_name ? ' (' + itemData.modification_name + ')' : '') +
+    (itemData.comment ? ' — ' + itemData.comment : ''));
+
   // Recalc total
   await recalcOrderTotalDB(itemData.order_id);
   return await getOrder(itemData.order_id);
@@ -567,6 +584,9 @@ async function updateItemQuantity(itemId, quantity) {
   const item = await dbSelect('order_items', { id: itemId });
   if (item.length > 0) {
     await recalcOrderTotalDB(item[0].order_id);
+    // Log: qty changed
+    await logOrderAction(item[0].order_id, 'qty_changed',
+      'Изменено количество: ' + (item[0].name || '?') + ' → ' + quantity + ' шт');
     return await getOrder(item[0].order_id);
   }
   return null;
@@ -580,8 +600,11 @@ async function removeItemFromOrder(itemId) {
   const items = await dbSelect('order_items', { id: itemId });
   if (items.length === 0) throw new Error('Item not found');
   const orderId = items[0].order_id;
+  var itemInfo = items[0].name + ' ×' + items[0].quantity;
   await dbDelete('order_items', itemId);
   await recalcOrderTotalDB(orderId);
+  // Log: item removed
+  await logOrderAction(orderId, 'item_removed', 'Удалено: ' + itemInfo);
   return await getOrder(orderId);
 }
 
@@ -621,20 +644,48 @@ async function toggleItemServedDB(itemId, isServed) {
 }
 
 async function deleteOrder(orderId) {
-  // Delete items first
+  // Delete logs first, then items, then order
+  try { await _sb.from('order_logs').delete().eq('order_id', orderId); } catch(e) {}
   await _sb.from('order_items').delete().eq('order_id', orderId);
   await dbDelete('orders', orderId);
   return { ok: true };
 }
 
+// ===== Order logging =====
+// Logs an action to the order_logs table. Fire-and-forget — errors are ignored.
+async function logOrderAction(orderId, action, details) {
+  try {
+    var logId = 'log_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+    await dbInsert('order_logs', {
+      id: logId,
+      order_id: orderId,
+      action: action,
+      details: details || '',
+      created_at: new Date().toISOString()
+    });
+  } catch (e) { /* ignore logging errors */ }
+}
+
+// Get all logs for an order, sorted ascending by time
+async function getOrderLogs(orderId) {
+  const logs = await dbSelect('order_logs', { order_id: orderId });
+  logs.sort(function(a, b) {
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
+  return logs;
+}
+
 // Mark an order as cancelled (preserving it for statistics) with a reason.
 // Order items are preserved too so admins can review what was cancelled.
 async function cancelOrderWithReasonDB(orderId, cancelReason) {
-  return await dbUpdate('orders', orderId, {
+  var result = await dbUpdate('orders', orderId, {
     status: 'cancelled',
     cancel_reason: cancelReason || '',
     cancelled_at: new Date().toISOString()
   });
+  // Log: order cancelled
+  await logOrderAction(orderId, 'cancelled', 'Заказ отменён' + (cancelReason ? ' — ' + cancelReason : ''));
+  return result;
 }
 
 async function pauseOrderDB(orderId) {
@@ -1909,6 +1960,8 @@ async function apiGet(action, params) {
       return await getActiveShift(params.waiter_id);
     case 'getAllShifts':
       return { shifts: await dbSelect('shifts') };
+    case 'getOrderLogs':
+      return { logs: await getOrderLogs(params.order_id) };
     case 'getStockReport':
       return await getStockReport();
     case 'getTablesConfig':
