@@ -144,25 +144,25 @@
   }
   .menu-item {
     display: flex; justify-content: space-between; align-items: flex-start;
-    padding: 16px 10px; border-bottom: 1px solid var(--vm-border); gap: 16px;
-    transition: background 0.2s;
+    padding: 14px 10px; border-bottom: 1px solid var(--vm-border); gap: 12px;
     border-radius: 8px;
   }
-  .menu-item:last-child { border-bottom: none; margin-bottom: 4px; }
+  .menu-item:last-child { border-bottom: none; }
   .menu-item.clickable { cursor: pointer; }
-  .menu-item.clickable:hover { background: rgba(0,0,0,0.03); }
-  .menu-item.clickable:active { background: rgba(0,0,0,0.06); }
   .mi-info { flex: 1; min-width: 0; }
   .mi-name { font-weight: 600; font-size: 1rem; color: var(--vm-text); line-height: 1.35; }
   .mi-name .mi-photo-badge { font-size: 0.68rem; color: var(--vm-accent); margin-left: 4px; vertical-align: middle; }
   .mi-translation { font-size: 0.82rem; color: var(--vm-muted); margin-top: 3px; font-style: italic; }
-  /* Right column: price OR modifications list (always right-aligned) */
-  .mi-right { flex: none; min-width: 80px; text-align: right; display: flex; flex-direction: column; gap: 2px; }
-  .mi-price { font-size: 1rem; font-weight: 700; white-space: nowrap; color: var(--vm-accent); }
-  .mi-mod-list { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
-  .mi-mod-item { font-size: 0.88rem; color: var(--vm-text); white-space: nowrap; line-height: 1.3; }
-  .mi-mod-item .mi-mod-name-inline { color: var(--vm-muted); }
-  .mi-mod-item .mi-mod-price-inline { font-weight: 700; color: var(--vm-accent); margin-left: 6px; }
+  .mi-mods { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 0.92rem; color: var(--vm-text); }
+  .mi-mod-row {
+    display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+    padding: 2px 0 2px 20px; position: relative;
+  }
+  .mi-mod-row .mi-mod-label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+  .mi-mod-row .mi-mod-icon { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--vm-accent); display: inline-block; }
+  .mi-mod-row .mi-mod-name { min-width: 0; flex: 1; word-break: break-word; color: var(--vm-muted); }
+  .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); white-space: nowrap; }
+  .mi-price { font-size: 1rem; font-weight: 700; white-space: nowrap; flex: none; color: var(--vm-accent); }
 
   /* Dish detail modal */
   .dish-modal-overlay {
@@ -563,40 +563,26 @@ function renderSingleCategory(mc) {
 
 function renderItem(item) {
   var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
-  // Check if the dish has a valid image URL → make it clickable
   var imageUrl = String(item.image_url || '').trim();
   var hasValidImage = imageUrl && /\.(jpg|jpeg|png)$/i.test(imageUrl) && !/[<>"']/.test(imageUrl);
-  var isClickable = hasValidImage;
 
-  // Build the dish name line (with optional photo badge)
   var nameLine = escHtml(item.name);
   if (hasValidImage) nameLine += ' <span class="mi-photo-badge">📷</span>';
 
-  // Build onclick attribute if clickable
   var clickAttr = '';
-  if (isClickable) {
+  if (hasValidImage) {
     clickAttr = ' clickable" data-item-id="' + escHtml(item.id) + '" onclick="showDishDetail(\'' + escHtml(item.id) + '\')"';
   }
 
-  // Left column: name + translation
-  var leftHtml = '<div class="mi-info">' +
-    '<div class="mi-name">' + nameLine + '</div>' +
-    (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') +
-    '</div>';
-
-  // Right column: price (for simple dishes) or modification list (for dishes with mods)
-  var rightHtml;
   if (hasMods) {
-    rightHtml = '<div class="mi-right"><div class="mi-mod-list">';
+    var modsHtml = '<div class="mi-mods">';
     item.modifications.forEach(function(mod) {
-      rightHtml += '<div class="mi-mod-item"><span class="mi-mod-name-inline">' + escHtml(mod.name) + '</span><span class="mi-mod-price-inline">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
+      modsHtml += '<div class="mi-mod-row"><span class="mi-mod-label"><span class="mi-mod-icon"></span><span class="mi-mod-name">' + escHtml(mod.name) + '</span></span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
     });
-    rightHtml += '</div></div>';
-  } else {
-    rightHtml = '<div class="mi-right"><div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div></div>';
+    modsHtml += '</div>';
+    return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
   }
-
-  return '<div class="menu-item' + clickAttr + '>' + leftHtml + rightHtml + '</div>';
+  return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div></div>';
 }
 
 // Show dish detail modal (image + name + description)
