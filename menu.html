@@ -151,7 +151,7 @@
   .mi-name { font-weight: 600; font-size: 1rem; color: var(--vm-text); line-height: 1.35; }
   .mi-name .mi-photo-badge { font-size: 0.68rem; color: var(--vm-accent); margin-left: 4px; vertical-align: middle; }
   .mi-translation { font-size: 0.82rem; color: var(--vm-muted); margin-top: 3px; font-style: italic; }
-  .mi-mods { margin-top: 4px; display: flex; flex-direction: column; gap: 3px; font-size: 0.92rem; color: var(--vm-text); }
+  .mi-mods { margin-bottom: 4px; display: flex; flex-direction: column; gap: 3px; font-size: 0.92rem; color: var(--vm-text); }
   .mi-mod-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 1px 0 1px 20px; position: relative; }
   .mi-mod-row .mi-mod-label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
   .mi-mod-row .mi-mod-icon { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--vm-accent); display: inline-block; }
@@ -564,20 +564,32 @@ function renderItem(item) {
   var nameLine = escHtml(item.name);
   if (hasValidImage) nameLine += ' <span class="mi-photo-badge">📷</span>';
 
-  var clickAttr = '';
+  // Build class + onclick safely — no broken quotes
+  var itemClass = 'menu-item';
+  var onClickAttr = '';
   if (hasValidImage) {
-    clickAttr = ' clickable" data-item-id="' + escHtml(item.id) + '" onclick="showDishDetail(\'' + escHtml(item.id) + '\')"';
+    itemClass += ' clickable';
+    onClickAttr = ' onclick="showDishDetail(\'' + escHtml(item.id) + '\')"';
   }
 
+  // Left column: name + translation + modifications (with dots, under the name)
+  var leftHtml = '<div class="mi-info">' +
+    '<div class="mi-name">' + nameLine + '</div>' +
+    (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '');
+
   if (hasMods) {
-    var modsHtml = '<div class="mi-mods">';
+    leftHtml += '<div class="mi-mods">';
     item.modifications.forEach(function(mod) {
-      modsHtml += '<div class="mi-mod-row"><span class="mi-mod-label"><span class="mi-mod-icon"></span><span class="mi-mod-name">' + escHtml(mod.name) + '</span></span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
+      leftHtml += '<div class="mi-mod-row"><span class="mi-mod-label"><span class="mi-mod-icon"></span><span class="mi-mod-name">' + escHtml(mod.name) + '</span></span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
     });
-    modsHtml += '</div>';
-    return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
+    leftHtml += '</div>';
   }
-  return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div></div>';
+  leftHtml += '</div>';
+
+  // Right column: price (ALWAYS on the right, same line as the name)
+  var rightHtml = '<div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div>';
+
+  return '<div class="' + itemClass + '"' + onClickAttr + '>' + leftHtml + rightHtml + '</div>';
 }
 
 // Show dish detail modal (image + name + description)
