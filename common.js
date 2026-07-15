@@ -490,6 +490,15 @@ async function createOrder(orderData) {
                    'столик ' + orderData.table_number;
   await logOrderAction(orderId, 'created', 'Открыт счёт — ' + tableLabel + ' (' + items.length + ' позиций, ' + (orderData.guests || 1) + ' чел.)');
 
+  // Log: each item in the initial order (so they appear in the history timeline)
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    await logOrderAction(orderId, 'item_added',
+      'Добавлено: ' + (it.name || '?') + ' ×' + (it.quantity || 1) +
+      (it.modification_name ? ' (' + it.modification_name + ')' : '') +
+      (it.comment ? ' — ' + it.comment : ''));
+  }
+
   return await getOrder(orderId);
 }
 
@@ -666,11 +675,11 @@ async function logOrderAction(orderId, action, details) {
   } catch (e) { /* ignore logging errors */ }
 }
 
-// Get all logs for an order, sorted ascending by time
+// Get all logs for an order, sorted DESCENDING (newest first — fresh action on top)
 async function getOrderLogs(orderId) {
   const logs = await dbSelect('order_logs', { order_id: orderId });
   logs.sort(function(a, b) {
-    return new Date(a.created_at) - new Date(b.created_at);
+    return new Date(b.created_at) - new Date(a.created_at);
   });
   return logs;
 }
