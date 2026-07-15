@@ -127,34 +127,35 @@
   }
   .subcat-tab.active { background: var(--vm-accent); color: #fff; border-color: var(--vm-accent); }
 
-  .menu-section { padding: 0 14px 110px; }
+  .menu-section { padding: 0 16px 110px; }
   .main-cat-title {
-    font-size: 1.4rem; font-weight: 800; margin: 20px 0 14px;
+    font-size: 1.4rem; font-weight: 800; margin: 28px 0 16px;
     padding: 14px 18px; border-radius: 14px; background: var(--vm-accent);
     color: #fff; scroll-margin-top: 10px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   }
+  .main-cat-title:first-child { margin-top: 8px; }
   .subcat-section-title {
-    font-size: 1.15rem; font-weight: 700; color: var(--vm-text);
-    margin: 18px 0 8px; padding: 10px 16px; border-radius: 10px;
+    font-size: 1.1rem; font-weight: 700; color: var(--vm-text);
+    margin: 24px 0 10px; padding: 10px 16px; border-radius: 10px;
     background: var(--vm-card-bg); border-left: 4px solid var(--vm-accent);
     scroll-margin-top: 70px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   }
   .menu-item {
     display: flex; justify-content: space-between; align-items: flex-start;
-    padding: 12px 4px; border-bottom: 1px dashed var(--vm-border); gap: 12px;
+    padding: 14px 10px; border-bottom: 1px solid var(--vm-border); gap: 16px;
     transition: background 0.2s;
     border-radius: 8px;
   }
-  .menu-item:last-child { border-bottom: none; }
+  .menu-item:last-child { border-bottom: none; margin-bottom: 4px; }
   .menu-item.clickable { cursor: pointer; }
   .menu-item.clickable:hover { background: rgba(0,0,0,0.03); }
   .menu-item.clickable:active { background: rgba(0,0,0,0.06); }
   .mi-info { flex: 1; min-width: 0; }
-  .mi-name { font-weight: 600; font-size: 1.05rem; color: var(--vm-text); }
-  .mi-name .mi-photo-badge { font-size: 0.7rem; color: var(--vm-accent); margin-left: 4px; vertical-align: middle; }
-  .mi-translation { font-size: 0.85rem; color: var(--vm-muted); margin-top: 2px; font-style: italic; }
+  .mi-name { font-weight: 600; font-size: 1rem; color: var(--vm-text); line-height: 1.35; }
+  .mi-name .mi-photo-badge { font-size: 0.68rem; color: var(--vm-accent); margin-left: 4px; vertical-align: middle; }
+  .mi-translation { font-size: 0.82rem; color: var(--vm-muted); margin-top: 3px; font-style: italic; }
 
   /* Dish detail modal */
   .dish-modal-overlay {
@@ -182,20 +183,20 @@
     font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
     z-index: 10;
   }
-  .mi-mods { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 0.95rem; color: var(--vm-text); }
+  .mi-mods { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 0.92rem; color: var(--vm-text); }
   .mi-mod-row {
-    display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
-    padding: 3px 0 3px 24px; /* clear left indent so sub-items are visually nested under the dish name */
+    display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+    padding: 4px 0 4px 20px;
     position: relative;
   }
   .mi-mod-row .mi-mod-label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
   .mi-mod-row .mi-mod-icon {
-    flex: none; width: 6px; height: 6px; border-radius: 50%;
+    flex: none; width: 5px; height: 5px; border-radius: 50%;
     background: var(--vm-accent); display: inline-block;
   }
   .mi-mod-row .mi-mod-name { min-width: 0; flex: 1; word-break: break-word; color: var(--vm-muted); }
   .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); white-space: nowrap; }
-  .mi-price { font-size: 1.05rem; font-weight: 700; white-space: nowrap; flex: none; color: var(--vm-accent); }
+  .mi-price { font-size: 1rem; font-weight: 700; white-space: nowrap; flex: none; color: var(--vm-accent); }
 
   .bottom-cat-bar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
@@ -594,7 +595,11 @@ function renderItem(item) {
       modsHtml += '<div class="mi-mod-row"><span class="mi-mod-label"><span class="mi-mod-icon"></span><span class="mi-mod-name">' + escHtml(mod.name) + '</span></span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
     });
     modsHtml += '</div>';
-    return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
+    // Find min price among modifications for "от X" label on the right
+    var minPrice = Infinity;
+    item.modifications.forEach(function(mod) { var p = Number(mod.price) || 0; if (p < minPrice) minPrice = p; });
+    var priceLabel = minPrice !== Infinity ? 'от ' + escHtml(fmtMoney(minPrice)) : '';
+    return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div>' + (priceLabel ? '<div class="mi-price">' + priceLabel + '</div>' : '') + '</div>';
   }
   return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div></div>';
 }
