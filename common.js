@@ -209,7 +209,9 @@ async function loadAppData(force) {
       cost: Number(m.cost) || 0,
       markup: Number(m.markup) || 0,
       has_modifications: m.has_modifications === true || m.has_modifications === 'true',
-      modifications: modsByMenu[m.id] || []
+      modifications: modsByMenu[m.id] || [],
+      image_url: m.image_url || '',
+      description: m.description || ''
     });
   });
 
@@ -2109,7 +2111,9 @@ async function apiPost(action, body) {
         sort: body.sort || 0,
         is_active: body.is_active !== false,
         stock: body.stock !== undefined ? Number(body.stock) : 0,
-        has_modifications: hasMods
+        has_modifications: hasMods,
+        image_url: body.image_url || '',
+        description: body.description || ''
       };
       let result;
       if (existing.length > 0) {

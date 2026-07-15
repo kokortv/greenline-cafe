@@ -62,16 +62,17 @@
     word-break: break-word;
   }
   :root {
-    --vm-bg: #fafafa; --vm-text: #1a1a1a; --vm-muted: #666;
-    --vm-border: #e0e0e0; --vm-card-bg: #fff;
+    --vm-bg: #f8fafc; --vm-text: #1e293b; --vm-muted: #64748b;
+    --vm-border: #e2e8f0; --vm-card-bg: #fff;
     --vm-header-bg: #d32f2f; --vm-accent: #d32f2f;
   }
   [data-theme="dark"] {
-    --vm-bg: #121212; --vm-text: #e0e0e0; --vm-muted: #888;
-    --vm-border: #333; --vm-card-bg: #1e1e1e;
+    --vm-bg: #0f172a; --vm-text: #e2e8f0; --vm-muted: #94a3b8;
+    --vm-border: #1e293b; --vm-card-bg: #1e293b;
   }
-  [data-theme="dark"] .subcat-tabs-bar { background: rgba(30,30,30,0.9); }
-  [data-theme="dark"] .bottom-cat-bar { background: rgba(30,30,30,0.92); }
+  [data-theme="dark"] .subcat-tabs-bar { background: rgba(15,23,42,0.92); }
+  [data-theme="dark"] .bottom-cat-bar { background: rgba(15,23,42,0.95); }
+  [data-theme="dark"] .menu-item.clickable:hover { background: rgba(255,255,255,0.05); }
   * { box-sizing: border-box; }
   body { background: var(--vm-bg); padding: 0; margin: 0; color: var(--vm-text); transition: background 0.3s, color 0.3s; }
 
@@ -128,24 +129,59 @@
 
   .menu-section { padding: 0 14px 110px; }
   .main-cat-title {
-    font-size: 1.5rem; font-weight: 800; margin: 20px 0 14px;
-    padding: 12px 16px; border-radius: 10px; background: var(--vm-accent);
+    font-size: 1.4rem; font-weight: 800; margin: 20px 0 14px;
+    padding: 14px 18px; border-radius: 14px; background: var(--vm-accent);
     color: #fff; scroll-margin-top: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   }
   .subcat-section-title {
-    font-size: 1.2rem; font-weight: 700; color: var(--vm-text);
-    margin: 18px 0 10px; padding: 8px 14px; border-radius: 8px;
+    font-size: 1.15rem; font-weight: 700; color: var(--vm-text);
+    margin: 18px 0 8px; padding: 10px 16px; border-radius: 10px;
     background: var(--vm-card-bg); border-left: 4px solid var(--vm-accent);
     scroll-margin-top: 70px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   }
   .menu-item {
     display: flex; justify-content: space-between; align-items: flex-start;
     padding: 12px 4px; border-bottom: 1px dashed var(--vm-border); gap: 12px;
+    transition: background 0.2s;
+    border-radius: 8px;
   }
   .menu-item:last-child { border-bottom: none; }
+  .menu-item.clickable { cursor: pointer; }
+  .menu-item.clickable:hover { background: rgba(0,0,0,0.03); }
+  .menu-item.clickable:active { background: rgba(0,0,0,0.06); }
   .mi-info { flex: 1; min-width: 0; }
   .mi-name { font-weight: 600; font-size: 1.05rem; color: var(--vm-text); }
+  .mi-name .mi-photo-badge { font-size: 0.7rem; color: var(--vm-accent); margin-left: 4px; vertical-align: middle; }
   .mi-translation { font-size: 0.85rem; color: var(--vm-muted); margin-top: 2px; font-style: italic; }
+
+  /* Dish detail modal */
+  .dish-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000;
+    display: none; align-items: center; justify-content: center; padding: 16px;
+    backdrop-filter: blur(3px);
+  }
+  .dish-modal-overlay.open { display: flex; }
+  .dish-modal {
+    background: var(--vm-card-bg); border-radius: 18px; max-width: 460px; width: 100%;
+    max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .dish-modal img {
+    width: 100%; height: 280px; object-fit: cover; border-radius: 18px 18px 0 0;
+    display: block;
+  }
+  .dish-modal-body { padding: 20px; }
+  .dish-modal-body h2 { font-size: 1.4rem; font-weight: 700; color: var(--vm-text); margin: 0 0 8px; }
+  .dish-modal-body .dish-translation { font-size: 0.9rem; color: var(--vm-muted); font-style: italic; margin-bottom: 12px; }
+  .dish-modal-body .dish-desc { font-size: 0.95rem; color: var(--vm-text); line-height: 1.5; margin-bottom: 16px; }
+  .dish-modal-body .dish-price { font-size: 1.3rem; font-weight: 700; color: var(--vm-accent); margin-bottom: 16px; }
+  .dish-modal-close {
+    position: absolute; top: 12px; right: 12px; width: 36px; height: 36px;
+    border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; border: none;
+    font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+  }
   .mi-mods { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 0.95rem; color: var(--vm-text); }
   .mi-mod-row {
     display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
@@ -533,15 +569,78 @@ function renderSingleCategory(mc) {
 
 function renderItem(item) {
   var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+  // Check if the dish has a valid image URL → make it clickable
+  var imageUrl = String(item.image_url || '').trim();
+  var hasValidImage = imageUrl && /\.(jpg|jpeg|png)$/i.test(imageUrl) && !/[<>"']/.test(imageUrl);
+  var description = String(item.description || '').trim();
+  var isClickable = hasValidImage; // clickable only if there's an image
+
+  // Build the dish name line (with optional photo badge)
+  var nameLine = escHtml(item.name);
+  if (hasValidImage) nameLine += ' <span class="mi-photo-badge">📷</span>';
+
+  // Build onclick attribute if clickable
+  var clickAttr = '';
+  if (isClickable) {
+    // Encode item data safely — use a data attribute instead of inline JS
+    clickAttr = ' clickable" data-item-id="' + escHtml(item.id) + '" onclick="showDishDetail(\'' + escHtml(item.id) + '\')"';
+  } else {
+    clickAttr = '';
+  }
+
   if (hasMods) {
     var modsHtml = '<div class="mi-mods">';
     item.modifications.forEach(function(mod) {
       modsHtml += '<div class="mi-mod-row"><span class="mi-mod-label"><span class="mi-mod-icon"></span><span class="mi-mod-name">' + escHtml(mod.name) + '</span></span><span class="mi-mod-price">' + escHtml(fmtMoney(Number(mod.price) || 0)) + '</span></div>';
     });
     modsHtml += '</div>';
-    return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
+    return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + modsHtml + '</div></div>';
   }
-  return '<div class="menu-item"><div class="mi-info"><div class="mi-name">' + escHtml(item.name) + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div></div>';
+  return '<div class="menu-item' + clickAttr + '><div class="mi-info"><div class="mi-name">' + nameLine + '</div>' + (item.name_translation ? '<div class="mi-translation">' + escHtml(item.name_translation) + '</div>' : '') + '</div><div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div></div>';
+}
+
+// Show dish detail modal (image + name + description)
+function showDishDetail(itemId) {
+  var item = (APP_DATA.menu || []).find(function(m) { return m.id === itemId; });
+  if (!item) return;
+  var imageUrl = String(item.image_url || '').trim();
+  // Double-check URL safety
+  if (!imageUrl || !/\.(jpg|jpeg|png)$/i.test(imageUrl) || /[<>"']/.test(imageUrl)) return;
+  var description = String(item.description || '').trim();
+  var name = escHtml(item.name);
+  var translation = item.name_translation ? '<div class="dish-translation">' + escHtml(item.name_translation) + '</div>' : '';
+  var price = escHtml(fmtMoney(Number(item.price) || 0));
+  var descHtml = description ? '<div class="dish-desc">' + escHtml(description) + '</div>' : '';
+
+  // Remove existing modal
+  var existing = document.getElementById('dish-modal-overlay');
+  if (existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'dish-modal-overlay';
+  overlay.className = 'dish-modal-overlay open';
+  overlay.style.position = 'fixed';
+  overlay.innerHTML =
+    '<div class="dish-modal" style="position:relative;">' +
+      '<button class="dish-modal-close" onclick="closeDishDetail()">✕</button>' +
+      '<img src="' + escHtml(imageUrl) + '" alt="' + escHtml(item.name) + '" onerror="this.style.display=\'none\'">' +
+      '<div class="dish-modal-body">' +
+        '<h2>' + name + '</h2>' +
+        translation +
+        descHtml +
+        '<div class="dish-price">' + price + '</div>' +
+      '</div>' +
+    '</div>';
+  // Close on backdrop click
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) closeDishDetail();
+  });
+  document.body.appendChild(overlay);
+}
+
+function closeDishDetail() {
+  var overlay = document.getElementById('dish-modal-overlay');
+  if (overlay) overlay.remove();
 }
 
 function setupScrollObserver() {

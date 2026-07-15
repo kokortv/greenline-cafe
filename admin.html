@@ -1256,6 +1256,22 @@
       <input type="checkbox" id="menu-cook" checked>
       <label for="menu-cook" style="margin:0;">Требует готовки (виден повару)</label>
     </div>
+    <h3 style="margin:16px 0 8px;font-size:1rem;">QR-меню (фото и описание)</h3>
+    <div class="form-group">
+      <label>URL картинки (только .jpg или .png)</label>
+      <input type="text" id="menu-image-url" placeholder="images/menu/borsch.jpg">
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">
+        Файл должен лежать в папке images/menu/. Допускаются только .jpg и .png.
+        Если URL пуст — блюдо в QR-меню будет некликабельным.
+      </p>
+    </div>
+    <div class="form-group">
+      <label>Описание для QR-меню</label>
+      <textarea id="menu-description" rows="3" placeholder="Например: Наваристый борщ на говяжьем бульоне, подаётся со сметаной и зеленью"></textarea>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">
+        Показывается в окне при нажатии на блюдо в QR-меню.
+      </p>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('modal-menu')">Отмена</button>
       <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveMenuItem(); })">Сохранить</button>
@@ -3272,6 +3288,8 @@ function openMenuModal(id) {
     document.getElementById('menu-price').value = item.price;
     document.getElementById('menu-stock').value = item.stock || 0;
     document.getElementById('menu-cook').checked = item.needs_cooking === true || item.needs_cooking === 'true';
+    document.getElementById('menu-image-url').value = item.image_url || '';
+    document.getElementById('menu-description').value = item.description || '';
     // Set pricing mode and modifications
     setPricingMode(item.has_modifications === true);
     renderModificationRows(item.modifications || []);
@@ -3285,6 +3303,8 @@ function openMenuModal(id) {
     document.getElementById('menu-price').value = '';
     document.getElementById('menu-stock').value = '';
     document.getElementById('menu-cook').checked = true;
+    document.getElementById('menu-image-url').value = '';
+    document.getElementById('menu-description').value = '';
     setPricingMode(false);
     renderModificationRows([]);
   }
@@ -3590,11 +3610,27 @@ async function saveMenuItem() {
   // Round to integer — no decimals in markup
   itemMarkup = Math.round(itemMarkup);
 
+  // Validate image URL — must end with .jpg, .jpeg, or .png, or be empty
+  var imageUrl = document.getElementById('menu-image-url').value.trim();
+  if (imageUrl) {
+    var lowerUrl = imageUrl.toLowerCase();
+    // Block anything that's not a relative path ending in .jpg/.jpeg/.png
+    if (!/^images\/menu\/[^"'<>]+\.(jpg|jpeg|png)$/.test(lowerUrl)) {
+      showToast('URL картинки должен быть в формате: images/menu/имя_файла.jpg (или .png)', 'warning');
+      return;
+    }
+    // Extra safety: block any < > " ' characters
+    if (/[<>"']/.test(imageUrl)) {
+      showToast('URL картинки содержит недопустимые символы', 'warning');
+      return;
+    }
+  }
+
   const payload = {
     id: id || undefined,
     name: document.getElementById('menu-name').value.trim(),
     name_translation: document.getElementById('menu-name-translation').value.trim(),
-    category_id: document.getElementById('menu-category').value || '', // can be empty
+    category_id: document.getElementById('menu-category').value || '',
     cost: itemCost,
     markup: itemMarkup,
     price: itemPrice,
@@ -3602,7 +3638,9 @@ async function saveMenuItem() {
     stock: Number(document.getElementById('menu-stock').value) || 0,
     is_active: true,
     has_modifications: hasMods,
-    modifications: modifications
+    modifications: modifications,
+    image_url: imageUrl,
+    description: document.getElementById('menu-description').value.trim()
   };
   if (!payload.name) { showToast('Введите название', 'warning'); return; }
   if (!hasMods && (!payload.price || payload.price <= 0)) {
