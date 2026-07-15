@@ -2566,6 +2566,11 @@ function selectMainCategory(cat) {
   }
   state.mainCategory = cat;
   state.currentSubcat = null;
+  // Clear the search field when switching categories
+  var searchInput = document.getElementById('menu-search');
+  if (searchInput) searchInput.value = '';
+  var tabsDiv = document.getElementById('subcat-tabs');
+  if (tabsDiv) tabsDiv.style.display = '';
   renderMainCats(); // update active button
   renderMenu();
 }
@@ -2803,26 +2808,57 @@ function filterMenuItems() {
       '</div>';
     return;
   }
-  // Render matching items using the same card layout as renderMenu
+  // Render matching items — if the match is in a modification, show that modification
   matches.forEach(function(item) {
-    var card = document.createElement('div');
-    card.className = 'menu-item-card';
     var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
-    var priceLabel = hasMods
-      ? 'от ' + formatMoney(minModPrice(item))
-      : formatMoney(item.price);
-    card.innerHTML =
-      '<div class="item-name">' + escapeHtml(item.name) +
-        (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
-      '</div>' +
-      (item.name_translation ? '<div class="item-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
-      '<div class="item-price">' + priceLabel + '</div>' +
-      '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
-    card.querySelector('.item-add-btn').onclick = function() {
-      if (hasMods) showModificationPicker(item);
-      else addToCart(item);
-    };
-    itemsDiv.appendChild(card);
+    // Check if the search query matches the item name or a modification name
+    var nameMatched = String(item.name || '').toLowerCase().indexOf(query) >= 0 ||
+                      String(item.name_translation || '').toLowerCase().indexOf(query) >= 0;
+    // Find matching modifications (if any)
+    var matchedMods = [];
+    if (hasMods && !nameMatched) {
+      matchedMods = (item.modifications || []).filter(function(mod) {
+        return String(mod.name || '').toLowerCase().indexOf(query) >= 0;
+      });
+    }
+
+    if (matchedMods.length > 0) {
+      // Show each matching modification as a separate card
+      matchedMods.forEach(function(mod) {
+        var card = document.createElement('div');
+        card.className = 'menu-item-card';
+        card.innerHTML =
+          '<div class="item-name">' + escapeHtml(item.name) +
+            ' <span style="font-size:0.82rem;color:var(--primary);font-weight:600;background:rgba(211,47,47,0.08);padding:1px 6px;border-radius:4px;margin-left:4px;">' + escapeHtml(mod.name) + '</span>' +
+          '</div>' +
+          (item.name_translation ? '<div class="item-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
+          '<div class="item-price">' + formatMoney(Number(mod.price) || 0) + '</div>' +
+          '<button class="item-add-btn">+ Добавить</button>';
+        card.querySelector('.item-add-btn').onclick = function() {
+          addToCart(item, mod);
+        };
+        itemsDiv.appendChild(card);
+      });
+    } else {
+      // Normal card — item name matched (or no mods)
+      var card = document.createElement('div');
+      card.className = 'menu-item-card';
+      var priceLabel = hasMods
+        ? 'от ' + formatMoney(minModPrice(item))
+        : formatMoney(item.price);
+      card.innerHTML =
+        '<div class="item-name">' + escapeHtml(item.name) +
+          (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
+        '</div>' +
+        (item.name_translation ? '<div class="item-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
+        '<div class="item-price">' + priceLabel + '</div>' +
+        '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
+      card.querySelector('.item-add-btn').onclick = function() {
+        if (hasMods) showModificationPicker(item);
+        else addToCart(item);
+      };
+      itemsDiv.appendChild(card);
+    }
   });
 }
 
