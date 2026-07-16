@@ -178,7 +178,7 @@
   .dish-modal-body h2 { font-size: 1.4rem; font-weight: 700; color: var(--vm-text); margin: 0 0 8px; }
   .dish-modal-body .dish-translation { font-size: 0.9rem; color: var(--vm-muted); font-style: italic; margin-bottom: 12px; }
   .dish-modal-body .dish-desc { font-size: 0.95rem; color: var(--vm-text); line-height: 1.5; margin-bottom: 16px; }
-  .dish-modal-body .dish-price { font-size: 1.3rem; font-weight: 700; color: var(--vm-accent); margin-bottom: 16px; }
+  .dish-modal-body .dish-price { font-size: 1.3rem; font-weight: 700; color: var(--vm-accent); flex: none; white-space: nowrap; }
   .dish-modal-close {
     position: absolute; top: 12px; right: 12px; width: 36px; height: 36px;
     border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; border: none;
@@ -586,8 +586,12 @@ function renderItem(item) {
   }
   leftHtml += '</div>';
 
-  // Right column: price (ALWAYS on the right, same line as the name)
-  var rightHtml = '<div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div>';
+  // Right column: price on the right — only for dishes WITHOUT modifications
+  // (dishes with mods show 0 as base price, which is meaningless)
+  var rightHtml = '';
+  if (!hasMods) {
+    rightHtml = '<div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div>';
+  }
 
   return '<div class="' + itemClass + '"' + onClickAttr + '>' + leftHtml + rightHtml + '</div>';
 }
@@ -602,7 +606,10 @@ function showDishDetail(itemId) {
   var description = String(item.description || '').trim();
   var name = escHtml(item.name);
   var translation = item.name_translation ? '<div class="dish-translation">' + escHtml(item.name_translation) + '</div>' : '';
-  var price = escHtml(fmtMoney(Number(item.price) || 0));
+  var price = Number(item.price) || 0;
+  var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+  // Only show price if it's > 0 (dishes with mods have base price 0)
+  var priceHtml = (!hasMods && price > 0) ? '<div class="dish-price">' + escHtml(fmtMoney(price)) + '</div>' : '';
   var descHtml = description ? '<div class="dish-desc">' + escHtml(description) + '</div>' : '';
 
   // Remove existing modal
@@ -618,10 +625,14 @@ function showDishDetail(itemId) {
       '<button class="dish-modal-close" onclick="closeDishDetail()">✕</button>' +
       '<img src="' + escHtml(imageUrl) + '" alt="' + escHtml(item.name) + '" onerror="this.style.display=\'none\'">' +
       '<div class="dish-modal-body">' +
-        '<h2>' + name + '</h2>' +
-        translation +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<h2 style="margin:0;">' + name + '</h2>' +
+            translation +
+          '</div>' +
+          priceHtml +
+        '</div>' +
         descHtml +
-        '<div class="dish-price">' + price + '</div>' +
       '</div>' +
     '</div>';
   // Close on backdrop click
