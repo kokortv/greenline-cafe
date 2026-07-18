@@ -234,7 +234,7 @@ input:focus, select:focus, textarea:focus {
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
 .grid-5 { grid-template-columns: repeat(5, 1fr); }
 .grid-6 { grid-template-columns: repeat(6, 1fr); }
-.grid-auto { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.grid-auto { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 
 /* Tables */
 table {

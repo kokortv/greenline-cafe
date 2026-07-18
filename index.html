@@ -236,8 +236,8 @@
     font-weight: 700;
     font-size: clamp(0.98rem, 3.4vw, 1.18rem);
     flex: 1;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
     line-height: 1.25;
     color: var(--text);
   }
@@ -474,13 +474,13 @@
     min-height: calc(100vh - 60px);
   }
   .order-panel-left {
-    width: 400px;
+    width: 360px;
     flex: none;
     padding: 12px;
     border-right: 2px solid var(--border);
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 60px);
+    height: calc(100vh - 60px); /* full height */
     position: sticky;
     top: 0;
     overflow: hidden;
@@ -498,25 +498,37 @@
     left: 0;
     right: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 8px 16px;
+    align-items: stretch;
+    padding: 0;
     background: #fff;
     border-top: 2px solid var(--border);
     box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
     z-index: 100;
   }
+  .order-footer-left {
+    width: 400px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-right: 2px solid var(--border);
+  }
+  .order-footer-right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+  }
   .order-footer-total {
-    font-size: 1.1rem;
+    font-size: 1.5rem;
     font-weight: 800;
     color: var(--primary);
     white-space: nowrap;
   }
   .order-footer button {
-    flex: none;
-    padding: 6px 20px;
-    font-size: 0.85rem;
+    padding: 8px 20px;
+    font-size: 0.9rem;
   }
   /* ===========================
      MODERN CART ROWS (left panel of order screen) — compact layout
@@ -620,6 +632,8 @@
       max-height: none;
       overflow: visible;
     }
+    .order-footer { flex-direction: column; }
+    .order-footer-left { width: 100%; border-right: none; border-bottom: 2px solid var(--border); }
   }
   /* Add bottom padding so content isn't hidden behind the fixed footer */
   #screen-order .order-layout { padding-bottom: 70px; }
@@ -1192,6 +1206,7 @@
         <div id="order-guests-section">
           <div style="display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap;">
             <h3 style="font-size:0.95rem;color:var(--text-muted);margin:0;">Количество гостей</h3>
+            <span style="color:var(--text-muted);font-size:0.95rem;">—</span>
             <!-- Editable stepper — shown for NEW orders only -->
             <div class="guests-stepper" id="guests-stepper-editable">
               <button onclick="changeGuests(-1)">−</button>
@@ -1225,12 +1240,16 @@
         <div class="grid grid-auto" id="menu-items"></div>
       </div>
     </div>
-    <!-- FOOTER: total + accept button — fixed at bottom of the screen -->
+    <!-- FOOTER: split into left (total) + right (button), matching panel widths -->
     <div class="order-footer">
-      <div class="order-footer-total" id="order-total">0 ₾</div>
-      <button class="btn btn-success" id="accept-order-btn" disabled style="flex:1;opacity:0.5;cursor:not-allowed;" onclick="if(!this.disabled){withLoading(this, 'Принимаем...', function() { return acceptOrderOrAddToExisting(); });}">
-        ✓ ПРИНЯТЬ ЗАКАЗ
-      </button>
+      <div class="order-footer-left">
+        <div class="order-footer-total" id="order-total">0 ₾</div>
+      </div>
+      <div class="order-footer-right">
+        <button class="btn btn-success" id="accept-order-btn" disabled style="flex:1;opacity:0.5;cursor:not-allowed;" onclick="if(!this.disabled){withLoading(this, 'Принимаем...', function() { return acceptOrderOrAddToExisting(); });}">
+          ✓ ПРИНЯТЬ ЗАКАЗ
+        </button>
+      </div>
     </div>
   </div>
 
@@ -2364,6 +2383,9 @@ function cancelNewOrder() {
 function renderOrderCart() {
   const div = document.getElementById('order-cart-items');
   if (!div) return;
+  // When adding to an existing order, a "пояснение" field is shown:
+  //  - if only 1 item in cart → under that item
+  //  - if multiple items → at the bottom (single note for the whole group)
   const showPerItemNote = !!state.addingToOrder;
   if (state.cart.length === 0) {
     div.innerHTML =
@@ -2376,27 +2398,11 @@ function renderOrderCart() {
     state.cart.forEach(function(item, idx) {
       let nameLine = escapeHtml(item.name);
       if (item.modification_name) nameLine += ' <span style="color:var(--primary);font-weight:600;font-size:0.82rem;background:rgba(211,47,47,0.08);padding:1px 6px;border-radius:4px;margin-left:4px;">· ' + escapeHtml(item.modification_name) + '</span>';
+      // Compact cart row: name+price on left, [− qty +] and total on right — all in one tight row
       html += '<div class="cart-row-modern">';
       html +=   '<div class="cart-row-modern-info">';
-      // Dish name is clickable — opens inline comment editor
-      html +=     '<div class="cart-row-modern-name" style="cursor:pointer;" onclick="toggleCartItemComment(' + idx + ')">' + nameLine + '</div>';
+      html +=     '<div class="cart-row-modern-name">' + nameLine + '</div>';
       html +=     '<div class="cart-row-modern-price">' + formatMoney(item.price) + ' × ' + item.quantity + '</div>';
-      // Comment display (if set)
-      if (item.comment) {
-        html +=   '<div class="cart-item-comment-display">' +
-          '<span style="color:var(--warning);font-size:0.82rem;">💬 ' + escapeHtml(item.comment) + '</span>' +
-          ' <button onclick="clearCartItemComment(' + idx + ')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.8rem;padding:0 2px;" title="Удалить комментарий">✕</button>' +
-        '</div>';
-      }
-      // Inline comment editor (hidden by default, toggled by clicking the name)
-      html +=     '<div id="cart-comment-editor-' + idx + '" style="display:none;margin-top:4px;">' +
-        '<div style="display:flex;gap:4px;align-items:center;">' +
-          '<input type="text" id="cart-comment-input-' + idx + '" placeholder="Комментарий к блюду..." value="' + escapeHtml(item.comment || '') + '" ' +
-            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();saveCartItemComment(' + idx + ');}" ' +
-            'style="flex:1;min-width:0;padding:5px 8px;font-size:0.82rem;border:1px solid var(--border);border-radius:6px;">' +
-          '<button onclick="saveCartItemComment(' + idx + ')" style="flex:none;background:var(--success);color:#fff;border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:0.9rem;">✓</button>' +
-        '</div>' +
-      '</div>';
       html +=   '</div>';
       html +=   '<div class="cart-row-modern-right">';
       html +=     '<div class="cart-row-modern-controls">';
@@ -2737,9 +2743,8 @@ function renderMenu() {
       ? 'от ' + formatMoney(minModPrice(item))
       : formatMoney(item.price);
     card.innerHTML =
-      '<div class="item-name">' + escapeHtml(item.name) +
-        (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
-      '</div>' +
+      '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
+        (hasMods ? '<div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">⚙ ' + item.modifications.length + ' вар.</div>' : '') +
       '<div class="item-price">' + priceLabel + '</div>' +
       '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
     card.querySelector('.item-add-btn').onclick = function() {
@@ -2859,9 +2864,8 @@ function filterMenuItems() {
         ? 'от ' + formatMoney(minModPrice(item))
         : formatMoney(item.price);
       card.innerHTML =
-        '<div class="item-name">' + escapeHtml(item.name) +
-          (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
-        '</div>' +
+        '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
+          (hasMods ? '<div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">⚙ ' + item.modifications.length + ' вар.</div>' : '') +
         (item.name_translation ? '<div class="item-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
         '<div class="item-price">' + priceLabel + '</div>' +
         '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
@@ -3188,34 +3192,6 @@ function renderCartItems() {
 
 function setCartComment(idx, val) {
   if (state.cart[idx]) state.cart[idx].comment = val;
-}
-
-// Toggle the inline comment editor for a cart item (click on dish name)
-function toggleCartItemComment(idx) {
-  var editor = document.getElementById('cart-comment-editor-' + idx);
-  if (!editor) return;
-  if (editor.style.display === 'none') {
-    editor.style.display = 'block';
-    var input = document.getElementById('cart-comment-input-' + idx);
-    if (input) { input.focus(); input.select(); }
-  } else {
-    editor.style.display = 'none';
-  }
-}
-
-// Save the comment from the inline editor and re-render
-function saveCartItemComment(idx) {
-  var input = document.getElementById('cart-comment-input-' + idx);
-  if (input && state.cart[idx]) {
-    state.cart[idx].comment = input.value.trim();
-  }
-  renderOrderCart();
-}
-
-// Clear the comment for a cart item
-function clearCartItemComment(idx) {
-  if (state.cart[idx]) state.cart[idx].comment = '';
-  renderOrderCart();
 }
 
 // Set the same "пояснение" on ALL items in the cart — used when adding
