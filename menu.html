@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Меню — Ресторан</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
@@ -718,20 +721,36 @@ function applyAppearance() {
 }
 
 // Fire-and-forget: log this page view into Supabase `menu_views` table
-// for the admin statistics panel. Silent — never blocks the menu.
+// for the admin statistics panel. Logs to console on failure for debugging.
 function trackMenuView() {
   try {
-    if (!_sb_menu) return;
+    if (!_sb_menu) {
+      console.warn('[menu_views] Supabase client not initialized — tracking skipped');
+      return;
+    }
     var ua = navigator.userAgent || '';
     var deviceType = /iPad|Tablet|PlayBook|Silk/i.test(ua) ? 'tablet'
                    : /Mobile|iPhone|Android.*Mobile|Windows Phone|BlackBerry/i.test(ua) ? 'mobile'
                    : 'desktop';
-    _sb_menu.from('menu_views').insert({
+    var payload = {
       user_agent: ua.substring(0, 500),
       device_type: deviceType,
       referrer: (document.referrer || '').substring(0, 500)
-    }).then(function() {}).catch(function(e) { /* silent */ });
-  } catch(e) { /* silent */ }
+    };
+    _sb_menu.from('menu_views').insert(payload)
+      .then(function(res) {
+        if (res.error) {
+          console.error('[menu_views] Insert rejected:', res.error.message, '| code:', res.error.code);
+        } else {
+          console.log('[menu_views] View tracked:', deviceType);
+        }
+      })
+      .catch(function(e) {
+        console.error('[menu_views] Insert threw:', e && e.message ? e.message : e);
+      });
+  } catch(e) {
+    console.error('[menu_views] trackMenuView() exception:', e);
+  }
 }
 
 // Render the circle badge in the header left slot, with auto-fit text
