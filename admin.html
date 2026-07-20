@@ -960,6 +960,48 @@
       без возможности сделать заказ. Отметьте галочками категории, которые должны отображаться.
     </p>
 
+    <!-- ====== Card: Statistics (top) ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:1.15rem;">📊</span> Статистика просмотров меню
+      </h3>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 14px;line-height:1.4;">
+        Сколько раз посетители открывали страницу меню по QR-коду. Данные обновляются при каждом открытии вкладки.
+      </p>
+
+      <!-- KPI summary -->
+      <div id="qr-stats-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">
+        <div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;border:1px solid var(--border);">
+          <div data-stat="total" style="font-size:1.6rem;font-weight:700;color:var(--primary);">—</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">Всего просмотров</div>
+        </div>
+        <div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;border:1px solid var(--border);">
+          <div data-stat="today" style="font-size:1.6rem;font-weight:700;color:var(--primary);">—</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">Сегодня</div>
+        </div>
+        <div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;border:1px solid var(--border);">
+          <div data-stat="last7" style="font-size:1.6rem;font-weight:700;color:var(--primary);">—</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">За 7 дней</div>
+        </div>
+        <div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;border:1px solid var(--border);">
+          <div data-stat="last30" style="font-size:1.6rem;font-weight:700;color:var(--primary);">—</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">За 30 дней</div>
+        </div>
+      </div>
+
+      <!-- Mode toggles -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary" id="qr-stats-btn-day" type="button" onclick="setQrStatsMode('day')" style="font-size:0.9rem;">По дням</button>
+        <button class="btn btn-outline" id="qr-stats-btn-month" type="button" onclick="setQrStatsMode('month')" style="font-size:0.9rem;">По месяцам</button>
+        <button class="btn btn-outline" id="qr-stats-btn-device" type="button" onclick="setQrStatsMode('device')" style="font-size:0.9rem;">По устройствам</button>
+        <button class="btn btn-outline" type="button" onclick="loadMenuViewStats()" style="font-size:0.9rem;margin-left:auto;">🔄 Обновить</button>
+      </div>
+
+      <div id="qr-stats-table" style="overflow-x:auto;">
+        <p style="color:var(--text-muted);font-size:0.9rem;">Загрузка статистики…</p>
+      </div>
+    </div>
+
     <!-- ====== Card 0: Live preview ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">👁</span> Живой предпросмотр шапки меню</h3>
@@ -969,7 +1011,7 @@
       <div id="qr-live-preview" style="border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.12);max-width:480px;border:1px solid var(--border);">
         <!-- Header bar -->
         <div id="preview-header" style="background:#d32f2f;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-          <div id="preview-circle" style="flex:none;width:44px;height:44px;border-radius:50%;background:#ffd600;color:#000;display:none;align-items:center;justify-content:center;font-weight:800;font-size:14px;text-align:center;line-height:1;padding:4px;box-sizing:border-box;word-break:break-word;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.25);border:2px solid rgba(255,255,255,0.4);"></div>
+          <img id="preview-logo" alt="" style="flex:none;height:44px;width:auto;max-width:80px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.15);padding:4px;box-sizing:border-box;display:none;">
           <div style="flex:1;text-align:center;min-width:0;">
             <div id="preview-restaurant-name" style="font-size:1.4rem;font-weight:600;margin:0;">Меню</div>
             <div id="preview-subtitle" style="font-size:0.8rem;opacity:0.85;white-space:pre-wrap;"></div>
@@ -987,14 +1029,6 @@
       </div>
     </div>
 
-    <!-- ====== QR Visit Statistics (at top) ====== -->
-    <div class="settings-card" style="margin-bottom:16px;">
-      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📊</span> Статистика посещений QR-меню</h3>
-      <div id="qr-visit-stats" style="margin-bottom:12px;">
-        <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
-      </div>
-    </div>
-
     <!-- ====== Card 1: Text content ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📝</span> Текстовые элементы</h3>
@@ -1003,9 +1037,12 @@
         <input type="text" id="qr-menu-subtitle" placeholder="Например: Добро пожаловать! или телефон для брони">
       </div>
       <div class="form-group" style="margin:0;">
-        <label>URL логотипа (jpg/png, лежит в папке images/menu/)</label>
-        <input type="text" id="qr-menu-logo-url" placeholder="Например: images/menu/logo.png">
-        <p style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">Логотип показывается слева перед названием ресторана в шапке меню.</p>
+        <label>Логотип (URL изображения)</label>
+        <input type="text" id="qr-menu-logo" placeholder="https://example.com/logo.png">
+        <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
+          Логотип отображается слева от названия ресторана в шапке меню. Оставьте пустым, чтобы скрыть.
+          Поддерживаются только http(s) URL изображений (PNG, JPG, SVG).
+        </p>
       </div>
     </div>
 
@@ -1019,7 +1056,9 @@
             <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
             <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;min-width:0;">
           </div>
-          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">Цены, активные вкладки, кнопка категорий внизу</p>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
+            Цены, активные вкладки, кнопка категорий внизу
+          </p>
         </div>
         <div class="form-group" style="margin:0;">
           <label>Цвет шапки меню</label>
@@ -1027,12 +1066,16 @@
             <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
             <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;min-width:0;">
           </div>
-          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">Полоса вверху страницы с названием ресторана</p>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
+            Полоса вверху страницы с названием ресторана
+          </p>
         </div>
       </div>
     </div>
 
-    <!-- ====== Card 3: Categories ====== -->
+    <!-- ====== Card 3: Circle badge — REMOVED ====== -->
+
+    <!-- ====== Card 4: Categories ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📂</span> Категории в меню</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px;background:var(--bg);border-radius:8px;">
@@ -1042,15 +1085,20 @@
       <div id="qr-menu-categories"></div>
     </div>
 
-    <!-- ====== Save buttons ====== -->
+    <!-- ====== Card 5: Save/Generate buttons ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">💾</span> Сохранить настройки</h3>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-outline" type="button" onclick="saveQrMenuSettings(false)" style="font-size:0.95rem;padding:10px 16px;">💾 Сохранить</button>
         <button class="btn btn-primary" type="button" onclick="saveQrMenuSettings(true)" style="font-size:1rem;padding:10px 20px;">📱 Сохранить и сгенерировать QR-код</button>
       </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;line-height:1.4;">
+        «Сохранить» — применяет визуальные изменения (цвета, текст, логотип) без генерации QR-кода.<br>
+        «Сохранить и сгенерировать» — дополнительно обновляет сам QR-код (нужно, если вы поменяли выбранные категории или адрес меню).
+      </p>
     </div>
 
-    <!-- ====== Generated QR code ====== -->
+    <!-- ====== Card 6: Generated QR code ====== -->
     <div id="qr-menu-result" class="settings-card" style="display:none;margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📱</span> Готовый QR-код</h3>
       <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
@@ -1088,18 +1136,14 @@
         }
         wirePair('qr-menu-color-price',  'qr-menu-color-price-text');
         wirePair('qr-menu-color-header', 'qr-menu-color-header-text');
-        wirePair('qr-menu-color-circle', 'qr-menu-color-circle-text', function() {
-          if (typeof updateCirclePreview === 'function') updateCirclePreview();
-          if (typeof updateLivePreview === 'function') updateLivePreview();
-        });
-        const circleTextInput = document.getElementById('qr-menu-circle-text');
-        if (circleTextInput) circleTextInput.addEventListener('input', function() {
-          if (typeof updateCirclePreview === 'function') updateCirclePreview();
-          if (typeof updateLivePreview === 'function') updateLivePreview();
-        });
         // Wire subtitle input to live preview
         const subtitleInput = document.getElementById('qr-menu-subtitle');
         if (subtitleInput) subtitleInput.addEventListener('input', function() {
+          if (typeof updateLivePreview === 'function') updateLivePreview();
+        });
+        // Wire logo input to live preview
+        const logoInput = document.getElementById('qr-menu-logo');
+        if (logoInput) logoInput.addEventListener('input', function() {
           if (typeof updateLivePreview === 'function') updateLivePreview();
         });
         // Wire price/header color pickers to live preview too
@@ -1695,6 +1739,9 @@ function switchTab(name) {
     // Re-run previews in case settings changed
     if (typeof updateCirclePreview === 'function') updateCirclePreview();
     if (typeof updateLivePreview === 'function') updateLivePreview();
+    // Load view statistics (top of the page)
+    if (typeof loadMenuViewStats === 'function') loadMenuViewStats();
+    if (typeof setQrStatsMode === 'function') setQrStatsMode(window._qrStatsMode || 'day');
   }
   // Statistics sub-tab switching is handled above by switchStatisticsSub()
   // On mobile, close the sidebar after selecting a tab
@@ -1974,7 +2021,7 @@ async function cleanupSessionsBtn() {
 function loadQrMenuAppearance() {
   const s = APP_DATA.settings || {};
   document.getElementById('qr-menu-subtitle').value = s.qr_menu_subtitle || '';
-  document.getElementById('qr-menu-logo-url').value = s.qr_menu_logo_url || '';
+  document.getElementById('qr-menu-logo').value = s.qr_menu_logo || '';
   // Colors — default to brand red if not set
   const priceColor = s.qr_menu_color_price || '#d32f2f';
   const headerColor = s.qr_menu_color_header || '#d32f2f';
@@ -1983,45 +2030,19 @@ function loadQrMenuAppearance() {
   document.getElementById('qr-menu-color-header').value = headerColor;
   document.getElementById('qr-menu-color-header-text').value = headerColor;
   // Update previews
-  if (typeof updateLivePreview === 'function') updateLivePreview();
-  // Load QR visit stats
-  loadQrVisitStats();
+  updateCirclePreview();
+  updateLivePreview();
 }
 
-// Live preview of the circle badge — auto-shrinks text to fit
-function updateCirclePreview() {
-  const text = (document.getElementById('qr-menu-circle-text').value || '').trim();
-  const color = document.getElementById('qr-menu-color-circle').value || '#ffd600';
-  const preview = document.getElementById('circle-preview');
-  if (!preview) return;
-  preview.style.background = color;
-  preview.style.color = getContrastColor(color);
-  if (!text) {
-    preview.textContent = '—';
-    preview.style.fontSize = '14px';
-    return;
-  }
-  preview.textContent = text;
-  // Auto-fit font size to circle (diameter ~40px usable)
-  // Short text → bigger font, long text → smaller font
-  const len = text.length;
-  let fontSize;
-  if (len <= 2) fontSize = 18;
-  else if (len === 3) fontSize = 15;
-  else if (len === 4) fontSize = 13;
-  else if (len <= 6) fontSize = 11;
-  else if (len <= 9) fontSize = 9;
-  else fontSize = 8;
-  preview.style.fontSize = fontSize + 'px';
-}
+// Live preview of the circle badge — DISCONTINUED (kept as no-op for safe calls)
+function updateCirclePreview() { /* no-op: circle badge feature removed */ }
 
-// Live preview of the entire menu header — reflects colors, subtitle, circle badge, sample item
+// Live preview of the entire menu header — reflects colors, subtitle, logo, sample item
 function updateLivePreview() {
   const priceColor = document.getElementById('qr-menu-color-price').value || '#d32f2f';
   const headerColor = document.getElementById('qr-menu-color-header').value || priceColor;
-  const circleText = (document.getElementById('qr-menu-circle-text').value || '').trim();
-  const circleColor = document.getElementById('qr-menu-color-circle').value || '#ffd600';
   const subtitle = document.getElementById('qr-menu-subtitle').value || '';
+  const logoUrl = (document.getElementById('qr-menu-logo').value || '').trim();
 
   const header = document.getElementById('preview-header');
   if (header) header.style.background = headerColor;
@@ -2038,25 +2059,16 @@ function updateLivePreview() {
     restaurantName.textContent = name;
   }
 
-  // Circle badge in preview
-  const circle = document.getElementById('preview-circle');
-  if (circle) {
-    if (circleText) {
-      circle.textContent = circleText;
-      circle.style.background = circleColor;
-      circle.style.color = getContrastColor(circleColor);
-      const len = circleText.length;
-      let fs;
-      if (len <= 2) fs = 18;
-      else if (len === 3) fs = 15;
-      else if (len === 4) fs = 13;
-      else if (len <= 6) fs = 11;
-      else if (len <= 9) fs = 9;
-      else fs = 8;
-      circle.style.fontSize = fs + 'px';
-      circle.style.display = 'flex';
+  // Logo preview
+  const logo = document.getElementById('preview-logo');
+  if (logo) {
+    if (logoUrl && /^https?:\/\/.+/i.test(logoUrl) && logoUrl.indexOf('"') === -1 && logoUrl.indexOf('<') === -1) {
+      logo.src = logoUrl;
+      logo.style.display = 'block';
+      logo.onerror = function() { try { logo.style.display = 'none'; logo.removeAttribute('src'); } catch(e){} };
     } else {
-      circle.style.display = 'none';
+      logo.style.display = 'none';
+      logo.removeAttribute('src');
     }
   }
 }
@@ -2077,22 +2089,15 @@ function getContrastColor(hex) {
 // If `generate` is true, also regenerate the QR code image.
 // If `generate` is false, only save settings (visual changes apply on next menu.html visit).
 async function saveQrMenuSettings(generate) {
-  // Validate logo URL if provided
-  var logoUrl = document.getElementById('qr-menu-logo-url').value.trim();
-  if (logoUrl) {
-    if (!/^images\/menu\/[^"'<>]+\.(jpg|jpeg|png)$/i.test(logoUrl)) {
-      showToast('URL логотипа должен быть в формате: images/menu/имя_файла.png', 'warning');
-      return;
-    }
-  }
   const settings = {
     qr_menu_subtitle: document.getElementById('qr-menu-subtitle').value,
-    qr_menu_logo_url: logoUrl,
+    qr_menu_logo: document.getElementById('qr-menu-logo').value.trim(),
     qr_menu_color_price: document.getElementById('qr-menu-color-price').value,
     qr_menu_color_header: document.getElementById('qr-menu-color-header').value
   };
   try {
     await apiPost('saveSettings', { settings: settings });
+    // Update local APP_DATA.settings so menu.html (when opened) sees the new values
     if (APP_DATA && APP_DATA.settings) {
       Object.keys(settings).forEach(function(k) { APP_DATA.settings[k] = settings[k]; });
     }
@@ -2105,6 +2110,137 @@ async function saveQrMenuSettings(generate) {
   } catch (err) {
     showToast('Ошибка сохранения: ' + err.message, 'error');
   }
+}
+
+/* ---------- QR MENU VIEW STATISTICS ---------- */
+// Fetches all rows from `menu_views` table and aggregates by day / month / device.
+// State kept on window so toggling the mode is instant (no extra fetch).
+window._qrStatsMode = 'day';
+window._qrStatsData = [];
+
+async function loadMenuViewStats() {
+  const container = document.getElementById('qr-stats-table');
+  if (!container) return;
+  container.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Загрузка статистики…</p>';
+  try {
+    if (!_sb) throw new Error('Supabase не инициализирован');
+    // Fetch last 1000 rows ordered by created_at desc — enough for daily/monthly/device aggregates
+    const { data, error } = await _sb.from('menu_views')
+      .select('created_at,device_type,user_agent')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    window._qrStatsData = data || [];
+    renderQrStatsSummary();
+    renderQrStatsTable();
+  } catch (err) {
+    container.innerHTML = '<p style="color:var(--danger);font-size:0.9rem;">Ошибка загрузки статистики: ' +
+      escapeHtml(err.message) + '<br><span style="font-size:0.82rem;">Убедитесь, что выполнена миграция <code>migrate-add-menu-views.sql</code>.</span></p>';
+    // Reset KPIs to dashes
+    document.querySelectorAll('#qr-stats-summary [data-stat]').forEach(function(el){ el.textContent = '—'; });
+  }
+}
+
+function setQrStatsMode(mode) {
+  window._qrStatsMode = mode;
+  ['day','month','device'].forEach(function(m) {
+    const btn = document.getElementById('qr-stats-btn-' + m);
+    if (!btn) return;
+    if (m === mode) {
+      btn.classList.remove('btn-outline');
+      btn.classList.add('btn-primary');
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+    }
+  });
+  renderQrStatsTable();
+}
+
+function renderQrStatsSummary() {
+  const rows = window._qrStatsData || [];
+  const now = new Date();
+  // Local date string in YYYY-MM-DD using user's timezone
+  function ymd(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + dd;
+  }
+  const todayStr = ymd(now);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+
+  let today = 0, last7 = 0, last30 = 0;
+  rows.forEach(function(r) {
+    if (!r.created_at) return;
+    const d = new Date(r.created_at);
+    // Compare ISO date strings (UTC) — close enough for "today" count
+    if (String(r.created_at).slice(0, 10) === todayStr) today++;
+    if (d >= sevenDaysAgo) last7++;
+    if (d >= thirtyDaysAgo) last30++;
+  });
+
+  const setStat = function(key, val) {
+    const el = document.querySelector('#qr-stats-summary [data-stat="' + key + '"]');
+    if (el) el.textContent = String(val);
+  };
+  setStat('total', rows.length);
+  setStat('today', today);
+  setStat('last7', last7);
+  setStat('last30', last30);
+}
+
+function renderQrStatsTable() {
+  const container = document.getElementById('qr-stats-table');
+  if (!container) return;
+  const rows = window._qrStatsData || [];
+  const mode = window._qrStatsMode || 'day';
+
+  const buckets = {};
+  rows.forEach(function(r) {
+    let key;
+    if (mode === 'device') {
+      key = r.device_type || 'unknown';
+    } else if (mode === 'month') {
+      key = String(r.created_at || '').slice(0, 7); // YYYY-MM
+    } else {
+      key = String(r.created_at || '').slice(0, 10); // YYYY-MM-DD
+    }
+    if (!key) key = '—';
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+
+  const keys = Object.keys(buckets).sort().reverse();
+  if (keys.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Пока нет данных о просмотрах. Откройте меню по QR-коду — первая запись появится здесь.</p>';
+    return;
+  }
+
+  const max = Math.max.apply(null, keys.map(function(k) { return buckets[k]; }));
+  const labelMap = {
+    mobile: '📱 Мобильные',
+    tablet: '📲 Планшеты',
+    desktop: '💻 Десктоп',
+    unknown: '❓ Неизвестно'
+  };
+
+  let html = '<table class="admin-table" style="width:100%;">' +
+    '<thead><tr><th>' + (mode === 'device' ? 'Устройство' : (mode === 'month' ? 'Месяц' : 'День')) + '</th>' +
+    '<th style="width:100px;text-align:right;">Просмотры</th>' +
+    '<th style="width:45%;">Доля от максимума</th></tr></thead><tbody>';
+  keys.forEach(function(k) {
+    const v = buckets[k];
+    const pct = max > 0 ? Math.round(v / max * 100) : 0;
+    const label = mode === 'device' ? (labelMap[k] || k) : escapeHtml(k);
+    html += '<tr><td>' + label + '</td>' +
+      '<td style="text-align:right;font-weight:600;">' + v + '</td>' +
+      '<td><div style="background:var(--bg);border-radius:4px;height:18px;overflow:hidden;border:1px solid var(--border);">' +
+        '<div style="background:var(--primary);height:100%;width:' + pct + '%;"></div>' +
+      '</div></td></tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 
 // Render the list of subcategories with checkboxes so the admin can choose
@@ -5387,83 +5523,6 @@ async function renderStatisticsShifts() {
     content.innerHTML = html;
   } catch (err) {
     content.innerHTML = '<div class="empty-state"><h3>Ошибка</h3><p>' + escapeHtml(err.message) + '</p></div>';
-  }
-}
-
-// Render the QR visit statistics
-async function loadQrVisitStats() {
-  var content = document.getElementById('qr-visit-stats');
-  if (!content) return;
-  content.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
-  try {
-    var data = await apiGet('getQrVisits', {});
-    var visits = data.visits || [];
-    if (visits.length === 0) {
-      content.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.9rem;">Посещений пока нет. Статистика появится, когда посетители откроют QR-меню.</p>';
-      return;
-    }
-    // Group by day (last 14 days)
-    var dayMap = {};
-    visits.forEach(function(v) {
-      var d = (v.visited_at || '').substring(0, 10);
-      if (!d) return;
-      if (!dayMap[d]) dayMap[d] = { count: 0, mobile: 0, tablet: 0, desktop: 0 };
-      dayMap[d].count++;
-      var dev = v.device_type || 'desktop';
-      if (dayMap[d][dev] !== undefined) dayMap[d][dev]++;
-    });
-    var days = [];
-    var now = new Date();
-    for (var i = 13; i >= 0; i--) {
-      var dt = new Date(now.getTime() - i * 86400000);
-      var key = dt.toISOString().substring(0, 10);
-      var info = dayMap[key] || { count: 0, mobile: 0, tablet: 0, desktop: 0 };
-      days.push({ date: key, count: info.count, mobile: info.mobile, tablet: info.tablet, desktop: info.desktop });
-    }
-    var maxDay = Math.max.apply(null, days.map(function(d) { return d.count; }));
-    if (maxDay === 0) maxDay = 1;
-    // Total stats
-    var totalVisits = visits.length;
-    var todayCount = (dayMap[now.toISOString().substring(0, 10)] || { count: 0 }).count;
-    // Device breakdown
-    var totalMobile = 0, totalTablet = 0, totalDesktop = 0;
-    visits.forEach(function(v) {
-      var dev = v.device_type || 'desktop';
-      if (dev === 'mobile') totalMobile++;
-      else if (dev === 'tablet') totalTablet++;
-      else totalDesktop++;
-    });
-
-    var html = '';
-    // Summary
-    html += '<div class="stats-grid" style="margin-bottom:16px;">';
-    html += statCard('Всего посещений', totalVisits, '#6366f1');
-    html += statCard('Сегодня', todayCount, '#10b981');
-    html += statCard('📱 Мобильные', totalMobile, '#3b82f6');
-    html += statCard('💻 Десктоп', totalDesktop, '#f59e0b');
-    html += '</div>';
-    // Bar chart by day
-    html += '<div style="margin-top:12px;">';
-    html += '<h4 style="margin:0 0 12px;font-size:0.95rem;">Последние 14 дней</h4>';
-    html += '<div style="display:flex;align-items:flex-end;gap:4px;height:140px;padding:0 4px;">';
-    days.forEach(function(d) {
-      var pct = (d.count / maxDay) * 100;
-      var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-      var dt = new Date(d.date);
-      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">';
-      html += '<div style="font-size:0.65rem;font-weight:600;color:var(--text);">' + (d.count > 0 ? d.count : '') + '</div>';
-      html += '<div style="width:100%;height:100px;display:flex;align-items:flex-end;">';
-      html += '<div style="width:100%;height:' + Math.max(pct, d.count > 0 ? 4 : 0) + '%;background:#6366f1;border-radius:4px 4px 0 0;"></div>';
-      html += '</div>';
-      html += '<div style="font-size:0.65rem;color:var(--text-muted);">' + dayNames[dt.getDay()] + '</div>';
-      html += '<div style="font-size:0.6rem;color:var(--text-muted);">' + d.date.substring(8) + '.' + d.date.substring(5, 7) + '</div>';
-      html += '</div>';
-    });
-    html += '</div>';
-    html += '</div>';
-    content.innerHTML = html;
-  } catch (err) {
-    content.innerHTML = '<p style="color:var(--danger);font-size:0.85rem;">Ошибка: ' + escapeHtml(err.message) + '</p>';
   }
 }
 

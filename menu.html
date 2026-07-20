@@ -86,6 +86,11 @@
   .menu-header h1 { margin: 0; font-size: 1.4rem; }
   .menu-header .menu-subtitle { font-size: 0.8rem; opacity: 0.85; white-space: pre-wrap; }
   .menu-header-center { flex: 1; text-align: center; max-width: 600px; }
+  #menu-restaurant-logo {
+    flex: none; height: 44px; width: auto; max-width: 80px;
+    object-fit: contain; border-radius: 6px;
+    background: rgba(255,255,255,0.15); padding: 4px; box-sizing: border-box;
+  }
   .theme-toggle {
     flex: none; width: 40px; height: 40px; border: none; border-radius: 50%;
     background: rgba(255,255,255,0.2); color: #fff; font-size: 1.2rem; cursor: pointer;
@@ -156,7 +161,7 @@
   .mi-mod-row .mi-mod-label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
   .mi-mod-row .mi-mod-icon { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--vm-accent); display: inline-block; }
   .mi-mod-row .mi-mod-name { min-width: 0; flex: 1; word-break: break-word; color: var(--vm-muted); }
-  .mi-mod-row .mi-mod-price { font-weight: 700; color: var(--vm-accent); white-space: nowrap; }
+  .mi-mod-row .mi-mod-price { font-size: 1rem; font-weight: 700; color: var(--vm-accent); white-space: nowrap; }
   .mi-price { font-size: 1rem; font-weight: 700; white-space: nowrap; flex: none; color: var(--vm-accent); }
 
   /* Dish detail modal */
@@ -177,8 +182,8 @@
   .dish-modal-body { padding: 20px; }
   .dish-modal-body h2 { font-size: 1.4rem; font-weight: 700; color: var(--vm-text); margin: 0 0 8px; }
   .dish-modal-body .dish-translation { font-size: 0.9rem; color: var(--vm-muted); font-style: italic; margin-bottom: 12px; }
-  .dish-modal-body .dish-desc { font-size: 0.95rem; color: var(--vm-text); line-height: 1.5; margin-bottom: 16px; }
-  .dish-modal-body .dish-price { font-size: 1.3rem; font-weight: 700; color: var(--vm-accent); margin-bottom: 16px; }
+  .dish-modal-body .dish-desc { font-size: 0.95rem; color: var(--vm-text); line-height: 1.5; margin-top: 10px; }
+  .dish-modal-body .dish-price { font-size: 1.3rem; font-weight: 700; color: var(--vm-accent); flex: none; white-space: nowrap; }
   .dish-modal-close {
     position: absolute; top: 12px; right: 12px; width: 36px; height: 36px;
     border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; border: none;
@@ -243,7 +248,7 @@
 </div>
 
 <div class="menu-header" id="menu-header">
-  <div id="menu-header-left-slot" style="flex:none;width:40px;display:flex;align-items:center;justify-content:center;"></div>
+  <img id="menu-restaurant-logo" alt="" style="display:none;">
   <div class="menu-header-center">
     <h1 id="menu-restaurant-name">Меню</h1>
     <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
@@ -587,8 +592,12 @@ function renderItem(item) {
   }
   leftHtml += '</div>';
 
-  // Right column: price (ALWAYS on the right, same line as the name)
-  var rightHtml = '<div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div>';
+  // Right column: price on the right — only for dishes WITHOUT modifications
+  // (dishes with mods show 0 as base price, which is meaningless)
+  var rightHtml = '';
+  if (!hasMods) {
+    rightHtml = '<div class="mi-price">' + escHtml(fmtMoney(Number(item.price) || 0)) + '</div>';
+  }
 
   return '<div class="' + itemClass + '"' + onClickAttr + '>' + leftHtml + rightHtml + '</div>';
 }
@@ -603,7 +612,10 @@ function showDishDetail(itemId) {
   var description = String(item.description || '').trim();
   var name = escHtml(item.name);
   var translation = item.name_translation ? '<div class="dish-translation">' + escHtml(item.name_translation) + '</div>' : '';
-  var price = escHtml(fmtMoney(Number(item.price) || 0));
+  var price = Number(item.price) || 0;
+  var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+  // Only show price if it's > 0 (dishes with mods have base price 0)
+  var priceHtml = (!hasMods && price > 0) ? '<div class="dish-price">' + escHtml(fmtMoney(price)) + '</div>' : '';
   var descHtml = description ? '<div class="dish-desc">' + escHtml(description) + '</div>' : '';
 
   // Remove existing modal
@@ -619,10 +631,14 @@ function showDishDetail(itemId) {
       '<button class="dish-modal-close" onclick="closeDishDetail()">✕</button>' +
       '<img src="' + escHtml(imageUrl) + '" alt="' + escHtml(item.name) + '" onerror="this.style.display=\'none\'">' +
       '<div class="dish-modal-body">' +
-        '<h2>' + name + '</h2>' +
-        translation +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<h2 style="margin:0;">' + name + '</h2>' +
+            translation +
+          '</div>' +
+          priceHtml +
+        '</div>' +
         descHtml +
-        '<div class="dish-price">' + price + '</div>' +
       '</div>' +
     '</div>';
   // Close on backdrop click
@@ -676,19 +692,37 @@ function applyAppearance() {
     ':root { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; } ' +
     '[data-theme="dark"] { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; }';
   document.getElementById('menu-restaurant-subtitle').textContent = s.qr_menu_subtitle || '';
-  // Footer removed — no longer used
-  var footer = document.getElementById('menu-footer');
-  if (footer) footer.style.display = 'none';
-  // Logo in header
-  var logoUrl = String(s.qr_menu_logo_url || '').trim();
-  var logoSlot = document.getElementById('menu-header-left-slot');
-  if (logoSlot) {
-    if (logoUrl && /\.(jpg|jpeg|png)$/i.test(logoUrl) && !/[<>"']/.test(logoUrl)) {
-      logoSlot.innerHTML = '<img src="' + escHtml(logoUrl) + '" alt="Логотип" style="width:36px;height:36px;border-radius:8px;object-fit:cover;" onerror="this.style.display=\'none\'">';
+  // Logo to the left of the restaurant name
+  var logo = document.getElementById('menu-restaurant-logo');
+  if (logo) {
+    var logoUrl = String(s.qr_menu_logo || '').trim();
+    // Basic URL validation — only http(s) URLs allowed (no javascript:, data: etc.)
+    if (logoUrl && /^https?:\/\/.+/i.test(logoUrl) && logoUrl.indexOf('"') === -1 && logoUrl.indexOf('<') === -1) {
+      logo.src = logoUrl;
+      logo.style.display = 'block';
+      logo.onerror = function() { try { logo.style.display = 'none'; logo.removeAttribute('src'); } catch(e){} };
     } else {
-      logoSlot.innerHTML = '';
+      logo.style.display = 'none';
+      logo.removeAttribute('src');
     }
   }
+}
+
+// Fire-and-forget: log this page view into Supabase `menu_views` table
+// for the admin statistics panel. Silent — never blocks the menu.
+function trackMenuView() {
+  try {
+    if (!_sb_menu) return;
+    var ua = navigator.userAgent || '';
+    var deviceType = /iPad|Tablet|PlayBook|Silk/i.test(ua) ? 'tablet'
+                   : /Mobile|iPhone|Android.*Mobile|Windows Phone|BlackBerry/i.test(ua) ? 'mobile'
+                   : 'desktop';
+    _sb_menu.from('menu_views').insert({
+      user_agent: ua.substring(0, 500),
+      device_type: deviceType,
+      referrer: (document.referrer || '').substring(0, 500)
+    }).then(function() {}).catch(function(e) { /* silent */ });
+  } catch(e) { /* silent */ }
 }
 
 // Render the circle badge in the header left slot, with auto-fit text
@@ -753,28 +787,16 @@ document.getElementById('category-dropdown').addEventListener('click', function(
 });
 
 // ===== INIT =====
-// Log a QR menu visit to the database (fire-and-forget)
-function logQrVisit() {
-  try {
-    var ua = navigator.userAgent || '';
-    _sb_menu.from('qr_visits').insert({
-      id: 'qv_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6),
-      user_agent: ua.substring(0, 500),
-      device_type: /mobile|android|iphone/i.test(ua) ? 'mobile' : (/ipad|tablet/i.test(ua) ? 'tablet' : 'desktop')
-    }).then(function() {}).catch(function(e) {});
-  } catch(e) {}
-}
-
 async function initMenu() {
   try {
     initSupabaseMenu();
+    // Fire-and-forget — track this page view for admin statistics
+    trackMenuView();
     await loadAppDataMenu();
     applyAppearance();
     document.getElementById('menu-restaurant-name').textContent = APP_DATA.settings.restaurant_name || 'Меню';
     render();
     setupScroll();
-    // Log this visit (fire-and-forget, don't block)
-    logQrVisit();
   } catch (err) {
     document.getElementById('menu-content').innerHTML = '<div class="empty">Ошибка: ' + escHtml(err.message) + '</div>';
   } finally {
