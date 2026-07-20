@@ -196,8 +196,8 @@
     display: flex; gap: 6px; margin-bottom: 8px;
   }
   .menu-search-box input {
-    flex: 1; min-width: 0; padding: 10px 12px; font-size: 0.95rem;
-    border: 2px solid var(--border); border-radius: 8px;
+    flex: 1; min-width: 0; padding: 14px 14px; font-size: 1.1rem;
+    border: 2px solid var(--border); border-radius: 10px;
   }
   .menu-search-box input:focus {
     outline: none; border-color: var(--primary);
@@ -2397,11 +2397,15 @@ function renderOrderCart() {
     let html = '';
     state.cart.forEach(function(item, idx) {
       let nameLine = escapeHtml(item.name);
-      if (item.modification_name) nameLine += ' <span style="color:var(--primary);font-weight:600;font-size:0.82rem;background:rgba(211,47,47,0.08);padding:1px 6px;border-radius:4px;margin-left:4px;">· ' + escapeHtml(item.modification_name) + '</span>';
-      // Compact cart row: name+price on left, [− qty +] and total on right — all in one tight row
+      // Modification shown as a separate line UNDER the dish name (not inline)
+      let modLine = '';
+      if (item.modification_name) {
+        modLine = '<div style="color:var(--primary);font-weight:600;font-size:0.8rem;margin-top:2px;">· ' + escapeHtml(item.modification_name) + '</div>';
+      }
       html += '<div class="cart-row-modern">';
       html +=   '<div class="cart-row-modern-info">';
-      html +=     '<div class="cart-row-modern-name">' + nameLine + '</div>';
+      html +=     '<div class="cart-row-modern-name" style="cursor:pointer;" onclick="toggleCartItemComment(' + idx + ')">' + nameLine + '</div>';
+      html +=     modLine;
       html +=     '<div class="cart-row-modern-price">' + formatMoney(item.price) + ' × ' + item.quantity + '</div>';
       html +=   '</div>';
       html +=   '<div class="cart-row-modern-right">';
@@ -2597,22 +2601,41 @@ function selectMainCategory(cat) {
 
 function renderMenu() {
   const mainCat = state.mainCategory;
-  // Show/hide the menu search box based on whether a main category is selected
+  // Search box is ALWAYS visible — waiter can search across all categories
   const searchBox = document.querySelector('.menu-search-box');
-  if (searchBox) searchBox.style.display = mainCat ? 'flex' : 'none';
+  if (searchBox) searchBox.style.display = 'flex';
   if (!mainCat) {
-    // No category selected yet — clear the menu area and show a full-width prompt.
-    // We override the grid layout on #menu-items with display:block so the
-    // message spans the entire right panel instead of being trapped in one grid cell.
+    // No category selected — show ALL items from ALL categories in a flat grid
     const itemsDiv = document.getElementById('menu-items');
     if (itemsDiv) {
-      itemsDiv.style.display = 'block';
-      itemsDiv.innerHTML =
-        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;padding:40px 20px;text-align:center;color:var(--text-muted);">' +
-          '<div style="font-size:3rem;opacity:0.3;margin-bottom:16px;">📂</div>' +
-          '<h3 style="font-size:1.3rem;margin:0 0 8px;color:var(--text);">Выберите категорию</h3>' +
-          '<p style="font-size:1rem;margin:0;max-width:400px;">Нажмите на категорию слева, чтобы увидеть блюда</p>' +
-        '</div>';
+      itemsDiv.style.display = '';
+      // Show all menu items regardless of category
+      const allItems = (APP_DATA.menu || []).slice().sort(function(a, b) {
+        return String(a.name).localeCompare(String(b.name));
+      });
+      if (allItems.length === 0) {
+        itemsDiv.innerHTML = '<div class="empty-state"><h3>Нет блюд</h3></div>';
+      } else {
+        itemsDiv.innerHTML = '';
+        allItems.forEach(function(item) {
+          const card = document.createElement('div');
+          card.className = 'menu-item-card';
+          const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+          const priceLabel = hasMods
+            ? 'от ' + formatMoney(minModPrice(item))
+            : formatMoney(item.price);
+          card.innerHTML =
+            '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
+              (hasMods ? '<div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">⚙ ' + item.modifications.length + ' вар.</div>' : '') +
+            '<div class="item-price">' + priceLabel + '</div>' +
+            '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
+          card.querySelector('.item-add-btn').onclick = function() {
+            if (hasMods) showModificationPicker(item);
+            else addToCart(item);
+          };
+          itemsDiv.appendChild(card);
+        });
+      }
     }
     const tabsDiv = document.getElementById('subcat-tabs');
     if (tabsDiv) tabsDiv.innerHTML = '';
@@ -2768,37 +2791,25 @@ function minModPrice(item) {
 }
 
 // ===== Menu search =====
-// When the waiter types in the search box above the subcat tabs, we show a
-// flat list of all dishes (across all subcategories of the current main
-// category) whose name or translation matches the query. The subcat tabs
-// are hidden while searching. Clearing the search restores the normal view.
+// Search across ALL categories regardless of which main category is selected.
+// The subcat tabs are hidden while searching. Clearing the search restores the normal view.
 function filterMenuItems() {
   var input = document.getElementById('menu-search');
   if (!input) return;
   var query = input.value.toLowerCase().trim();
   var tabsDiv = document.getElementById('subcat-tabs');
   var itemsDiv = document.getElementById('menu-items');
-  if (!itemsDiv || !state.mainCategory) return;
+  if (!itemsDiv) return;
   if (!query) {
-    // No query → restore normal subcat view
+    // No query → restore normal view
     if (tabsDiv) tabsDiv.style.display = '';
     renderMenu();
     return;
   }
   // Hide subcat tabs while searching
   if (tabsDiv) tabsDiv.style.display = 'none';
-  // Find matching items across ALL subcategories of the current main category
-  // (plus direct items of the main category itself)
-  var mainCat = state.mainCategory;
-  var subcatIds = APP_DATA.categories
-    .filter(function(c) { return c.parent_id === mainCat.id; })
-    .map(function(c) { return c.id; });
-  var matches = APP_DATA.menu.filter(function(m) {
-    // Must belong to this main category (either directly or via a subcategory)
-    var belongsToMain = !m.category_id ||
-                        m.category_id === mainCat.id ||
-                        subcatIds.indexOf(m.category_id) >= 0;
-    if (!belongsToMain) return false;
+  // Search across ALL menu items (regardless of category)
+  var matches = (APP_DATA.menu || []).filter(function(m) {
     // Match by name, translation, or modification name
     var name = String(m.name || '').toLowerCase();
     var trans = String(m.name_translation || '').toLowerCase();
