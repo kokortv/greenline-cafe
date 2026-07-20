@@ -1971,6 +1971,18 @@ async function apiGet(action, params) {
       return await getActiveShift(params.waiter_id);
     case 'getAllShifts':
       return { shifts: await dbSelect('shifts') };
+    case 'getQrVisits':
+      return { visits: await dbSelect('qr_visits') };
+    case 'logQrVisit': {
+      const ua = body.user_agent || '';
+      let device = 'desktop';
+      if (/mobile|android|iphone|ipad/i.test(ua)) device = /ipad|tablet/i.test(ua) ? 'tablet' : 'mobile';
+      const visitId = 'qv_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+      try {
+        await dbInsert('qr_visits', { id: visitId, user_agent: ua.substring(0, 500), device_type: device });
+      } catch(e) { /* ignore */ }
+      return { ok: true };
+    }
     case 'getOrderLogs':
       return { logs: await getOrderLogs(params.order_id) };
     case 'getStockReport':

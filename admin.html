@@ -987,6 +987,14 @@
       </div>
     </div>
 
+    <!-- ====== QR Visit Statistics (at top) ====== -->
+    <div class="settings-card" style="margin-bottom:16px;">
+      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📊</span> Статистика посещений QR-меню</h3>
+      <div id="qr-visit-stats" style="margin-bottom:12px;">
+        <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
+      </div>
+    </div>
+
     <!-- ====== Card 1: Text content ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📝</span> Текстовые элементы</h3>
@@ -995,8 +1003,9 @@
         <input type="text" id="qr-menu-subtitle" placeholder="Например: Добро пожаловать! или телефон для брони">
       </div>
       <div class="form-group" style="margin:0;">
-        <label>Текст внизу меню (подвал)</label>
-        <textarea id="qr-menu-footer" rows="3" placeholder="Например: Спасибо за визит! Адрес: г. Тбилиси, ул. ... Тел: +995 ... Часы работы: 10:00 — 23:00"></textarea>
+        <label>URL логотипа (jpg/png, лежит в папке images/menu/)</label>
+        <input type="text" id="qr-menu-logo-url" placeholder="Например: images/menu/logo.png">
+        <p style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">Логотип показывается слева перед названием ресторана в шапке меню.</p>
       </div>
     </div>
 
@@ -1010,9 +1019,7 @@
             <input type="color" id="qr-menu-color-price" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
             <input type="text" id="qr-menu-color-price-text" value="#d32f2f" style="flex:1;font-family:monospace;min-width:0;">
           </div>
-          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
-            Цены, активные вкладки, кнопка категорий внизу
-          </p>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">Цены, активные вкладки, кнопка категорий внизу</p>
         </div>
         <div class="form-group" style="margin:0;">
           <label>Цвет шапки меню</label>
@@ -1020,44 +1027,12 @@
             <input type="color" id="qr-menu-color-header" value="#d32f2f" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
             <input type="text" id="qr-menu-color-header-text" value="#d32f2f" style="flex:1;font-family:monospace;min-width:0;">
           </div>
-          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
-            Полоса вверху страницы с названием ресторана
-          </p>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">Полоса вверху страницы с названием ресторана</p>
         </div>
       </div>
     </div>
 
-    <!-- ====== Card 3: Circle badge ====== -->
-    <div class="settings-card" style="margin-bottom:16px;">
-      <h3 style="margin:0 0 6px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">⭕</span> Кружок-значок в шапке</h3>
-      <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;line-height:1.5;">
-        Короткий текст в круглом значке рядом с названием ресторана. Подходит для скидок («−20%»), акции, WiFi-пароля. Текст автоматически уменьшается под размер кружка.
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:14px;align-items:end;">
-        <div class="form-group" style="margin:0;">
-          <label>Текст в кружке</label>
-          <input type="text" id="qr-menu-circle-text" placeholder="−20% / WiFi / 24/7" maxlength="20">
-        </div>
-        <div class="form-group" style="margin:0;">
-          <label>Цвет фона кружка</label>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="qr-menu-color-circle" value="#ffd600" style="width:50px;height:40px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none;">
-            <input type="text" id="qr-menu-color-circle-text" value="#ffd600" style="flex:1;font-family:monospace;min-width:0;">
-          </div>
-        </div>
-        <div class="form-group" style="margin:0;">
-          <label style="display:block;margin-bottom:4px;font-size:0.85rem;">Превью</label>
-          <div id="circle-preview-wrap" style="display:flex;align-items:center;justify-content:center;width:64px;height:64px;background:var(--bg);border-radius:8px;border:1px dashed var(--border);">
-            <div id="circle-preview" style="width:48px;height:48px;border-radius:50%;background:#ffd600;color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;text-align:center;line-height:1;padding:4px;box-sizing:border-box;word-break:break-word;overflow:hidden;">—</div>
-          </div>
-        </div>
-      </div>
-      <p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;line-height:1.4;">
-        Оставьте поле «Текст» пустым, чтобы значок не отображался.
-      </p>
-    </div>
-
-    <!-- ====== Card 4: Categories ====== -->
+    <!-- ====== Card 3: Categories ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📂</span> Категории в меню</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px;background:var(--bg);border-radius:8px;">
@@ -1067,24 +1042,15 @@
       <div id="qr-menu-categories"></div>
     </div>
 
-    <!-- ====== Card 5: Waiter QR toggle + Save/Generate buttons ====== -->
+    <!-- ====== Save buttons ====== -->
     <div class="settings-card" style="margin-bottom:16px;">
-      <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">⚙️</span> Дополнительно</h3>
-      <div class="form-group checkbox-field" style="margin-bottom:16px;">
-        <input type="checkbox" id="set-show-qr">
-        <label for="set-show-qr" style="margin:0;">Показать иконку QR-меню у официантов</label>
-      </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-outline" type="button" onclick="saveQrMenuSettings(false)" style="font-size:0.95rem;padding:10px 16px;">💾 Сохранить</button>
         <button class="btn btn-primary" type="button" onclick="saveQrMenuSettings(true)" style="font-size:1rem;padding:10px 20px;">📱 Сохранить и сгенерировать QR-код</button>
       </div>
-      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;line-height:1.4;">
-        «Сохранить» — применяет визуальные изменения (цвета, текст, кружок) без генерации QR-кода.<br>
-        «Сохранить и сгенерировать» — дополнительно обновляет сам QR-код (нужно, если вы поменяли выбранные категории или адрес меню).
-      </p>
     </div>
 
-    <!-- ====== Card 6: Generated QR code ====== -->
+    <!-- ====== Generated QR code ====== -->
     <div id="qr-menu-result" class="settings-card" style="display:none;margin-bottom:16px;">
       <h3 style="margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;"><span style="font-size:1.15rem;">📱</span> Готовый QR-код</h3>
       <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
@@ -2008,23 +1974,18 @@ async function cleanupSessionsBtn() {
 function loadQrMenuAppearance() {
   const s = APP_DATA.settings || {};
   document.getElementById('qr-menu-subtitle').value = s.qr_menu_subtitle || '';
-  document.getElementById('qr-menu-footer').value = s.qr_menu_footer || '';
+  document.getElementById('qr-menu-logo-url').value = s.qr_menu_logo_url || '';
   // Colors — default to brand red if not set
   const priceColor = s.qr_menu_color_price || '#d32f2f';
   const headerColor = s.qr_menu_color_header || '#d32f2f';
-  const circleColor = s.qr_menu_color_circle || '#ffd600';
   document.getElementById('qr-menu-color-price').value = priceColor;
   document.getElementById('qr-menu-color-price-text').value = priceColor;
   document.getElementById('qr-menu-color-header').value = headerColor;
   document.getElementById('qr-menu-color-header-text').value = headerColor;
-  document.getElementById('qr-menu-color-circle').value = circleColor;
-  document.getElementById('qr-menu-color-circle-text').value = circleColor;
-  document.getElementById('qr-menu-circle-text').value = s.qr_menu_circle_text || '';
-  // Show QR to waiter checkbox
-  document.getElementById('set-show-qr').checked = String(s.show_qr_to_waiter) === 'true';
   // Update previews
-  updateCirclePreview();
-  updateLivePreview();
+  if (typeof updateLivePreview === 'function') updateLivePreview();
+  // Load QR visit stats
+  loadQrVisitStats();
 }
 
 // Live preview of the circle badge — auto-shrinks text to fit
@@ -2116,18 +2077,22 @@ function getContrastColor(hex) {
 // If `generate` is true, also regenerate the QR code image.
 // If `generate` is false, only save settings (visual changes apply on next menu.html visit).
 async function saveQrMenuSettings(generate) {
+  // Validate logo URL if provided
+  var logoUrl = document.getElementById('qr-menu-logo-url').value.trim();
+  if (logoUrl) {
+    if (!/^images\/menu\/[^"'<>]+\.(jpg|jpeg|png)$/i.test(logoUrl)) {
+      showToast('URL логотипа должен быть в формате: images/menu/имя_файла.png', 'warning');
+      return;
+    }
+  }
   const settings = {
     qr_menu_subtitle: document.getElementById('qr-menu-subtitle').value,
-    qr_menu_footer: document.getElementById('qr-menu-footer').value,
+    qr_menu_logo_url: logoUrl,
     qr_menu_color_price: document.getElementById('qr-menu-color-price').value,
-    qr_menu_color_header: document.getElementById('qr-menu-color-header').value,
-    qr_menu_circle_text: document.getElementById('qr-menu-circle-text').value.trim(),
-    qr_menu_color_circle: document.getElementById('qr-menu-color-circle').value,
-    show_qr_to_waiter: document.getElementById('set-show-qr').checked ? 'true' : 'false'
+    qr_menu_color_header: document.getElementById('qr-menu-color-header').value
   };
   try {
     await apiPost('saveSettings', { settings: settings });
-    // Update local APP_DATA.settings so menu.html (when opened) sees the new values
     if (APP_DATA && APP_DATA.settings) {
       Object.keys(settings).forEach(function(k) { APP_DATA.settings[k] = settings[k]; });
     }
@@ -5422,6 +5387,83 @@ async function renderStatisticsShifts() {
     content.innerHTML = html;
   } catch (err) {
     content.innerHTML = '<div class="empty-state"><h3>Ошибка</h3><p>' + escapeHtml(err.message) + '</p></div>';
+  }
+}
+
+// Render the QR visit statistics
+async function loadQrVisitStats() {
+  var content = document.getElementById('qr-visit-stats');
+  if (!content) return;
+  content.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    var data = await apiGet('getQrVisits', {});
+    var visits = data.visits || [];
+    if (visits.length === 0) {
+      content.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.9rem;">Посещений пока нет. Статистика появится, когда посетители откроют QR-меню.</p>';
+      return;
+    }
+    // Group by day (last 14 days)
+    var dayMap = {};
+    visits.forEach(function(v) {
+      var d = (v.visited_at || '').substring(0, 10);
+      if (!d) return;
+      if (!dayMap[d]) dayMap[d] = { count: 0, mobile: 0, tablet: 0, desktop: 0 };
+      dayMap[d].count++;
+      var dev = v.device_type || 'desktop';
+      if (dayMap[d][dev] !== undefined) dayMap[d][dev]++;
+    });
+    var days = [];
+    var now = new Date();
+    for (var i = 13; i >= 0; i--) {
+      var dt = new Date(now.getTime() - i * 86400000);
+      var key = dt.toISOString().substring(0, 10);
+      var info = dayMap[key] || { count: 0, mobile: 0, tablet: 0, desktop: 0 };
+      days.push({ date: key, count: info.count, mobile: info.mobile, tablet: info.tablet, desktop: info.desktop });
+    }
+    var maxDay = Math.max.apply(null, days.map(function(d) { return d.count; }));
+    if (maxDay === 0) maxDay = 1;
+    // Total stats
+    var totalVisits = visits.length;
+    var todayCount = (dayMap[now.toISOString().substring(0, 10)] || { count: 0 }).count;
+    // Device breakdown
+    var totalMobile = 0, totalTablet = 0, totalDesktop = 0;
+    visits.forEach(function(v) {
+      var dev = v.device_type || 'desktop';
+      if (dev === 'mobile') totalMobile++;
+      else if (dev === 'tablet') totalTablet++;
+      else totalDesktop++;
+    });
+
+    var html = '';
+    // Summary
+    html += '<div class="stats-grid" style="margin-bottom:16px;">';
+    html += statCard('Всего посещений', totalVisits, '#6366f1');
+    html += statCard('Сегодня', todayCount, '#10b981');
+    html += statCard('📱 Мобильные', totalMobile, '#3b82f6');
+    html += statCard('💻 Десктоп', totalDesktop, '#f59e0b');
+    html += '</div>';
+    // Bar chart by day
+    html += '<div style="margin-top:12px;">';
+    html += '<h4 style="margin:0 0 12px;font-size:0.95rem;">Последние 14 дней</h4>';
+    html += '<div style="display:flex;align-items:flex-end;gap:4px;height:140px;padding:0 4px;">';
+    days.forEach(function(d) {
+      var pct = (d.count / maxDay) * 100;
+      var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+      var dt = new Date(d.date);
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">';
+      html += '<div style="font-size:0.65rem;font-weight:600;color:var(--text);">' + (d.count > 0 ? d.count : '') + '</div>';
+      html += '<div style="width:100%;height:100px;display:flex;align-items:flex-end;">';
+      html += '<div style="width:100%;height:' + Math.max(pct, d.count > 0 ? 4 : 0) + '%;background:#6366f1;border-radius:4px 4px 0 0;"></div>';
+      html += '</div>';
+      html += '<div style="font-size:0.65rem;color:var(--text-muted);">' + dayNames[dt.getDay()] + '</div>';
+      html += '<div style="font-size:0.6rem;color:var(--text-muted);">' + d.date.substring(8) + '.' + d.date.substring(5, 7) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '</div>';
+    content.innerHTML = html;
+  } catch (err) {
+    content.innerHTML = '<p style="color:var(--danger);font-size:0.85rem;">Ошибка: ' + escapeHtml(err.message) + '</p>';
   }
 }
 
