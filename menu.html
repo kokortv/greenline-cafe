@@ -84,19 +84,21 @@
   }
   .menu-header.is-hidden { transform: translateY(-100%); }
   .menu-header h1 { margin: 0; font-size: 1.4rem; }
-  .menu-header .menu-subtitle { font-size: 0.8rem; opacity: 0.85; white-space: pre-wrap; }
+  .menu-header .menu-subtitle { font-size: 0.8rem; opacity: 0.85; white-space: pre-wrap; margin-top: 2px; }
   .menu-header-center { flex: 1; text-align: center; max-width: 600px; }
+  .menu-header-title-row { display: inline-flex; align-items: center; gap: 10px; justify-content: center; max-width: 100%; }
+  .menu-header-title-row h1 { min-width: 0; }
   #menu-restaurant-logo {
-    flex: none; height: 44px; width: auto; max-width: 80px;
-    object-fit: contain; border-radius: 6px;
-    background: rgba(255,255,255,0.15); padding: 4px; box-sizing: border-box;
+    flex: none; height: 28px; width: auto; max-width: 60px;
+    object-fit: contain; border-radius: 4px;
+    background: transparent;
   }
   .theme-toggle {
     flex: none; width: 40px; height: 40px; border: none; border-radius: 50%;
     background: rgba(255,255,255,0.2); color: #fff; font-size: 1.2rem; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
   }
-  .header-spacer { height: 64px; }
+  .header-spacer { height: 72px; }
 
   /* Circle badge in header (left side, replaces empty spacer) */
   .menu-circle-badge {
@@ -112,7 +114,7 @@
 
   /* Fixed subcat tabs: sit right below header when at top, slide up to top:0 when header hides */
   .subcat-tabs-bar {
-    position: fixed; top: 64px; left: 0; right: 0; z-index: 50;
+    position: fixed; top: 72px; left: 0; right: 0; z-index: 50;
     background: rgba(255,255,255,0.92);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     display: flex; gap: 6px; padding: 10px 12px; overflow-x: auto;
@@ -248,9 +250,11 @@
 </div>
 
 <div class="menu-header" id="menu-header">
-  <img id="menu-restaurant-logo" alt="" style="display:none;">
   <div class="menu-header-center">
-    <h1 id="menu-restaurant-name">Меню</h1>
+    <div class="menu-header-title-row">
+      <img id="menu-restaurant-logo" alt="" style="display:none;">
+      <h1 id="menu-restaurant-name">Меню</h1>
+    </div>
     <div class="menu-subtitle" id="menu-restaurant-subtitle"></div>
   </div>
 </div>
@@ -692,12 +696,17 @@ function applyAppearance() {
     ':root { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; } ' +
     '[data-theme="dark"] { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; }';
   document.getElementById('menu-restaurant-subtitle').textContent = s.qr_menu_subtitle || '';
-  // Logo to the left of the restaurant name
+  // Logo to the left of the restaurant name (inside centered block, directly before title)
   var logo = document.getElementById('menu-restaurant-logo');
   if (logo) {
     var logoUrl = String(s.qr_menu_logo || '').trim();
-    // Basic URL validation — only http(s) URLs allowed (no javascript:, data: etc.)
-    if (logoUrl && /^https?:\/\/.+/i.test(logoUrl) && logoUrl.indexOf('"') === -1 && logoUrl.indexOf('<') === -1) {
+    // Accept: "images/logo.png", "/images/logo.png", "https://..."
+    // Reject: javascript:, data:, anything with <>" or no image extension
+    var isValidPath = logoUrl &&
+      !/[<>"']/.test(logoUrl) &&
+      /\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl) &&
+      (/^https?:\/\//i.test(logoUrl) || /^[\/]?[\w\-./]+\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl));
+    if (isValidPath) {
       logo.src = logoUrl;
       logo.style.display = 'block';
       logo.onerror = function() { try { logo.style.display = 'none'; logo.removeAttribute('src'); } catch(e){} };
