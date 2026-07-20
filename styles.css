@@ -633,7 +633,7 @@ tbody tr:hover { background: #f9fafb; }
 /* Payment method selector */
 .payment-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
   margin: 16px 0;
 }
