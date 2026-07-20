@@ -995,15 +995,11 @@
         <button class="btn btn-outline" id="qr-stats-btn-month" type="button" onclick="setQrStatsMode('month')" style="font-size:0.9rem;">По месяцам</button>
         <button class="btn btn-outline" id="qr-stats-btn-device" type="button" onclick="setQrStatsMode('device')" style="font-size:0.9rem;">По устройствам</button>
         <button class="btn btn-outline" type="button" onclick="loadMenuViewStats()" style="font-size:0.9rem;margin-left:auto;">🔄 Обновить</button>
-        <button class="btn btn-outline" type="button" onclick="runMenuViewDiagnostic()" style="font-size:0.9rem;">🩺 Диагностика</button>
       </div>
 
       <div id="qr-stats-table" style="overflow-x:auto;">
         <p style="color:var(--text-muted);font-size:0.9rem;">Загрузка статистики…</p>
       </div>
-
-      <!-- Diagnostic output -->
-      <div id="qr-stats-diagnostic" style="display:none;margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);font-size:0.85rem;line-height:1.6;"></div>
     </div>
 
     <!-- ====== Card 0: Live preview ====== -->
@@ -2071,7 +2067,7 @@ function updateLivePreview() {
   const logo = document.getElementById('preview-logo');
   if (logo) {
     const isValidPath = logoUrl &&
-      !/[<>"']/.test(logoUrl) &&
+      !/[<>"]/.test(logoUrl) &&
       /\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl) &&
       (/^https?:\/\//i.test(logoUrl) || /^[\/]?[\w\-./]+\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl));
     if (isValidPath) {
@@ -2146,16 +2142,7 @@ async function loadMenuViewStats() {
     renderQrStatsSummary();
     renderQrStatsTable();
   } catch (err) {
-    const msg = err.message || String(err);
-    let hint = 'Убедитесь, что выполнена миграция <code>migrate-add-menu-views.sql</code> в Supabase SQL Editor.';
-    if (msg.indexOf('relation') !== -1 && msg.indexOf('does not exist') !== -1) {
-      hint = '<b style="color:var(--danger);">Таблица menu_views не существует.</b> Выполните миграцию <code>migrate-add-menu-views.sql</code> в Supabase SQL Editor (Dashboard → SQL Editor → вставьте файл → Run).';
-    } else if (msg.indexOf('permission') !== -1 || msg.indexOf('policy') !== -1 || msg.indexOf('RLS') !== -1) {
-      hint = '<b style="color:var(--danger);">RLS блокирует чтение.</b> Проверьте политики для таблицы menu_views (нужна "Authenticated can read menu_views" с USING (true)).';
-    }
-    container.innerHTML = '<p style="color:var(--danger);font-size:0.9rem;">Ошибка загрузки статистики: ' +
-      escapeHtml(msg) + '</p><p style="font-size:0.82rem;margin-top:6px;">' + hint + '</p>';
-    // Reset KPIs to dashes
+    container.innerHTML = '<p style="color:var(--danger);font-size:0.9rem;">Ошибка загрузки статистики: ' + escapeHtml(err.message) + '</p>';
     document.querySelectorAll('#qr-stats-summary [data-stat]').forEach(function(el){ el.textContent = '—'; });
   }
 }
@@ -2179,7 +2166,6 @@ function setQrStatsMode(mode) {
 function renderQrStatsSummary() {
   const rows = window._qrStatsData || [];
   const now = new Date();
-  // Local date string in YYYY-MM-DD using user's timezone
   function ymd(d) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -2194,7 +2180,6 @@ function renderQrStatsSummary() {
   rows.forEach(function(r) {
     if (!r.created_at) return;
     const d = new Date(r.created_at);
-    // Compare ISO date strings (UTC) — close enough for "today" count
     if (String(r.created_at).slice(0, 10) === todayStr) today++;
     if (d >= sevenDaysAgo) last7++;
     if (d >= thirtyDaysAgo) last30++;
@@ -2222,9 +2207,9 @@ function renderQrStatsTable() {
     if (mode === 'device') {
       key = r.device_type || 'unknown';
     } else if (mode === 'month') {
-      key = String(r.created_at || '').slice(0, 7); // YYYY-MM
+      key = String(r.created_at || '').slice(0, 7);
     } else {
-      key = String(r.created_at || '').slice(0, 10); // YYYY-MM-DD
+      key = String(r.created_at || '').slice(0, 10);
     }
     if (!key) key = '—';
     buckets[key] = (buckets[key] || 0) + 1;
@@ -2232,7 +2217,7 @@ function renderQrStatsTable() {
 
   const keys = Object.keys(buckets).sort().reverse();
   if (keys.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Пока нет данных о просмотрах. Откройте меню по QR-коду — первая запись появится здесь.<br><br>Если уже открывали — нажмите «🩺 Диагностика», чтобы проверить соединение.</p>';
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Пока нет данных о просмотрах. Откройте меню по QR-коду — первая запись появится здесь.</p>';
     return;
   }
 
@@ -2260,87 +2245,6 @@ function renderQrStatsTable() {
   });
   html += '</tbody></table>';
   container.innerHTML = html;
-}
-
-// Diagnostic: step-by-step check of the menu_views pipeline.
-// 1) Can admin SELECT from menu_views? (table exists + RLS allows read)
-// 2) Can admin INSERT into menu_views? (RLS allows write)
-// 3) Re-fetch stats and show summary
-async function runMenuViewDiagnostic() {
-  const out = document.getElementById('qr-stats-diagnostic');
-  if (!out) return;
-  out.style.display = 'block';
-  out.innerHTML = '<div style="color:var(--text-muted);">⏳ Диагностика запущена…</div>';
-
-  const log = [];
-  const push = function(label, status, detail) {
-    const color = status === 'ok' ? '#16a34a' : status === 'fail' ? '#dc2626' : '#2563eb';
-    log.push('<div style="margin:4px 0;"><span style="color:' + color + ';font-weight:700;">' +
-      (status === 'ok' ? '✓' : status === 'fail' ? '✗' : '→') + '</span> ' +
-      '<b>' + escapeHtml(label) + '</b>' + (detail ? ': ' + escapeHtml(detail) : '') + '</div>');
-  };
-
-  if (!_sb) {
-    out.innerHTML = '<div style="color:#dc2626;font-weight:700;">✗ Supabase клиент не инициализирован. Перезагрузите страницу.</div>';
-    return;
-  }
-
-  // Step 1: SELECT (table exists + read policy)
-  try {
-    const { data, error } = await _sb.from('menu_views')
-      .select('id,created_at,device_type', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .limit(1);
-    if (error) {
-      push('SELECT из menu_views', 'fail', error.message + (error.code ? ' (код ' + error.code + ')' : ''));
-      push('Диагноз', 'fail', 'Таблица menu_views не существует или RLS блокирует чтение. Выполните миграцию migrate-add-menu-views.sql в Supabase SQL Editor.');
-      out.innerHTML = log.join('');
-      return;
-    }
-    push('SELECT из menu_views', 'ok', 'найдено строк: ' + (data ? data.length : 0) + ' (лимит 1 для проверки)');
-  } catch (e) {
-    push('SELECT из menu_views', 'fail', e.message || String(e));
-    out.innerHTML = log.join('');
-    return;
-  }
-
-  // Step 2: INSERT (write policy) — using authenticated session
-  try {
-    const testPayload = {
-      user_agent: 'diagnostic-from-admin',
-      device_type: 'desktop',
-      referrer: 'admin-diagnostic'
-    };
-    const { data, error } = await _sb.from('menu_views').insert(testPayload).select();
-    if (error) {
-      push('INSERT от имени админа', 'fail', error.message + (error.code ? ' (код ' + error.code + ')' : ''));
-      push('Диагноз', 'fail', 'RLS-политика для INSERT отсутствует. Выполните миграцию заново (DROP POLICY + CREATE POLICY).');
-      out.innerHTML = log.join('');
-      return;
-    }
-    push('INSERT от имени админа', 'ok', 'строка добавлена, id=' + (data && data[0] ? data[0].id : '?'));
-  } catch (e) {
-    push('INSERT от имени админа', 'fail', e.message || String(e));
-    out.innerHTML = log.join('');
-    return;
-  }
-
-  // Step 3: re-fetch and show summary
-  push('Перезагружаю статистику', 'info', '');
-  await loadMenuViewStats();
-  const total = (window._qrStatsData || []).length;
-  push('Готово', 'ok', 'Всего просмотров в таблице: ' + total);
-
-  if (total <= 1) {
-    push('Важно', 'info', 'Только что добавлена 1 строка (из диагностики). Если вы сканировали QR с телефона — значит анонимная INSERT-политика не работает для посетителей. Проверьте, что в Supabase для таблицы menu_views включена политика "Anyone can insert menu views" с TO anon, authenticated.');
-  } else {
-    push('Важно', 'info', 'В таблице есть записи. Если статистика всё равно пустая — обновите страницу menu.html на телефоне с очисткой кэша (старая версия без трекинга могла закешироваться).');
-  }
-
-  out.innerHTML = '<div style="margin-bottom:8px;font-weight:600;">Результаты диагностики:</div>' + log.join('') +
-    '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text-muted);">' +
-    'Если проблема сохраняется — откройте menu.html на телефоне, в Chrome/Safari посмотрите консоль (через USB-дебаг или удалённую консоль). ' +
-    'Ошибки трекинга пишутся с префиксом <code>[menu_views]</code>.</div>';
 }
 
 // Render the list of subcategories with checkboxes so the admin can choose

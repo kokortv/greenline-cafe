@@ -704,9 +704,8 @@ function applyAppearance() {
   if (logo) {
     var logoUrl = String(s.qr_menu_logo || '').trim();
     // Accept: "images/logo.png", "/images/logo.png", "https://..."
-    // Reject: javascript:, data:, anything with <>" or no image extension
     var isValidPath = logoUrl &&
-      !/[<>"']/.test(logoUrl) &&
+      !/[<>"]/.test(logoUrl) &&
       /\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl) &&
       (/^https?:\/\//i.test(logoUrl) || /^[\/]?[\w\-./]+\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl));
     if (isValidPath) {
@@ -721,36 +720,20 @@ function applyAppearance() {
 }
 
 // Fire-and-forget: log this page view into Supabase `menu_views` table
-// for the admin statistics panel. Logs to console on failure for debugging.
+// for the admin statistics panel. Silent on failure (never blocks the menu).
 function trackMenuView() {
   try {
-    if (!_sb_menu) {
-      console.warn('[menu_views] Supabase client not initialized — tracking skipped');
-      return;
-    }
+    if (!_sb_menu) return;
     var ua = navigator.userAgent || '';
     var deviceType = /iPad|Tablet|PlayBook|Silk/i.test(ua) ? 'tablet'
                    : /Mobile|iPhone|Android.*Mobile|Windows Phone|BlackBerry/i.test(ua) ? 'mobile'
                    : 'desktop';
-    var payload = {
+    _sb_menu.from('menu_views').insert({
       user_agent: ua.substring(0, 500),
       device_type: deviceType,
       referrer: (document.referrer || '').substring(0, 500)
-    };
-    _sb_menu.from('menu_views').insert(payload)
-      .then(function(res) {
-        if (res.error) {
-          console.error('[menu_views] Insert rejected:', res.error.message, '| code:', res.error.code);
-        } else {
-          console.log('[menu_views] View tracked:', deviceType);
-        }
-      })
-      .catch(function(e) {
-        console.error('[menu_views] Insert threw:', e && e.message ? e.message : e);
-      });
-  } catch(e) {
-    console.error('[menu_views] trackMenuView() exception:', e);
-  }
+    }).then(function() {}).catch(function(e) { /* silent */ });
+  } catch(e) { /* silent */ }
 }
 
 // Render the circle badge in the header left slot, with auto-fit text
