@@ -1011,10 +1011,12 @@
       <div id="qr-live-preview" style="border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.12);max-width:480px;border:1px solid var(--border);">
         <!-- Header bar -->
         <div id="preview-header" style="background:#d32f2f;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-          <img id="preview-logo" alt="" style="flex:none;height:44px;width:auto;max-width:80px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,0.15);padding:4px;box-sizing:border-box;display:none;">
           <div style="flex:1;text-align:center;min-width:0;">
-            <div id="preview-restaurant-name" style="font-size:1.4rem;font-weight:600;margin:0;">Меню</div>
-            <div id="preview-subtitle" style="font-size:0.8rem;opacity:0.85;white-space:pre-wrap;"></div>
+            <div style="display:inline-flex;align-items:center;gap:10px;justify-content:center;max-width:100%;">
+              <img id="preview-logo" alt="" style="flex:none;height:28px;width:auto;max-width:60px;object-fit:contain;border-radius:4px;background:transparent;display:none;">
+              <div id="preview-restaurant-name" style="font-size:1.4rem;font-weight:600;margin:0;">Меню</div>
+            </div>
+            <div id="preview-subtitle" style="font-size:0.8rem;opacity:0.85;white-space:pre-wrap;margin-top:2px;"></div>
           </div>
           <div style="flex:none;width:44px;text-align:center;font-size:1.2rem;opacity:0.8;">🌙</div>
         </div>
@@ -1037,11 +1039,13 @@
         <input type="text" id="qr-menu-subtitle" placeholder="Например: Добро пожаловать! или телефон для брони">
       </div>
       <div class="form-group" style="margin:0;">
-        <label>Логотип (URL изображения)</label>
-        <input type="text" id="qr-menu-logo" placeholder="https://example.com/logo.png">
+        <label>Логотип (путь к файлу)</label>
+        <input type="text" id="qr-menu-logo" placeholder="images/logo.png">
         <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
-          Логотип отображается слева от названия ресторана в шапке меню. Оставьте пустым, чтобы скрыть.
-          Поддерживаются только http(s) URL изображений (PNG, JPG, SVG).
+          Файл нужно положить в папку <code>images/</code> рядом с HTML-страницами и указать путь вида
+          <code>images/имя_файла.png</code> (или <code>/images/имя_файла.png</code>).
+          Поддерживаются JPG, PNG, SVG, WebP. Логотип отображается слева от названия ресторана.
+          Оставьте пустым, чтобы скрыть.
         </p>
       </div>
     </div>
@@ -2062,7 +2066,11 @@ function updateLivePreview() {
   // Logo preview
   const logo = document.getElementById('preview-logo');
   if (logo) {
-    if (logoUrl && /^https?:\/\/.+/i.test(logoUrl) && logoUrl.indexOf('"') === -1 && logoUrl.indexOf('<') === -1) {
+    const isValidPath = logoUrl &&
+      !/[<>"']/.test(logoUrl) &&
+      /\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl) &&
+      (/^https?:\/\//i.test(logoUrl) || /^[\/]?[\w\-./]+\.(jpg|jpeg|png|svg|webp)$/i.test(logoUrl));
+    if (isValidPath) {
       logo.src = logoUrl;
       logo.style.display = 'block';
       logo.onerror = function() { try { logo.style.display = 'none'; logo.removeAttribute('src'); } catch(e){} };
