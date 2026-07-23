@@ -5489,36 +5489,58 @@ async function renderStatisticsShifts() {
     html += '<th style="padding:8px;text-align:left;">Официант</th>';
     html += '<th style="padding:8px;text-align:left;">Смена открыта</th>';
     html += '<th style="padding:8px;text-align:left;">Смена закрыта</th>';
-    html += '<th style="padding:8px;text-align:right;">Начало смены</th>';
-    html += '<th style="padding:8px;text-align:right;">В кассе</th>';
-    html += '<th style="padding:8px;text-align:right;">Разница</th>';
+    html += '<th style="padding:8px;text-align:right;">Начало</th>';
+    html += '<th style="padding:8px;text-align:right;">Ожидалось</th>';
+    html += '<th style="padding:8px;text-align:right;">Фактически</th>';
+    html += '<th style="padding:8px;text-align:right;">Расхождение</th>';
     html += '</tr></thead><tbody>';
     allShifts.forEach(function(s, idx) {
       var isOpen = s.status === 'open' || !s.closed_at;
       var openingCash = Number(s.opening_cash) || 0;
       var cashTotal = Number(s.cash_total) || 0;
-      var closingCash = openingCash + cashTotal;
-      var diff = cashTotal;
+      var expectedCash = openingCash + cashTotal;
+      // actual_cash may be missing on old shifts (closed before this feature)
+      var hasActual = s.actual_cash !== undefined && s.actual_cash !== null && s.actual_cash !== '';
+      var actualCash = hasActual ? Number(s.actual_cash) : expectedCash;
+      // cash_difference may be missing on old shifts — recompute from actual vs expected
+      var diff = hasActual ? (Number(s.cash_difference) || (actualCash - expectedCash)) : 0;
       var rowBg = '';
       var diffColor = '';
+      var diffText = '—';
       if (isOpen) {
         rowBg = 'background:#fff8e1;';
         diffColor = 'color:var(--warning);';
-      } else if (diff > 0) {
+        diffText = '—';
+      } else if (!hasActual) {
+        // Old shift without actual_cash record — neutral
+        rowBg = 'background:#f5f5f5;';
+        diffColor = 'color:var(--text-muted);';
+        diffText = '—';
+      } else if (Math.abs(diff) < 0.01) {
+        // Matches — green
         rowBg = 'background:#e8f5e9;';
         diffColor = 'color:var(--success);font-weight:700;';
-      } else if (diff < 0) {
+        diffText = '✓ 0';
+      } else if (diff > 0) {
+        // Surplus — orange
+        rowBg = 'background:#fff3e0;';
+        diffColor = 'color:#e65100;font-weight:700;';
+        diffText = '+' + formatMoney(diff);
+      } else {
+        // Shortage — red
         rowBg = 'background:#ffebee;';
         diffColor = 'color:var(--danger);font-weight:700;';
+        diffText = formatMoney(diff);
       }
       html += '<tr style="' + rowBg + 'border-bottom:1px solid var(--border);">';
       html += '<td style="padding:8px;text-align:center;font-weight:600;">' + (idx + 1) + '</td>';
       html += '<td>' + escapeHtml(s.waiter_name || '—') + '</td>';
       html += '<td>' + (s.opened_at ? formatDateTime(s.opened_at) : '—') + '</td>';
       html += '<td>' + (isOpen ? '<span style="color:var(--warning);font-weight:600;">не закрыта</span>' : formatDateTime(s.closed_at)) + '</td>';
-      html += '<td style="text-align:right;">' + formatMoney(openingCash) + '</td>';
-      html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : formatMoney(closingCash)) + '</td>';
-      html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + (isOpen ? '—' : (diff >= 0 ? '+' : '') + formatMoney(diff)) + '</td>';
+      html += '<td style="padding:8px;text-align:right;">' + formatMoney(openingCash) + '</td>';
+      html += '<td style="padding:8px;text-align:right;">' + (isOpen ? '—' : formatMoney(expectedCash)) + '</td>';
+      html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : (hasActual ? formatMoney(actualCash) : '—')) + '</td>';
+      html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + diffText + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table>';

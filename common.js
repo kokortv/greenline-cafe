@@ -788,7 +788,7 @@ async function openShiftDB(waiterId, waiterName, openingCash) {
   };
 }
 
-async function closeShift(waiterId) {
+async function closeShift(waiterId, actualCash) {
   const shifts = await dbSelect('shifts', { waiter_id: waiterId, status: 'open' });
   if (shifts.length === 0) throw new Error('Нет открытой смены');
   const shift = shifts[0];
@@ -825,6 +825,13 @@ async function closeShift(waiterId) {
     guestsCount += Number(o.guests) || 0;
   });
 
+  const openingCash = Number(shift.opening_cash) || 0;
+  const expectedCash = openingCash + cashTotal;
+  // actualCash is what the waiter counted; if not provided, fall back to expected
+  const countedCash = (actualCash !== undefined && actualCash !== null && actualCash !== '')
+    ? Number(actualCash) : expectedCash;
+  const cashDifference = countedCash - expectedCash;
+
   const now = new Date().toISOString();
   await dbUpdate('shifts', shift.id, {
     closed_at: now,
@@ -832,14 +839,15 @@ async function closeShift(waiterId) {
     cash_total: cashTotal,
     card_total: cardTotal,
     orders_count: (orders || []).length,
-    guests_count: guestsCount
+    guests_count: guestsCount,
+    actual_cash: countedCash,
+    cash_difference: cashDifference
   });
 
-  // Add cash to register
+  // Add cash to register — use the COUNTED amount (what's actually in the drawer)
   const currentCash = Number(await getSetting('cash_register')) || 0;
-  await saveSettingsToDB({ cash_register: String(currentCash + cashTotal) });
+  await saveSettingsToDB({ cash_register: String(currentCash + countedCash) });
 
-  const openingCash = Number(shift.opening_cash) || 0;
   return {
     id: shift.id,
     opened_at: shift.opened_at,
@@ -849,7 +857,10 @@ async function closeShift(waiterId) {
     guests_count: guestsCount,
     cash_total: cashTotal,
     card_total: cardTotal,
-    final_cash: openingCash + cashTotal,
+    expected_cash: expectedCash,
+    actual_cash: countedCash,
+    cash_difference: cashDifference,
+    final_cash: currentCash + countedCash,
     status: 'closed'
   };
 }
@@ -1971,18 +1982,6 @@ async function apiGet(action, params) {
       return await getActiveShift(params.waiter_id);
     case 'getAllShifts':
       return { shifts: await dbSelect('shifts') };
-    case 'getQrVisits':
-      return { visits: await dbSelect('qr_visits') };
-    case 'logQrVisit': {
-      const ua = body.user_agent || '';
-      let device = 'desktop';
-      if (/mobile|android|iphone|ipad/i.test(ua)) device = /ipad|tablet/i.test(ua) ? 'tablet' : 'mobile';
-      const visitId = 'qv_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
-      try {
-        await dbInsert('qr_visits', { id: visitId, user_agent: ua.substring(0, 500), device_type: device });
-      } catch(e) { /* ignore */ }
-      return { ok: true };
-    }
     case 'getOrderLogs':
       return { logs: await getOrderLogs(params.order_id) };
     case 'getStockReport':
@@ -2069,7 +2068,7 @@ async function apiPost(action, body) {
     case 'openShift':
       return await openShiftDB(body.waiter_id, body.waiter_name, body.opening_cash);
     case 'closeShift':
-      return await closeShift(body.waiter_id);
+      return await closeShift(body.waiter_id, body.actual_cash);
     case 'createTab':
       return await dbInsert('tabs', {
         id: 'tab_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6),
