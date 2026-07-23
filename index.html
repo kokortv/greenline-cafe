@@ -2,15 +2,54 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0">
 <title>Официант — Ресторан</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
+
+<!-- PWA / mobile web app capabilities — hide browser chrome when installed -->
+<meta name="theme-color" content="#d32f2f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Официант">
+<meta name="application-name" content="Официант">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23d32f2f'/%3E%3Cpath fill='white' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
+
 <link rel="stylesheet" href="styles.css">
 <style>
   /* Waiter-specific styles */
   .screen { display: none; }
   .screen.active { display: block; }
 
+  /* ===== Header pills — consistent styling for shift / active orders / archive ===== */
+  .header-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; height: 36px;
+    background: rgba(255,255,255,0.15); color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 18px;
+    font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; white-space: nowrap; flex: none;
+    transition: background 0.15s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .header-pill:hover { background: rgba(255,255,255,0.28); }
+  .header-pill:active { transform: scale(0.96); }
+  /* Active orders pill — slightly brighter to draw attention */
+  .header-pill-active {
+    background: rgba(255,255,255,0.22);
+    border-color: rgba(255,255,255,0.35);
+  }
+  /* Count bubble inside the active-orders pill */
+  .header-pill-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 20px; height: 20px; padding: 0 6px;
+    background: #fff; color: var(--primary);
+    border-radius: 10px; font-size: 0.78rem; font-weight: 800;
+    line-height: 1;
+  }
+  /* Shift badge inherits header-pill but keeps its own background override from styles.css */
   .table-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
@@ -47,6 +86,32 @@
   .table-btn.selected .table-label { color: rgba(255,255,255,0.85) !important; }
   .table-btn .table-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
   .table-btn.has-order .table-label { color: var(--text); }
+
+  /* Order info inside numbered table blocks (time + total) */
+  .table-btn .table-order-info {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.15);
+    width: 100%;
+  }
+  .table-btn .table-order-info .toi-time {
+    font-size: 0.7rem; color: var(--text); opacity: 0.85; font-weight: 500;
+  }
+  .table-btn .table-order-info .toi-total {
+    font-size: 0.95rem; font-weight: 800; color: var(--primary);
+  }
+
+  /* Count badge for virtual tables with >1 active orders — top-right corner */
+  .table-btn { position: relative; }
+  .table-btn .table-count-badge {
+    position: absolute; top: 4px; right: 4px;
+    background: var(--danger); color: #fff;
+    font-size: 0.72rem; font-weight: 800;
+    min-width: 18px; height: 18px;
+    border-radius: 9px; padding: 0 5px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    z-index: 2;
+  }
 
   /* Virtual tables (Бар, С собой) — different color, shared */
   .table-btn.virtual {
@@ -126,6 +191,17 @@
     padding-bottom: 8px;
     margin-bottom: 16px;
   }
+  /* Search box above subcat tabs in the order screen */
+  .menu-search-box {
+    display: flex; gap: 6px; margin-bottom: 8px;
+  }
+  .menu-search-box input {
+    flex: 1; min-width: 0; padding: 14px 14px; font-size: 1.1rem;
+    border: 2px solid var(--border); border-radius: 10px;
+  }
+  .menu-search-box input:focus {
+    outline: none; border-color: var(--primary);
+  }
   .subcat-tab {
     padding: 12px 22px;
     background: white;
@@ -148,23 +224,33 @@
     box-shadow: var(--shadow);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     min-height: 130px;
     /* Prevent cards from blowing out the grid on small screens */
     min-width: 0;
     overflow: hidden;
+    transition: transform 0.1s, box-shadow 0.15s;
   }
+  .menu-item-card:active { transform: scale(0.98); }
   .menu-item-card .item-name {
-    font-weight: 600;
-    font-size: clamp(0.85rem, 3vw, 1.05rem);
+    font-weight: 700;
+    font-size: clamp(0.98rem, 3.4vw, 1.18rem);
     flex: 1;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
+    line-height: 1.25;
+    color: var(--text);
+  }
+  .menu-item-card .item-translation {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: -2px;
   }
   .menu-item-card .item-price {
     color: var(--primary);
     font-weight: 700;
-    font-size: 1.1rem;
+    font-size: 1.2rem;
   }
   .menu-item-card .item-add-btn {
     background: var(--success);
@@ -245,6 +331,9 @@
     border-left: 4px solid var(--info);
     opacity: 0.7;
   }
+  /* Added-later items are wrapped in .order-added-group (see renderOrderDetail).
+     The group block itself has the green highlight — individual items inside
+     keep their normal cart-item styling so the block reads as one unit. */
   .cart-item .ci-cat-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -305,6 +394,8 @@
     border-left: 5px solid var(--warning);
   }
   .order-card.completed { border-left-color: var(--success); opacity: 0.8; }
+  /* Virtual table orders — light-blue background + blue left border */
+  .order-card.virtual-order { border-left-color: var(--info) !important; background: #e3f2fd !important; }
   .order-card .oc-header {
     display: flex;
     justify-content: space-between;
@@ -337,24 +428,29 @@
   .guests-stepper {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 20px;
-    margin: 20px 0;
+    justify-content: flex-start;
+    gap: 8px;
+    margin: 4px 0;
   }
   .guests-stepper button {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
     background: var(--primary);
     color: white;
-    font-size: 2rem;
+    font-size: 1.2rem;
     font-weight: 700;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
   }
   .guests-stepper .guests-value {
-    font-size: 2.5rem;
+    font-size: 1.2rem;
     font-weight: 800;
-    min-width: 60px;
+    min-width: 28px;
     text-align: center;
+    color: var(--text);
   }
 
   .section-title {
@@ -370,6 +466,290 @@
   body { padding-bottom: 32px; }
   body.has-cart-panel { padding-bottom: 110px; }
 
+  /* SPLIT-VIEW for tablets (≥769px): order panel on left, menu on right */
+  .order-layout {
+    display: flex;
+    gap: 0;
+    align-items: flex-start;
+    min-height: calc(100vh - 60px);
+  }
+  .order-panel-left {
+    width: 360px;
+    flex: none;
+    padding: 12px;
+    border-right: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 60px); /* full height */
+    position: sticky;
+    top: 0;
+    overflow: hidden;
+  }
+  .order-panel-right {
+    flex: 1;
+    padding: 12px 16px;
+    overflow-y: auto;
+    max-height: calc(100vh - 60px);
+  }
+  /* Footer with total + accept button — fixed at bottom, centered */
+  .order-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    background: #fff;
+    border-top: 2px solid var(--border);
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+    z-index: 100;
+  }
+  .order-footer-left {
+    width: 400px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border-right: 2px solid var(--border);
+  }
+  .order-footer-right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+  }
+  .order-footer-total {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--primary);
+    white-space: nowrap;
+  }
+  .order-footer button {
+    padding: 8px 20px;
+    font-size: 0.9rem;
+  }
+  /* ===========================
+     MODERN CART ROWS (left panel of order screen) — compact layout
+     =========================== */
+  .cart-group-note {
+    margin-top: 6px; padding: 0 2px;
+  }
+  .cart-row-modern {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    border-left: 3px solid var(--primary);
+  }
+  .cart-row-modern-info { min-width: 0; }
+  .cart-row-modern-name {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text);
+    word-break: break-word;
+    line-height: 1.2;
+  }
+  .cart-row-modern-price {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  /* Right side: qty stepper + total, stacked tightly */
+  .cart-row-modern-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    flex: none;
+  }
+  .cart-row-modern-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .cart-qty-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: #fff;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--primary);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: background 0.1s, transform 0.05s;
+  }
+  .cart-qty-btn:hover { background: var(--primary); color: #fff; }
+  .cart-qty-btn:active { transform: scale(0.92); }
+  .cart-qty-val {
+    min-width: 22px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--text);
+  }
+  .cart-row-modern-total {
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 0.92rem;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .cart-row-modern-note {
+    grid-column: 1 / -1;
+    margin-top: 4px;
+  }
+  /* Active category button highlight */
+  .main-cat-btn.selected {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+  /* On phones — single column */
+  @media (max-width: 768px) {
+    .order-layout { flex-direction: column; }
+    .order-panel-left {
+      width: 100%;
+      max-height: none;
+      border-right: none;
+      border-bottom: 2px solid var(--border);
+      position: static;
+      overflow: visible;
+    }
+    .order-panel-right {
+      max-height: none;
+      overflow: visible;
+    }
+    .order-footer { flex-direction: column; }
+    .order-footer-left { width: 100%; border-right: none; border-bottom: 2px solid var(--border); }
+  }
+  /* Add bottom padding so content isn't hidden behind the fixed footer */
+  #screen-order .order-layout { padding-bottom: 70px; }
+
+  /* ===========================
+     ARCHIVE SCREEN — split layout with search
+     =========================== */
+  .archive-layout {
+    display: flex; gap: 0; align-items: flex-start;
+    min-height: calc(100vh - 130px);
+  }
+  .archive-panel-left {
+    flex: none; width: 340px; padding: 0 12px 0 0;
+    border-right: 2px solid var(--border);
+    display: flex; flex-direction: column;
+    height: calc(100vh - 130px); /* full height */
+    position: sticky; top: 0;
+  }
+  .archive-panel-right {
+    flex: 1; padding: 0 0 12px 16px; overflow-y: auto;
+    max-height: calc(100vh - 130px);
+  }
+  .archive-search-box {
+    display: flex; gap: 6px; margin-bottom: 12px;
+  }
+  .archive-search-box input {
+    flex: 1; min-width: 0; padding: 10px 12px; font-size: 0.95rem;
+    border: 2px solid var(--border); border-radius: 8px;
+  }
+  .archive-search-box input:focus {
+    outline: none; border-color: var(--primary);
+  }
+  .archive-orders-list {
+    flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+    -webkit-overflow-scrolling: touch;
+    padding-top: 10px; padding-right: 4px; /* space for scrollbar */
+  }
+  .archive-order-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; background: #fff; border: 1px solid var(--border);
+    border-radius: 8px; cursor: pointer; transition: all 0.15s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .archive-order-row:hover {
+    border-color: var(--primary); transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  .archive-order-row.active {
+    background: var(--primary); color: #fff; border-color: var(--primary);
+  }
+  .archive-order-row.active .aor-num,
+  .archive-order-row.active .aor-time,
+  .archive-order-row.active .aor-total { color: #fff !important; }
+  .archive-order-row .aor-info { flex: 1; min-width: 0; }
+  .archive-order-row .aor-num {
+    font-size: 1.05rem; font-weight: 700; color: var(--text);
+  }
+  .archive-order-row .aor-time {
+    font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-top: 2px;
+  }
+  .archive-order-row .aor-total {
+    font-size: 1.05rem; font-weight: 700; color: var(--primary);
+    white-space: nowrap; flex: none;
+  }
+  .archive-order-row .aor-status {
+    font-size: 0.65rem; padding: 1px 6px; border-radius: 4px;
+    font-weight: 700; text-transform: uppercase; flex: none;
+  }
+  .archive-order-row .aor-status.completed { background: var(--success); color: #fff; }
+  .archive-order-row .aor-status.accepted { background: var(--warning); color: #fff; }
+  .archive-order-row .aor-status.cancelled { background: var(--danger); color: #fff; }
+  .archive-order-row .aor-status.paused { background: #ff9800; color: #fff; }
+  .archive-empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  .archive-detail-card {
+    background: #fff; border-radius: var(--radius); padding: 20px;
+    box-shadow: var(--shadow); margin-bottom: 16px;
+  }
+  .archive-detail-card .adc-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 16px; padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+  }
+  .archive-detail-card .adc-table { font-size: 1.4rem; font-weight: 800; }
+  .archive-detail-card .adc-meta { color: var(--text-muted); font-size: 0.9rem; margin-top: 4px; }
+  .archive-detail-card .adc-items-list {
+    display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;
+  }
+  .archive-detail-card .adc-item-card {
+    background: var(--bg); border-radius: 8px; padding: 10px 12px;
+    border-left: 3px solid var(--primary);
+  }
+  .archive-detail-card .adc-item-card-name {
+    font-weight: 600; font-size: 1rem; color: var(--text); line-height: 1.3;
+  }
+  .archive-detail-card .adc-item-card-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; margin-top: 6px;
+  }
+  .archive-detail-card .adc-item-card-qty {
+    color: var(--text-muted); font-size: 0.88rem;
+  }
+  .archive-detail-card .adc-item-card-sum {
+    font-weight: 700; color: var(--primary); font-size: 1.05rem; white-space: nowrap;
+  }
+  .archive-detail-card .adc-total {
+    text-align: right; font-size: 1.5rem; font-weight: 800; color: var(--primary);
+    padding-top: 12px; border-top: 2px solid var(--border);
+  }
+  @media (max-width: 768px) {
+    .archive-layout { flex-direction: column; }
+    .archive-panel-left { width: 100%; border-right: none; border-bottom: 2px solid var(--border); padding: 0 0 12px 0; max-height: 40vh; position: relative; }
+    .archive-panel-right { padding: 12px 0; max-height: none; }
+  }
+
   /* Mobile responsive tweaks for waiter page */
   @media (max-width: 768px) {
     .table-btn { font-size: clamp(1.2rem, 5vw, 1.8rem); }
@@ -380,8 +760,8 @@
     .cart-item .ci-name { font-size: 1rem; }
     .stepper button { width: 40px; height: 40px; font-size: 1.2rem; }
     .stepper input { width: 44px; font-size: 1rem; }
-    .guests-stepper button { width: 56px; height: 56px; font-size: 1.6rem; }
-    .guests-stepper .guests-value { font-size: 2rem; min-width: 50px; }
+    .guests-stepper button { width: 40px; height: 40px; font-size: 1.3rem; }
+    .guests-stepper .guests-value { font-size: 1.3rem; min-width: 30px; }
     .section-title { font-size: 1.1rem; }
     .ready-alert { padding: 12px 14px; }
     .ready-alert .ra-title { font-size: 1rem; }
@@ -452,6 +832,10 @@
     background: var(--success-light);
     animation: pulse-soft 2.5s infinite;
   }
+  .home-order-card.virtual-order {
+    background: #e3f2fd;
+    border-left-color: var(--info);
+  }
   @keyframes pulse-soft {
     0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
     50% { box-shadow: 0 4px 16px rgba(46,125,50,0.4); }
@@ -490,6 +874,248 @@
   .home-order-card .hoc-actions .btn {
     flex: 1;
   }
+
+  /* ====================================================================
+     MODERN WAITER DESIGN (toggleable via ⭐ button)
+     All styles below use body.modern-design selector so they can be
+     easily removed by deleting this entire block.
+     ==================================================================== */
+  body.modern-design {
+    --md-primary: #6366f1;
+    --md-primary-dark: #4f46e5;
+    --md-bg: #f8fafc;
+    --md-card: #ffffff;
+    --md-text: #1e293b;
+    --md-text-muted: #64748b;
+    --md-border: #e2e8f0;
+    --md-success: #10b981;
+    --md-danger: #ef4444;
+    --md-warning: #f59e0b;
+    --md-radius: 14px;
+    --md-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+    --md-shadow-lg: 0 10px 30px rgba(0,0,0,0.08);
+  }
+  /* Header → modern dark */
+  body.modern-design .app-header {
+    background: #1e293b;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
+  body.modern-design .app-header h1 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  body.modern-design .header-pill {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 7px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  body.modern-design .header-pill:hover { background: rgba(255,255,255,0.15); }
+  body.modern-design .header-pill-active { background: rgba(99,102,241,0.25); border-color: rgba(99,102,241,0.4); }
+  body.modern-design .header-pill-count {
+    background: #6366f1; color: #fff; border-radius: 6px;
+    min-width: 18px; height: 18px; font-size: 0.72rem; padding: 0 5px;
+  }
+  body.modern-design #design-toggle-btn {
+    background: rgba(251,191,36,0.2); border-color: rgba(251,191,36,0.4);
+  }
+  body.modern-design .user-chip {
+    background: rgba(255,255,255,0.08); border-radius: 10px; padding: 7px 14px;
+    font-size: 0.82rem;
+  }
+  /* Main background */
+  body.modern-design { background: var(--md-bg); color: var(--md-text); }
+  body.modern-design .app-main { background: var(--md-bg); }
+  /* Section titles */
+  body.modern-design .section-title {
+    font-size: 1.3rem; font-weight: 700; color: var(--md-text);
+    letter-spacing: -0.01em;
+  }
+  /* Table buttons → modern cards */
+  body.modern-design .table-btn {
+    border-radius: var(--md-radius);
+    border: 2px solid var(--md-border);
+    background: var(--md-card);
+    box-shadow: var(--md-shadow);
+    font-size: 1.6rem; font-weight: 700;
+    color: var(--md-primary);
+    transition: all 0.25s;
+  }
+  body.modern-design .table-btn:hover {
+    border-color: var(--md-primary); transform: translateY(-2px);
+    box-shadow: var(--md-shadow-lg);
+  }
+  body.modern-design .table-btn.has-order {
+    background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+    color: #fff; border-color: transparent;
+  }
+  body.modern-design .table-btn.has-order .table-label { color: rgba(255,255,255,0.85); }
+  body.modern-design .table-btn.has-order .table-order-info .toi-time { color: rgba(255,255,255,0.8); }
+  body.modern-design .table-btn.has-order .table-order-info .toi-total { color: #fff; }
+  body.modern-design .table-btn.selected {
+    background: var(--md-primary) !important; color: #fff !important;
+    border-color: var(--md-primary-dark) !important;
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.2);
+  }
+  body.modern-design .table-btn.virtual {
+    background: #eff6ff; border-color: #bfdbfe; color: #2563eb;
+  }
+  body.modern-design .table-btn.virtual.has-order {
+    background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  }
+  body.modern-design .table-btn .table-label {
+    font-size: 0.72rem; font-weight: 500; color: var(--md-text-muted);
+  }
+  /* Order screen layout */
+  body.modern-design .order-panel-left {
+    background: var(--md-card); border-right: 1px solid var(--md-border);
+    box-shadow: 1px 0 4px rgba(0,0,0,0.03);
+  }
+  body.modern-design .order-panel-right { background: var(--md-bg); }
+  /* Main category buttons */
+  body.modern-design .main-cat-btn {
+    border-radius: 10px; border: 1.5px solid var(--md-border);
+    background: var(--md-card); font-weight: 600; font-size: 0.9rem;
+    color: var(--md-text); transition: all 0.2s;
+  }
+  body.modern-design .main-cat-btn:hover { border-color: var(--md-primary); }
+  body.modern-design .main-cat-btn.selected {
+    background: var(--md-primary); color: #fff; border-color: var(--md-primary-dark);
+    box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+  }
+  /* Subcat tabs */
+  body.modern-design .subcat-tab {
+    border-radius: 8px; border: 1.5px solid var(--md-border);
+    background: var(--md-card); font-size: 0.85rem; font-weight: 500;
+    color: var(--md-text-muted); padding: 8px 14px; transition: all 0.2s;
+  }
+  body.modern-design .subcat-tab:hover { border-color: var(--md-primary); color: var(--md-primary); }
+  body.modern-design .subcat-tab.active {
+    background: var(--md-primary); color: #fff; border-color: var(--md-primary-dark);
+  }
+  /* Menu item cards */
+  body.modern-design .menu-item-card {
+    border-radius: var(--md-radius); border: 1px solid var(--md-border);
+    background: var(--md-card); box-shadow: var(--md-shadow);
+    padding: 12px; transition: all 0.2s;
+  }
+  body.modern-design .menu-item-card:hover { box-shadow: var(--md-shadow-lg); transform: translateY(-1px); }
+  body.modern-design .menu-item-card .item-name { font-size: 1rem; font-weight: 600; color: var(--md-text); }
+  body.modern-design .menu-item-card .item-price { color: var(--md-primary); font-weight: 700; font-size: 1.1rem; }
+  body.modern-design .menu-item-card .item-add-btn {
+    background: var(--md-success); color: #fff; border-radius: 10px;
+    font-weight: 600; font-size: 0.9rem; padding: 8px; transition: all 0.2s;
+  }
+  body.modern-design .menu-item-card .item-add-btn:hover { background: #059669; }
+  /* Cart rows */
+  body.modern-design .cart-row-modern {
+    border-radius: 10px; border-left: 3px solid var(--md-primary);
+    background: var(--md-card); box-shadow: var(--md-shadow);
+  }
+  body.modern-design .cart-qty-btn {
+    background: var(--md-card); color: var(--md-primary); border-radius: 8px;
+    box-shadow: var(--md-shadow); width: 30px; height: 30px;
+  }
+  body.modern-design .cart-qty-btn:hover { background: var(--md-primary); color: #fff; }
+  body.modern-design .cart-row-modern-total { color: var(--md-primary); }
+  /* Order footer */
+  body.modern-design .order-footer {
+    background: var(--md-card); border-top: 1px solid var(--md-border);
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.04);
+  }
+  body.modern-design .order-footer-total { color: var(--md-primary); }
+  body.modern-design #accept-order-btn {
+    background: var(--md-success); border-radius: 10px; font-weight: 700;
+  }
+  body.modern-design #accept-order-btn:hover { background: #059669; }
+  /* Guests stepper */
+  body.modern-design .guests-stepper button {
+    background: var(--md-primary); border-radius: 10px;
+    width: 34px; height: 34px; font-size: 1.1rem;
+  }
+  body.modern-design .guests-stepper .guests-value { color: var(--md-text); }
+  /* Search box */
+  body.modern-design .menu-search-box input {
+    border: 1.5px solid var(--md-border); border-radius: 10px;
+    font-size: 0.9rem;
+  }
+  body.modern-design .menu-search-box input:focus {
+    border-color: var(--md-primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  }
+  /* Order detail cards */
+  body.modern-design .cart-item {
+    border-radius: 10px; border-left: 4px solid var(--md-primary);
+    box-shadow: var(--md-shadow);
+  }
+  body.modern-design .cart-item.ready { border-left-color: var(--md-success); }
+  body.modern-design .cart-item.served { border-left-color: #3b82f6; }
+  body.modern-design .order-added-group {
+    background: rgba(16,185,129,0.06); border-left-color: var(--md-success);
+    border-radius: 10px;
+  }
+  /* Buttons */
+  body.modern-design .btn {
+    border-radius: 10px; font-weight: 600; font-size: 0.9rem;
+    min-height: 40px;
+  }
+  body.modern-design .btn-primary { background: var(--md-primary); }
+  body.modern-design .btn-primary:hover { background: var(--md-primary-dark); box-shadow: 0 2px 8px rgba(99,102,241,0.3); }
+  body.modern-design .btn-success { background: var(--md-success); }
+  body.modern-design .btn-success:hover { background: #059669; }
+  body.modern-design .btn-danger { background: var(--md-danger); }
+  body.modern-design .btn-danger:hover { background: #dc2626; }
+  body.modern-design .btn-info { background: #3b82f6; }
+  body.modern-design .btn-outline { border: 1.5px solid var(--md-border); color: var(--md-text); }
+  body.modern-design .btn-outline:hover { border-color: var(--md-primary); color: var(--md-primary); }
+  /* Archive layout */
+  body.modern-design .archive-order-row {
+    border-radius: 10px; border: 1px solid var(--md-border);
+    box-shadow: var(--md-shadow);
+  }
+  body.modern-design .archive-order-row:hover { border-color: var(--md-primary); }
+  body.modern-design .archive-order-row.active {
+    background: var(--md-primary); border-color: var(--md-primary-dark);
+  }
+  body.modern-design .archive-search-box input {
+    border: 1.5px solid var(--md-border); border-radius: 10px;
+  }
+  body.modern-design .archive-search-box input:focus {
+    border-color: var(--md-primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  }
+  body.modern-design .archive-detail-card {
+    border-radius: var(--md-radius); box-shadow: var(--md-shadow);
+    border: 1px solid var(--md-border);
+  }
+  /* Cart total display */
+  body.modern-design .cart-total-display {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-radius: var(--md-radius); color: #fff;
+  }
+  body.modern-design .cart-total-display .amount { color: #fff; }
+  body.modern-design .cart-total-display .label { color: rgba(255,255,255,0.6); }
+  /* Inputs */
+  body.modern-design input, body.modern-design textarea, body.modern-design select {
+    border: 1.5px solid var(--md-border); border-radius: 10px;
+    font-size: 0.9rem; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  body.modern-design input:focus, body.modern-design textarea:focus, body.modern-design select:focus {
+    border-color: var(--md-primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  }
+  /* Pills */
+  body.modern-design .pill { border-radius: 8px; font-size: 0.78rem; }
+  body.modern-design .pill-warning { background: #fef3c7; color: #92400e; }
+  body.modern-design .pill-success { background: #d1fae5; color: #065f46; }
+  /* Modals */
+  body.modern-design .modal {
+    border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  }
+  body.modern-design .modal-backdrop { backdrop-filter: blur(3px); }
+  /* END OF MODERN DESIGN BLOCK
+     ==================================================================== */
 </style>
 </head>
 <body>
@@ -499,8 +1125,13 @@
     <h1 id="restaurant-name">Ресторан</h1>
   </div>
   <div class="header-row header-bottom">
-    <button class="badge shift-badge" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
-    <button class="badge has-items" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">0</button>
+    <button class="header-pill shift-badge" id="shift-btn" style="display:none;" onclick="handleShiftClick()"></button>
+    <button class="header-pill header-pill-active" id="active-orders-badge" style="display:none;" onclick="showActiveOrders()">
+      <span>Активные</span>
+      <span class="header-pill-count" id="active-orders-count">0</span>
+    </button>
+    <button class="header-pill" id="archive-btn" onclick="showArchive()" title="Архив заказов за сегодня">📋 Архив</button>
+    <button class="header-pill" id="design-toggle-btn" onclick="toggleWaiterDesign()" title="Переключить дизайн">⭐</button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
       <span class="uc-logout">
@@ -539,31 +1170,19 @@
 </div>
 
 <main class="app-main" id="app-main" style="display:none;">
-  <!-- HOME SCREEN -->
+  <!-- HOME SCREEN — only tables -->
   <div class="screen active" id="screen-home">
-    <!-- Ready-to-serve alert panel: shows dishes that became ready recently -->
     <div id="ready-alert-panel" style="display:none;"></div>
-
-    <!-- Active orders overview on home screen -->
-    <div id="home-active-orders" style="display:none;">
-      <h2 class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
-        Активные заказы
-        <span class="pill pill-warning" id="home-active-count">0</span>
-      </h2>
-      <div id="home-active-orders-list"></div>
-    </div>
 
     <h2 class="section-title">Новый заказ</h2>
     <h3 style="font-size:1rem;color:var(--text-muted);margin-bottom:8px;">Выберите столик</h3>
     <div class="table-grid" id="table-grid"></div>
 
-    <!-- Virtual tables (Бар, С собой) — populated from settings.virtual_tables -->
     <div id="virtual-tables-section" style="display:none;">
       <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Виртуальный столик</h3>
       <div class="table-grid" id="virtual-table-grid"></div>
     </div>
 
-    <!-- Open tabs (long-running client accounts) -->
     <div id="open-tabs-section" style="display:none;">
       <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center;">
         Открытые счета клиентов
@@ -572,46 +1191,78 @@
       <div id="open-tabs-list"></div>
     </div>
 
-    <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Количество гостей</h3>
-    <div class="guests-stepper">
-      <button onclick="changeGuests(-1)">−</button>
-      <div class="guests-value" id="guests-value">1</div>
-      <button onclick="changeGuests(1)">+</button>
-    </div>
-
-    <h3 style="font-size:1rem;color:var(--text-muted);margin:16px 0 8px;">Тип заказа</h3>
-    <div class="grid grid-4" id="main-cats"></div>
-    <!-- Bottom padding so buttons don't stick to the bottom of the screen -->
     <div style="height:60px;"></div>
   </div>
 
-  <!-- MENU SCREEN -->
-  <div class="screen" id="screen-menu">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showScreen('home')">← Назад</button>
-      <div id="menu-context" style="font-weight:600;"></div>
-    </div>
-    <div class="subcat-tabs" id="subcat-tabs"></div>
-    <div class="grid grid-auto" id="menu-items"></div>
-    <div class="cart-panel" id="cart-panel" style="display:none;">
-      <div class="cart-count">
-        В корзине: <span id="cart-count-num">0</span> шт.
-        <span class="cart-total" id="cart-total-amount">0 ₽</span>
+  <!-- ORDER SCREEN — split-view: left = order panel, right = menu -->
+  <div class="screen" id="screen-order">
+    <div class="order-layout">
+      <!-- LEFT: order panel -->
+      <div class="order-panel-left">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <button class="btn btn-outline" id="order-back-btn" onclick="cancelNewOrder()">← Столы</button>
+          <div id="order-context" style="font-weight:700;font-size:1.15rem;text-align:right;color:var(--primary);"></div>
+        </div>
+        <div id="order-guests-section">
+          <div style="display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap;">
+            <h3 style="font-size:0.95rem;color:var(--text-muted);margin:0;">Количество гостей</h3>
+            <span style="color:var(--text-muted);font-size:0.95rem;">—</span>
+            <!-- Editable stepper — shown for NEW orders only -->
+            <div class="guests-stepper" id="guests-stepper-editable">
+              <button onclick="changeGuests(-1)">−</button>
+              <div class="guests-value" id="guests-value" style="font-size:1.2rem;font-weight:700;">1</div>
+              <button onclick="changeGuests(1)">+</button>
+            </div>
+            <!-- Static display — shown when adding to an existing order (guests can't change) -->
+            <div id="guests-static-display" style="display:none;font-size:1.3rem;font-weight:800;color:var(--text);">1</div>
+          </div>
+        </div>
+        <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Тип заказа</h3>
+        <div class="grid grid-4" id="main-cats"></div>
+        <h3 style="font-size:0.95rem;color:var(--text-muted);margin:12px 0 6px;">Добавленные блюда</h3>
+        <div id="order-cart-items" style="flex:1;overflow-y:auto;min-height:60px;"></div>
+        <div id="order-comment-section" style="margin:8px 0;">
+          <div style="display:flex;gap:6px;align-items:stretch;">
+            <textarea id="order-comment" rows="3" placeholder="Комментарий к заказу..." 
+              style="flex:1;padding:8px 10px;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;resize:vertical;"
+              oninput="state.orderComment = this.value;"></textarea>
+            <button type="button" class="btn btn-outline" style="flex:none;padding:0 14px;" onclick="saveOrderCommentBtn()" title="Сохранить комментарий">💾</button>
+          </div>
+        </div>
       </div>
-      <button class="btn btn-primary btn-lg" onclick="showCart()">Корзина →</button>
+      <!-- RIGHT: menu -->
+      <div class="order-panel-right">
+        <div class="menu-search-box">
+          <input type="text" id="menu-search" placeholder="🔍 Поиск блюда..." oninput="filterMenuItems()">
+          <button class="btn btn-outline" onclick="clearMenuSearch()" title="Очистить" style="padding:6px 10px;flex:none;">✕</button>
+        </div>
+        <div class="subcat-tabs" id="subcat-tabs"></div>
+        <div class="grid grid-auto" id="menu-items"></div>
+      </div>
+    </div>
+    <!-- FOOTER: split into left (total) + right (button), matching panel widths -->
+    <div class="order-footer">
+      <div class="order-footer-left">
+        <div class="order-footer-total" id="order-total">0 ₾</div>
+      </div>
+      <div class="order-footer-right">
+        <button class="btn btn-success" id="accept-order-btn" disabled style="flex:1;opacity:0.5;cursor:not-allowed;" onclick="if(!this.disabled){withLoading(this, 'Принимаем...', function() { return acceptOrderOrAddToExisting(); });}">
+          ✓ ПРИНЯТЬ ЗАКАЗ
+        </button>
+      </div>
     </div>
   </div>
 
-  <!-- CART SCREEN (new order) -->
+  <!-- CART SCREEN (mobile only — full cart view) -->
   <div class="screen" id="screen-cart">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showScreen('menu')">← К меню</button>
+      <button class="btn btn-outline" onclick="showScreen('order')">← К меню</button>
       <button class="btn btn-danger" onclick="clearCart()">Очистить</button>
     </div>
     <div id="cart-items"></div>
     <div class="cart-total-display">
       <div class="label">Итого к оплате</div>
-      <div class="amount" id="cart-grand-total">0 ₽</div>
+      <div class="amount" id="cart-grand-total">0 ₾</div>
     </div>
     <button class="btn btn-success btn-xl" style="width:100%;" onclick="withLoading(this, 'Принимаем...', function() { return acceptOrder(); })">
       ✓ ПРИНЯТЬ ЗАКАЗ
@@ -621,16 +1272,43 @@
   <!-- ACTIVE ORDERS SCREEN -->
   <div class="screen" id="screen-orders">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showScreen('home')">← Домой</button>
+      <button class="btn btn-outline" onclick="showScreen('home')">← На главную</button>
       <h2 class="section-title" style="margin:0;">Принятые заказы</h2>
     </div>
     <div id="active-orders-list"></div>
   </div>
 
+  <!-- ARCHIVE SCREEN — today's orders with search -->
+  <div class="screen" id="screen-archive">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-outline" onclick="showScreen('home')">← На главную</button>
+      <h2 class="section-title" style="margin:0;">Архив заказов за сегодня</h2>
+    </div>
+    <div class="archive-layout">
+      <!-- LEFT: full-height list of today's completed orders (scrollable) -->
+      <div class="archive-panel-left">
+        <div id="archive-orders-list" class="archive-orders-list"></div>
+      </div>
+      <!-- RIGHT: order details + search -->
+      <div class="archive-panel-right">
+        <div class="archive-search-box">
+          <input type="text" id="archive-search" placeholder="🔍 Поиск по названию блюда..." oninput="filterArchiveOrders()">
+          <button class="btn btn-outline" onclick="clearArchiveSearch()" title="Очистить" style="padding:6px 10px;flex:none;">✕</button>
+        </div>
+        <div id="archive-order-detail">
+          <div class="archive-empty-state">
+            <div style="font-size:3rem;opacity:0.3;margin-bottom:8px;">📂</div>
+            <p>Выберите заказ слева, чтобы увидеть детали</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ORDER DETAIL SCREEN (modify existing) -->
   <div class="screen" id="screen-order-detail">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <button class="btn btn-outline" onclick="showActiveOrders()">← К заказам</button>
+      <button class="btn btn-outline" onclick="showScreen('home')">← На главную</button>
       <button class="btn btn-info" onclick="addMoreToOrder()">+ Добавить блюда</button>
     </div>
     <div id="order-detail-info"></div>
@@ -639,10 +1317,10 @@
       <div class="label">Итого</div>
       <div class="amount" id="order-detail-total">0 ₽</div>
     </div>
-    <div class="grid grid-2" style="margin-top:12px;">
-      <button class="btn btn-success btn-lg" onclick="withLoading(this, '...', function() { return completeOrder(); })">✓ Завершить заказ</button>
-      <button class="btn btn-danger btn-lg" onclick="withLoading(this, 'Отмена...', function() { return cancelOrder(); })">Отменить заказ</button>
+    <div style="margin-top:12px;">
+      <button class="btn btn-success btn-lg" style="width:100%;" onclick="withLoading(this, '...', function() { return completeOrder(); })">✓ Завершить заказ</button>
     </div>
+    <p style="text-align:center;color:var(--text-muted);font-size:0.82rem;margin-top:10px;">Чтобы отменить заказ — обратитесь к администратору.</p>
     <!-- Bottom padding so buttons don't stick to the bottom of the screen -->
     <div style="height:60px;"></div>
   </div>
@@ -752,7 +1430,7 @@
 
 <!-- Payment method modal -->
 <div class="modal-backdrop" id="modal-payment">
-  <div class="modal">
+  <div class="modal" style="max-width:680px;">
     <h2>Завершение заказа</h2>
     <p style="margin-bottom:8px;color:var(--text-muted);">Гости расплатились?</p>
     <div id="payment-order-info" style="background:#f5f5f5;padding:12px;border-radius:8px;margin-bottom:16px;"></div>
@@ -768,8 +1446,13 @@
         <div>Карта</div>
         <div class="po-amount" id="pay-amount-card">—</div>
       </div>
+      <div class="payment-option" data-method="mixed" onclick="selectPaymentMethod('mixed')">
+        <div class="po-icon">🔀</div>
+        <div>Смешанная</div>
+        <div class="po-amount" id="pay-amount-mixed">💵+💳</div>
+      </div>
     </div>
-    <!-- Cash change calculator -->
+    <!-- Cash change calculator (for cash-only) -->
     <div id="cash-change-section" style="display:none;margin-top:16px;">
       <div class="form-group">
         <label>Получено от клиента</label>
@@ -778,6 +1461,24 @@
       </div>
       <div id="change-display" style="padding:16px;border-radius:8px;text-align:center;font-size:1.5rem;font-weight:700;margin-bottom:8px;">
         Сдача: —
+      </div>
+    </div>
+    <!-- Mixed payment: split amounts -->
+    <div id="mixed-payment-section" style="display:none;margin-top:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>💵 Наличными</label>
+          <input type="number" id="mixed-cash-amount" min="0" step="0.01" placeholder="0"
+                 oninput="onMixedPaymentInput('cash')" style="font-size:1.2rem;font-weight:700;">
+        </div>
+        <div class="form-group">
+          <label>💳 Картой</label>
+          <input type="number" id="mixed-card-amount" min="0" step="0.01" placeholder="0"
+                 oninput="onMixedPaymentInput('card')" style="font-size:1.2rem;font-weight:700;">
+        </div>
+      </div>
+      <div id="mixed-total-display" style="padding:12px;border-radius:8px;text-align:center;font-size:1.3rem;font-weight:700;margin-bottom:8px;background:#f5f5f5;">
+        Итого: —
       </div>
     </div>
     <div class="modal-actions" style="flex-direction:column;gap:8px;">
@@ -817,6 +1518,7 @@ let state = {
   mainCategory: null,
   currentSubcat: null,
   cart: [],            // {menu_item_id, name, price, quantity, comment, needs_cooking}
+  orderComment: '',    // general comment for the whole order
   currentOrderId: null,
   activeOrders: [],
   knownReadyItemIds: new Set(),  // item IDs we already notified the waiter about (so we don't beep twice)
@@ -824,8 +1526,26 @@ let state = {
   dismissedReadyAlerts: new Set(), // alert keys the waiter dismissed
   pollingTimer: null,
   badgePollingTimer: null,
-  tableStatuses: []              // from getTables(): [{table, type, status, waiter_name}]
+  tableStatuses: [],              // from getTables(): [{table, type, status, waiter_name}]
+  // Waiter's temporary per-order table-label overrides.
+  // Map: { [orderId]: "custom label" }
+  // Applied only to numbered tables, only while the order is open.
+  // Cleared when the order is completed or cancelled.
+  // Persisted to localStorage so it survives page reloads.
+  tableLabelOverride: (function() {
+    try {
+      var raw = localStorage.getItem('tableLabelOverride');
+      return raw ? JSON.parse(raw) : {};
+    } catch(e) { return {}; }
+  })()
 };
+
+// Persist the table-label override map to localStorage
+function saveTableLabelOverride() {
+  try {
+    localStorage.setItem('tableLabelOverride', JSON.stringify(state.tableLabelOverride));
+  } catch(e) { /* ignore */ }
+}
 
 /* ---------- Boot ---------- */
 async function init() {
@@ -941,6 +1661,12 @@ async function startApp() {
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('app-main').style.display = 'block';
   document.getElementById('user-chip-name').textContent = state.currentUser.name;
+  // Sync design toggle button state with body class
+  var designBtn = document.getElementById('design-toggle-btn');
+  if (designBtn && document.body.classList.contains('modern-design')) {
+    designBtn.style.background = 'rgba(251,191,36,0.3)';
+    designBtn.style.borderColor = 'rgba(251,191,36,0.5)';
+  }
   requestWakeLock();
   await initServiceWorker();
   if (APP_DATA.settings.sound_notifications !== 'false') {
@@ -1009,6 +1735,134 @@ function updateShiftButton() {
   }
 }
 
+// Render the circle badge next to the waiter logout button (uses same QR-menu settings)
+function applyWaiterCircleBadge() {
+  var badge = document.getElementById('waiter-circle-badge');
+  if (!badge) return;
+  var s = (APP_DATA && APP_DATA.settings) ? APP_DATA.settings : {};
+  var text = (s.qr_menu_circle_text || '').trim();
+  if (!text) {
+    badge.style.display = 'none';
+    return;
+  }
+  badge.textContent = text;
+  var bg = s.qr_menu_color_circle || '#ffd600';
+  badge.style.background = bg;
+  badge.style.color = getContrastColorWaiter(bg);
+  // Auto-fit font size
+  var len = text.length;
+  var fontSize;
+  if (len <= 2) fontSize = 14;
+  else if (len === 3) fontSize = 12;
+  else if (len === 4) fontSize = 10;
+  else if (len <= 6) fontSize = 9;
+  else fontSize = 7;
+  badge.style.fontSize = fontSize + 'px';
+  badge.style.display = 'flex';
+  badge.title = 'QR-код меню: ' + text;
+}
+
+// Pick black or white text color based on background luminance
+function getContrastColorWaiter(hex) {
+  var h = String(hex || '').replace('#', '');
+  if (h.length !== 6) return '#000';
+  var r = parseInt(h.substr(0, 2), 16) / 255;
+  var g = parseInt(h.substr(2, 2), 16) / 255;
+  var b = parseInt(h.substr(4, 2), 16) / 255;
+  var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.55 ? '#000' : '#fff';
+}
+
+// Toggle the browser into fullscreen mode (looks like a native app).
+// On iOS Safari this won't hide Safari's chrome fully — only adding the
+// page to the Home Screen (PWA install) achieves that. On Android Chrome
+// and desktop browsers, Fullscreen API hides everything.
+// ===== Modern design toggle (⭐ button) =====
+// Toggles body.modern-design class — all modern styles are in a separate
+// CSS block marked "MODERN WAITER DESIGN" and can be removed cleanly.
+function toggleWaiterDesign() {
+  document.body.classList.toggle('modern-design');
+  var isOn = document.body.classList.contains('modern-design');
+  try { localStorage.setItem('waiter-modern-design', isOn ? 'true' : 'false'); } catch(e) {}
+  var btn = document.getElementById('design-toggle-btn');
+  if (btn) {
+    btn.style.background = isOn ? 'rgba(251,191,36,0.3)' : '';
+    btn.style.borderColor = isOn ? 'rgba(251,191,36,0.5)' : '';
+  }
+  showToast(isOn ? 'Современный дизайн включён ⭐' : 'Классический дизайн', 'info');
+}
+
+// Apply saved design on page load
+try {
+  if (localStorage.getItem('waiter-modern-design') === 'true') {
+    document.body.classList.add('modern-design');
+  }
+} catch(e) {}
+
+function toggleFullscreen() {
+  try {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      var el = document.documentElement;
+      if (el.requestFullscreen)        el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else if (el.webkitEnterFullscreen)   el.webkitEnterFullscreen();
+    } else {
+      if (document.exitFullscreen)         document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// Logout confirmation — called by common.js logoutUser() before actually logging out.
+// Returns a Promise<boolean> — true = confirm logout, false = cancel.
+window.confirmLogout = function() {
+  return new Promise(function(resolve) {
+    var existing = document.getElementById('logout-confirm-overlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'logout-confirm-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:12px;padding:20px;max-width:360px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.3);text-align:center;">' +
+        '<div style="font-size:2.4rem;margin-bottom:8px;">🚪</div>' +
+        '<h3 style="margin:0 0 8px;">Выйти из аккаунта?</h3>' +
+        '<p style="margin:0 0 16px;font-size:0.9rem;color:var(--text-muted);">Вы выходите из аккаунта официанта. Активные заказы останутся в системе.</p>' +
+        '<div style="display:flex;gap:8px;justify-content:center;">' +
+          '<button type="button" class="btn btn-outline" id="logout-cancel" style="flex:1;">Отмена</button>' +
+          '<button type="button" class="btn btn-danger" id="logout-confirm" style="flex:1;">Выйти</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) { overlay.remove(); resolve(false); }
+    });
+    document.getElementById('logout-cancel').onclick = function() { overlay.remove(); resolve(false); };
+    document.getElementById('logout-confirm').onclick = function() { overlay.remove(); resolve(true); };
+  });
+};
+
+// Show QR code of the visitor menu in a modal
+function showWaiterQrMenu() {
+  // Build URL to menu.html (all categories)
+  var baseUrl = window.location.href.replace(/[^/]*$/, '');
+  var menuUrl = baseUrl + 'menu.html';
+  var qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(menuUrl);
+  // Remove existing
+  var existing = document.getElementById('waiter-qr-overlay');
+  if (existing) existing.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'waiter-qr-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:24px;max-width:360px;width:100%;text-align:center;">' +
+      '<h3 style="margin:0 0 16px;">QR-код меню</h3>' +
+      '<img src="' + qrApiUrl + '" style="width:280px;height:280px;display:block;margin:0 auto 12px;" alt="QR">' +
+      '<button class="btn btn-outline" style="width:100%;" onclick="document.getElementById(\'waiter-qr-overlay\').remove()">Закрыть</button>' +
+    '</div>';
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
 function handleShiftClick() {
   if (_activeShift) {
     // Show close shift modal with preview
@@ -1051,12 +1905,37 @@ async function confirmOpenShift() {
 }
 
 async function showCloseShiftModal() {
-  // Preview the shift summary before closing
   const summaryDiv = document.getElementById('shift-summary');
   summaryDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Считаем статистику...</p>';
   openModal('modal-shift-close');
   try {
-    // Get stats from completed orders since shift opened
+    // Check for active (non-completed) orders — blocking close
+    // EXCEPT virtual orders and tabs, which may span shifts.
+    const activeData = await apiGet('getOrders', { status: 'accepted', waiter_id: state.currentUser.id });
+    const blockingOrders = (activeData.orders || []).filter(function(o) {
+      return o.table_type !== 'virtual' && o.table_type !== 'tab';
+    });
+    if (blockingOrders.length > 0) {
+      let listHtml = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">';
+      blockingOrders.forEach(function(o) {
+        listHtml += '<div style="padding:8px;background:#fff;border-radius:6px;border:1px solid var(--border);">' +
+          '<b>' + escapeHtml(formatTableLabel(o)) + '</b> — ' + formatMoney(o.total) +
+        '</div>';
+      });
+      listHtml += '</div>';
+      summaryDiv.innerHTML =
+        '<div class="card" style="padding:12px;background:#ffebee;border-left:4px solid var(--danger);margin-bottom:12px;">' +
+          '⚠ <b>Нельзя закрыть смену.</b> У вас есть незавершённые заказы (' + blockingOrders.length + ' шт.). ' +
+          'Сначала завершите их (или переведите на паузу). ' +
+          'Виртуальные заказы могут переходить между сменами и не блокируют закрытие.' +
+        '</div>' +
+        '<h3 style="margin:0 0 8px;font-size:1rem;">Незавершённые заказы:</h3>' + listHtml;
+      const closeBtn = document.getElementById('confirm-close-shift-btn');
+      if (closeBtn) { closeBtn.disabled = true; closeBtn.style.opacity = '0.4'; closeBtn.style.cursor = 'not-allowed'; closeBtn.textContent = 'Сначала завершите заказы'; }
+      return;
+    }
+    const closeBtn = document.getElementById('confirm-close-shift-btn');
+    if (closeBtn) { closeBtn.disabled = false; closeBtn.style.opacity = ''; closeBtn.style.cursor = ''; closeBtn.textContent = 'Закрыть смену'; }
     const data = await apiGet('getOrders', { status: 'completed', waiter_id: state.currentUser.id });
     const openedAt = _activeShift.opened_at;
     const orders = (data.orders || []).filter(function(o) {
@@ -1070,10 +1949,10 @@ async function showCloseShiftModal() {
       guestsCount += Number(o.guests) || 0;
     });
     const openingCash = Number(_activeShift.opening_cash) || 0;
+    const grandTotal = cashTotal + cardTotal;
     const expectedCash = openingCash + cashTotal;
     // Store for confirmCloseShift() to read
     window._closeShiftExpectedCash = expectedCash;
-
     summaryDiv.innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
         '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:0.85rem;color:var(--text-muted);">Заказов</div><div style="font-size:1.8rem;font-weight:700;">' + orders.length + '</div></div>' +
@@ -1081,7 +1960,11 @@ async function showCloseShiftModal() {
         '<div class="card" style="text-align:center;padding:12px;background:#e8f5e9;"><div style="font-size:0.85rem;color:var(--text-muted);">💵 Наличные</div><div style="font-size:1.4rem;font-weight:700;color:var(--success);">' + formatMoney(cashTotal) + '</div></div>' +
         '<div class="card" style="text-align:center;padding:12px;background:#e3f2fd;"><div style="font-size:0.85rem;color:var(--text-muted);">💳 Карта</div><div style="font-size:1.4rem;font-weight:700;color:var(--info);">' + formatMoney(cardTotal) + '</div></div>' +
       '</div>' +
-      '<div style="margin-top:16px;padding:12px;background:#fff8e1;border-radius:8px;">' +
+      '<div style="margin-top:12px;padding:10px 14px;background:rgba(211,47,47,0.08);border-radius:8px;text-align:center;">' +
+        '<span style="font-size:0.9rem;color:var(--text-muted);">Всего за сегодня:</span> ' +
+        '<b style="font-size:1.3rem;color:var(--primary);">' + formatMoney(grandTotal) + '</b>' +
+      '</div>' +
+      '<div style="margin-top:12px;padding:12px;background:#fff8e1;border-radius:8px;">' +
         '<div>Касса на начало смены: <b>' + formatMoney(openingCash) + '</b></div>' +
         '<div>Наличные за смену: <b>' + formatMoney(cashTotal) + '</b></div>' +
         '<div style="font-size:1.2rem;font-weight:700;color:var(--success);margin-top:4px;">Ожидается в кассе: ' + formatMoney(expectedCash) + '</div>' +
@@ -1091,10 +1974,9 @@ async function showCloseShiftModal() {
         '<input type="number" id="shift-close-actual-cash" min="0" step="0.01" placeholder="' + expectedCash.toFixed(2) + '" autofocus' +
           ' oninput="checkCloseShiftCash()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();confirmCloseShift();}">' +
       '</div>' +
-      '<div id="shift-close-cash-check" style="margin-top:8px;padding:10px 12px;border-radius:8px;font-weight:600;text-align:center;">' +
+      '<div id="shift-close-cash-check" style="margin-top:8px;padding:10px 12px;border-radius:8px;font-weight:600;text-align:center;background:var(--bg);color:var(--text-muted);">' +
         'Введите сумму, чтобы проверить расхождение' +
       '</div>';
-
     // Focus the input after modal opens
     setTimeout(function() {
       const inp = document.getElementById('shift-close-actual-cash');
@@ -1171,18 +2053,26 @@ async function confirmCloseShift() {
   }
 }
 
-/* Refresh APP_DATA and re-render home (used when entering home screen) */
+/* Refresh APP_DATA and re-render home (used when entering home screen).
+   Only force-reload every 60 seconds — otherwise just re-render with cached data. */
+var _lastAppDataRefresh = 0;
 async function refreshAppDataAndRender() {
   try {
-    await loadAppData(true);
+    const now = Date.now();
+    if (now - _lastAppDataRefresh > 60000) {
+      await loadAppData(true);
+      _lastAppDataRefresh = now;
+    }
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан');
     renderHome();
     renderReadyAlerts();
     renderHomeActiveOrders();
+    // Also refresh active orders + shift status in the background (non-blocking)
+    refreshActiveOrders();
   } catch (err) {
     console.error('Refresh APP_DATA failed:', err);
-    renderHome(); // fallback to existing cached data
+    renderHome();
     renderReadyAlerts();
     renderHomeActiveOrders();
   }
@@ -1190,33 +2080,30 @@ async function refreshAppDataAndRender() {
 
 /* ---------- Screen navigation ---------- */
 function showScreen(name) {
-  // If leaving the order-detail screen, flush any pending quantity changes
   const wasOnOrderDetail = document.getElementById('screen-order-detail').classList.contains('active');
   if (wasOnOrderDetail && name !== 'order-detail') {
-    if (_qtySyncTimer) {
-      clearTimeout(_qtySyncTimer);
-      _qtySyncTimer = null;
-    }
-    flushQtyChanges(); // send accumulated changes to server
+    if (_qtySyncTimer) { clearTimeout(_qtySyncTimer); _qtySyncTimer = null; }
+    flushQtyChanges();
   }
   document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-  document.getElementById('screen-' + name).classList.add('active');
-  // Stop item-readiness polling when leaving order detail
-  if (name !== 'order-detail') {
-    stopOrderPolling();
-  }
-  if (name === 'home') {
-    // Refresh APP_DATA so admin changes (currency, menu, categories) are picked up
-    refreshAppDataAndRender();
-    startBadgePolling();
-  }
-  if (name === 'orders') {
-    stopBadgePolling();
-    loadActiveOrders();
-  }
+  const target = document.getElementById('screen-' + name);
+  if (target) target.classList.add('active');
+  if (name !== 'order-detail') { stopOrderPolling(); }
+  if (name === 'home') { refreshAppDataAndRender(); startBadgePolling(); }
+  if (name === 'orders') { stopBadgePolling(); loadActiveOrders(); }
   if (name === 'order-detail') {
     stopBadgePolling();
     startOrderPolling();
+  }
+  // Hide the top app header on order screens — they have their own
+  // back button + order context. Header only shows on home / active orders list.
+  const header = document.getElementById('app-header');
+  if (header) {
+    if (name === 'order' || name === 'order-detail') {
+      header.style.display = 'none';
+    } else {
+      header.style.display = 'flex';
+    }
   }
 }
 
@@ -1249,8 +2136,48 @@ function formatItemLabel(item) {
   return label;
 }
 
+// Check if order is bar-only (all items from bar categories) — can skip "served"
+function isOrderBarOnly(items) {
+  if (!items || items.length === 0) return false;
+  let barCats = [];
+  try { barCats = JSON.parse(APP_DATA.settings.bar_categories || '[]'); } catch (e) { barCats = []; }
+  if (barCats.length === 0) return false;
+  const barCatsLower = barCats.map(function(c) { return String(c).toLowerCase().trim(); });
+  for (const it of items) {
+    // Collect ALL possible category names for this item: subcategory name,
+    // parent category name, and the stored category_name from the order item.
+    // Then check if ANY of them matches a bar category.
+    const names = new Set();
+    // 1. Stored category_name (usually the subcategory name)
+    if (it.category_name) names.add(it.category_name.toLowerCase());
+    // 2. Look up via menu_item_id → menu.category_id → category (sub + parent)
+    if (it.menu_item_id && APP_DATA && APP_DATA.menu) {
+      const dish = APP_DATA.menu.find(function(m) { return m.id === it.menu_item_id; });
+      if (dish && dish.category_id && APP_DATA.categories) {
+        const cat = APP_DATA.categories.find(function(c) { return c.id === dish.category_id; });
+        if (cat) {
+          names.add(cat.name.toLowerCase());
+          if (cat.parent_id) {
+            const parent = APP_DATA.categories.find(function(c) { return c.id === cat.parent_id; });
+            if (parent) names.add(parent.name.toLowerCase());
+          }
+        }
+      }
+    }
+    // Check if ANY of the collected names matches a bar category
+    let isBar = false;
+    for (const name of names) {
+      if (barCatsLower.indexOf(name) >= 0) { isBar = true; break; }
+    }
+    if (!isBar) return false;
+  }
+  return true;
+}
+
 function renderHome() {
   // Numbered tables — show 3 statuses: free / mine (has my active order) / locked-by-other.
+  // For tables with the current waiter's active order, also show the order's
+  // acceptance time and total inside the table block.
   // Tables are now sourced from APP_DATA.tables.numbered (each may have an optional
   // custom label). Fall back to settings.table_count for backward compatibility.
   const numberedTables = (APP_DATA.tables && APP_DATA.tables.numbered) || [];
@@ -1263,10 +2190,15 @@ function renderHome() {
     // Look up the custom label for this table number (if any)
     const tableInfo = numberedTables.find(function(t) { return t.number === i; });
     const customLabel = tableInfo && tableInfo.label ? tableInfo.label : '';
-    const displayName = customLabel || String(i);
-    const hasOrder = state.activeOrders.some(function(o) {
-      return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered');
+    // Find the current waiter's active order on this table (if any)
+    const myOrder = state.activeOrders.find(function(o) {
+      return Number(o.table_number) === i && (!o.table_type || o.table_type === 'numbered') &&
+             (o.status === 'accepted' || o.status === 'paused');
     });
+    const hasOrder = !!myOrder;
+    // If there's a table-label override for this order, show it instead of the number
+    var override = myOrder ? (state.tableLabelOverride[myOrder.id] || null) : null;
+    const displayName = override || customLabel || String(i);
     // Find table status (free / mine / other)
     const ts = state.tableStatuses.find(function(t) { return t.table === i && t.type === 'numbered'; });
     const lockedByOther = ts && ts.status === 'other';
@@ -1278,7 +2210,15 @@ function renderHome() {
     if (lockedByOther) { cls += ' locked-by-other'; label = ts.waiter_name ? '⨉ ' + ts.waiter_name : '⨉ занят'; }
     if (isSelected) { cls += ' selected'; label = '✓ выбран'; }
     btn.className = cls;
-    btn.innerHTML = escapeHtml(displayName) + '<span class="table-label">' + label + '</span>';
+    // Build inner HTML: table number + status label + (if hasOrder) order time + total
+    let inner = escapeHtml(displayName) + '<span class="table-label">' + label + '</span>';
+    if (myOrder) {
+      inner += '<span class="table-order-info">' +
+        '<span class="toi-time">🕐 ' + formatTime(myOrder.created_at) + '</span>' +
+        '<span class="toi-total">' + formatMoney(myOrder.total) + '</span>' +
+      '</span>';
+    }
+    btn.innerHTML = inner;
     if (lockedByOther) {
       btn.disabled = true;
       btn.onclick = function() {
@@ -1320,7 +2260,12 @@ function renderHome() {
       if (activeCount > 0) { cls += ' has-order'; label = activeCount + ' активн.'; }
       if (isSelected) { cls += ' selected'; label = '✓ ' + (state.selectedVirtualLabel || name); }
       btn.className = cls;
-      btn.innerHTML = escapeHtml(name) + '<span class="table-label">' + label + '</span>';
+      // Build inner HTML: name + label + (if >1 active orders) a count badge in top-right
+      let vInner = escapeHtml(name) + '<span class="table-label">' + label + '</span>';
+      if (activeCount > 1) {
+        vInner = '<span class="table-count-badge" title="Активных заказов: ' + activeCount + '">' + activeCount + '</span>' + vInner;
+      }
+      btn.innerHTML = vInner;
       btn.onclick = function(e) { selectTable(name, 'virtual', e); };
       virtualGrid.appendChild(btn);
     });
@@ -1330,38 +2275,254 @@ function renderHome() {
 
   // Open tabs (long-running client accounts)
   renderOpenTabs();
+}
 
-  // Guests
+function selectTable(num, type, evt) {
+  if (type === 'virtual') {
+    // Check if there are active OR paused orders for this virtual table
+    const existingOrders = state.activeOrders.filter(function(o) {
+      return o.table_type === 'virtual' &&
+             String(o.table_number).indexOf(num) === 0 &&
+             (o.status === 'accepted' || o.status === 'paused');
+    });
+    if (existingOrders.length > 0) {
+      // Show a picker: existing orders + "new order" button
+      showVirtualOrderPicker(num, existingOrders);
+    } else {
+      openVirtualOrderModal(num);
+    }
+    return;
+  }
+  // Numbered table — check if it's already occupied by another waiter
+  const ts = state.tableStatuses.find(function(t) { return t.table === num && t.type === 'numbered'; });
+  if (ts && ts.status === 'other') {
+    showToast('Столик ' + num + ' занят другим официантом' + (ts.waiter_name ? ': ' + ts.waiter_name : ''), 'warning');
+    return;
+  }
+  // Check if there's already an active order by THIS waiter on this table
+  const myExistingOrder = state.activeOrders.find(function(o) {
+    return Number(o.table_number) === num &&
+           (!o.table_type || o.table_type === 'numbered') &&
+           (o.status === 'accepted' || o.status === 'paused');
+  });
+  if (myExistingOrder) {
+    // Open the existing order instead of creating a new one
+    openOrderDetail(myExistingOrder.id);
+    return;
+  }
+  state.selectedTable = num;
+  state.selectedTableType = type || 'numbered';
+  state.selectedTabId = null;
+  state.selectedTabName = null;
+  state.cart = [];
+  state.orderComment = '';
+  state.guests = 1;
+  state.mainCategory = null;
+  state.currentSubcat = null;
+  openOrderScreen();
+}
+
+// Show a picker for virtual tables with existing active orders
+// Similar to the modification picker — bottom sheet with order list + "new order" button
+function showVirtualOrderPicker(virtualName, orders) {
+  const existing = document.getElementById('mod-picker-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'mod-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:0;';
+
+  const sheet = document.createElement('div');
+  sheet.style.cssText = 'background:#fff;width:100%;max-width:600px;border-radius:16px 16px 0 0;padding:16px;max-height:80vh;overflow-y:auto;animation:slideUp 0.2s ease-out;';
+
+  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+  html += '<h3 style="margin:0;font-size:1.1rem;">' + escapeHtml(virtualName) + ' — активные заказы</h3>';
+  html += '<button class="btn btn-outline" style="padding:4px 10px;font-size:1.1rem;" onclick="closeModificationPicker()">✕</button>';
+  html += '</div>';
+  html += '<div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Выберите заказ чтобы открыть его, или создайте новый.</div>';
+  html += '<div id="mod-picker-list" style="display:flex;flex-direction:column;gap:8px;">';
+  orders.forEach(function(o) {
+    const items = o.items || [];
+    const itemsLabel = items.length > 0
+      ? items.map(function(i) { return escapeHtml(i.name) + ' ×' + i.quantity; }).join(', ')
+      : 'нет позиций';
+    html += '<div class="mod-pick-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="openOrderDetail(\'' + o.id + '\');closeModificationPicker();">' +
+      '<div><div style="font-size:1rem;font-weight:600;">' + escapeHtml(formatTableLabel(o)) + '</div>' +
+      '<div style="font-size:0.85rem;color:var(--text-muted);">' + itemsLabel + '</div></div>' +
+      '<span style="font-weight:700;color:var(--primary);white-space:nowrap;flex:none;margin-left:8px;">' + formatMoney(o.total) + '</span>' +
+    '</div>';
+  });
+  html += '</div>';
+  html += '<button class="btn btn-primary" style="margin-top:12px;width:100%;" onclick="closeModificationPicker();openVirtualOrderModal(\'' + virtualName + '\');">+ Новый заказ</button>';
+
+  sheet.innerHTML = html;
+  overlay.appendChild(sheet);
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) closeModificationPicker();
+  });
+  sheet.addEventListener('click', function(e) { e.stopPropagation(); });
+  document.body.appendChild(overlay);
+}
+
+// Open the order screen — sets up the split-view layout
+function openOrderScreen() {
+  showScreen('order');
+  const ctxEl = document.getElementById('order-context');
+  if (ctxEl) {
+    let label = '';
+    if (state.selectedTabId) label = 'Счёт: ' + (state.selectedTabName || '');
+    else if (state.selectedTableType === 'virtual') label = state.selectedVirtualLabel || state.selectedVirtualBase || 'Виртуальный';
+    else {
+      // Numbered table — use the override if we have one for the current order
+      const override = state.currentOrderId ? state.tableLabelOverride[state.currentOrderId] : null;
+      label = override || ('Столик ' + state.selectedTable);
+    }
+    ctxEl.textContent = label;
+  }
+  // Update back button label based on context
+  const backBtn = document.getElementById('order-back-btn');
+  if (backBtn) {
+    backBtn.textContent = state.addingToOrder ? '← К заказу' : '← Столы';
+  }
+  // Guests section: editable stepper for new orders, static number when adding to existing order
   document.getElementById('guests-value').textContent = state.guests;
+  const staticGuests = document.getElementById('guests-static-display');
+  if (staticGuests) staticGuests.textContent = state.guests;
+  const editableGuests = document.getElementById('guests-stepper-editable');
+  if (editableGuests) editableGuests.style.display = state.addingToOrder ? 'none' : 'flex';
+  if (staticGuests) staticGuests.style.display = state.addingToOrder ? 'block' : 'none';
+  // Hide the "Комментарий к заказу" field when adding to an existing order —
+  // only per-item "пояснение" is used in that mode.
+  const commentSection = document.getElementById('order-comment-section');
+  if (commentSection) commentSection.style.display = state.addingToOrder ? 'none' : 'block';
+  const commentEl = document.getElementById('order-comment');
+  if (commentEl) commentEl.value = state.orderComment || '';
+  // Clear the menu search field when (re)opening the order screen
+  const menuSearchEl = document.getElementById('menu-search');
+  if (menuSearchEl) menuSearchEl.value = '';
+  const menuTabsEl = document.getElementById('subcat-tabs');
+  if (menuTabsEl) menuTabsEl.style.display = '';
+  renderMainCats();
+  renderOrderCart();
+  renderMenu(); // render the menu area (shows "select category" if mainCategory is null)
+}
 
-  // Main categories
-  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
+// Render the main category buttons inside the order screen
+function renderMainCats() {
   const catsDiv = document.getElementById('main-cats');
+  if (!catsDiv) return;
+  const mainCats = APP_DATA.categories.filter(function(c) { return !c.parent_id; });
   catsDiv.innerHTML = '';
   mainCats.forEach(function(cat) {
     const btn = document.createElement('button');
     btn.className = 'main-cat-btn';
+    if (state.mainCategory && state.mainCategory.id === cat.id) btn.classList.add('selected');
     btn.textContent = cat.name;
     btn.onclick = function() { selectMainCategory(cat); };
     catsDiv.appendChild(btn);
   });
 }
 
-function selectTable(num, type, evt) {
-  // For virtual tables: ask for optional name/room, then proceed (each click
-  // creates a NEW virtual order — virtual tables are never "occupied" in the
-  // exclusive sense, they can be opened as many times as needed in parallel).
-  if (type === 'virtual') {
-    openVirtualOrderModal(num);
-    return;
-  }
-  state.selectedTable = num;
-  state.selectedTableType = type || 'numbered';
-  state.selectedTabId = null;  // table and tab are mutually exclusive
+// Cancel new order — go back to tables (or back to order-detail when adding to an existing order)
+function cancelNewOrder() {
+  const wasAddingToOrder = state.addingToOrder;
+  const orderId = state.currentOrderId;
+  state.cart = [];
+  state.orderComment = '';
+  state.selectedTable = null;
+  state.selectedTableType = null;
+  state.selectedTabId = null;
   state.selectedTabName = null;
-  showToast('Выбран: ' + (type === 'virtual' ? num : 'Столик ' + num), 'info');
-  // Re-render to apply `selected` class persistently
-  renderHome();
+  state.mainCategory = null;
+  state.currentSubcat = null;
+  state.guests = 1;
+  state.addingToOrder = false;
+  document.body.classList.remove('has-cart-panel');
+  if (wasAddingToOrder && orderId) {
+    // Return to the order being edited, not to tables
+    showScreen('order-detail');
+    renderOrderDetail();
+  } else {
+    showScreen('home');
+  }
+}
+
+// Render the cart items inside the left panel of the order screen
+function renderOrderCart() {
+  const div = document.getElementById('order-cart-items');
+  if (!div) return;
+  // When adding to an existing order, a "пояснение" field is shown:
+  //  - if only 1 item in cart → under that item
+  //  - if multiple items → at the bottom (single note for the whole group)
+  const showPerItemNote = !!state.addingToOrder;
+  if (state.cart.length === 0) {
+    div.innerHTML =
+      '<div style="text-align:center;padding:32px 16px;color:var(--text-muted);">' +
+        '<div style="font-size:2.4rem;opacity:0.35;margin-bottom:8px;">🛒</div>' +
+        '<p style="font-size:0.95rem;margin:0;">Блюд нет.<br>Выберите из меню справа →</p>' +
+      '</div>';
+  } else {
+    let html = '';
+    state.cart.forEach(function(item, idx) {
+      let nameLine = escapeHtml(item.name);
+      // Modification shown as a separate line UNDER the dish name (not inline)
+      let modLine = '';
+      if (item.modification_name) {
+        modLine = '<div style="color:var(--primary);font-weight:600;font-size:0.8rem;margin-top:2px;">· ' + escapeHtml(item.modification_name) + '</div>';
+      }
+      html += '<div class="cart-row-modern">';
+      html +=   '<div class="cart-row-modern-info">';
+      html +=     '<div class="cart-row-modern-name" style="cursor:pointer;" onclick="toggleCartItemComment(' + idx + ')">' + nameLine + '</div>';
+      html +=     modLine;
+      html +=     '<div class="cart-row-modern-price">' + formatMoney(item.price) + ' × ' + item.quantity + '</div>';
+      html +=   '</div>';
+      html +=   '<div class="cart-row-modern-right">';
+      html +=     '<div class="cart-row-modern-controls">';
+      html +=       '<button onclick="changeCartQty(' + idx + ', -1)" class="cart-qty-btn" aria-label="Уменьшить">−</button>';
+      html +=       '<span class="cart-qty-val">' + item.quantity + '</span>';
+      html +=       '<button onclick="changeCartQty(' + idx + ', 1)" class="cart-qty-btn" aria-label="Увеличить">+</button>';
+      html +=     '</div>';
+      html +=     '<div class="cart-row-modern-total">' + formatMoney(item.price * item.quantity) + '</div>';
+      html +=   '</div>';
+      // Per-item "пояснение" — only shown when adding to order AND there's exactly 1 item
+      if (showPerItemNote && state.cart.length === 1) {
+        html +=   '<div class="cart-row-modern-note">' +
+          '<textarea rows="2" class="cart-item-note-input" placeholder="Пояснение..." ' +
+            'oninput="setCartComment(' + idx + ', this.value)" ' +
+            'style="width:100%;padding:6px 10px;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(item.comment || '') + '</textarea>' +
+        '</div>';
+      }
+      html += '</div>';
+    });
+    // Group-level "пояснение" — shown at the bottom when there are multiple items
+    if (showPerItemNote && state.cart.length > 1) {
+      html += '<div class="cart-group-note">' +
+        '<textarea rows="2" class="cart-item-note-input" placeholder="Пояснение к добавляемым блюдам..." ' +
+          'oninput="setGroupCartComment(this.value)" ' +
+          'style="width:100%;padding:6px 10px;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;resize:vertical;background:#fff8e1;color:var(--text);font-family:inherit;">' + escapeHtml(state.cart[0].comment || '') + '</textarea>' +
+      '</div>';
+    }
+    div.innerHTML = html;
+  }
+  // Update total
+  const total = state.cart.reduce(function(s, c) { return s + c.price * c.quantity; }, 0);
+  const totalEl = document.getElementById('order-total');
+  if (totalEl) totalEl.textContent = formatMoney(total);
+  // Enable/disable accept button based on cart contents
+  const acceptBtn = document.getElementById('accept-order-btn');
+  if (acceptBtn) {
+    const hasItems = state.cart.length > 0;
+    acceptBtn.disabled = !hasItems;
+    if (hasItems) {
+      acceptBtn.style.opacity = '1';
+      acceptBtn.style.cursor = 'pointer';
+    } else {
+      acceptBtn.style.opacity = '0.5';
+      acceptBtn.style.cursor = 'not-allowed';
+    }
+    // Update button label based on whether we're adding to an existing order
+    acceptBtn.textContent = state.addingToOrder ? '+ ДОБАВИТЬ В ЗАКАЗ' : '✓ ПРИНЯТЬ ЗАКАЗ';
+  }
 }
 
 /* ---------- Virtual order modal ---------- */
@@ -1381,22 +2542,23 @@ function confirmVirtualOrder() {
   const name = document.getElementById('virtual-order-name').value.trim();
   const room = document.getElementById('virtual-order-room').value.trim();
   const notes = document.getElementById('virtual-order-notes').value.trim();
-  // Build a display label: "Бар — Иван" or "Бар — комната 5" or just "Бар"
   let label = virtualName;
   if (name) label += ' — ' + name;
   else if (room) label += ' — комната ' + room;
   if (notes) label += ' (' + notes + ')';
-  // Set as selected
   state.selectedTable = label;
   state.selectedTableType = 'virtual';
   state.selectedTabId = null;
   state.selectedTabName = null;
-  // Store the raw virtual name (e.g. "Бар") separately — backend uses it
   state.selectedVirtualBase = virtualName;
   state.selectedVirtualLabel = label;
+  state.cart = [];
+  state.orderComment = '';
+  state.guests = 1;
+  state.mainCategory = null;
+  state.currentSubcat = null;
   closeModal('modal-virtual-order');
-  showToast('Выбран: ' + label, 'info');
-  renderHome();
+  openOrderScreen();
 }
 
 /* ---------- OPEN TABS ---------- */
@@ -1493,19 +2655,63 @@ function selectMainCategory(cat) {
     return;
   }
   state.mainCategory = cat;
-  // NOTE: do NOT clear state.cart here — user may have added items from other
-  // categories and we want them to persist across category switches. The cart
-  // is only cleared when the order is accepted (acceptOrder) or explicitly
-  // cleared via the "Очистить" button on the cart screen.
-  state.currentSubcat = null; // reset so renderMenu picks a sensible default
+  state.currentSubcat = null;
+  // Clear the search field when switching categories
+  var searchInput = document.getElementById('menu-search');
+  if (searchInput) searchInput.value = '';
+  var tabsDiv = document.getElementById('subcat-tabs');
+  if (tabsDiv) tabsDiv.style.display = '';
+  renderMainCats(); // update active button
   renderMenu();
-  showScreen('menu');
 }
 
 /* ---------- MENU ---------- */
 
 function renderMenu() {
   const mainCat = state.mainCategory;
+  // Search box is ALWAYS visible — waiter can search across all categories
+  const searchBox = document.querySelector('.menu-search-box');
+  if (searchBox) searchBox.style.display = 'flex';
+  if (!mainCat) {
+    // No category selected — show ALL items from ALL categories in a flat grid
+    const itemsDiv = document.getElementById('menu-items');
+    if (itemsDiv) {
+      itemsDiv.style.display = '';
+      // Show all menu items regardless of category
+      const allItems = (APP_DATA.menu || []).slice().sort(function(a, b) {
+        return String(a.name).localeCompare(String(b.name));
+      });
+      if (allItems.length === 0) {
+        itemsDiv.innerHTML = '<div class="empty-state"><h3>Нет блюд</h3></div>';
+      } else {
+        itemsDiv.innerHTML = '';
+        allItems.forEach(function(item) {
+          const card = document.createElement('div');
+          card.className = 'menu-item-card';
+          const hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+          const priceLabel = hasMods
+            ? 'от ' + formatMoney(minModPrice(item))
+            : formatMoney(item.price);
+          card.innerHTML =
+            '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
+              (hasMods ? '<div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">⚙ ' + item.modifications.length + ' вар.</div>' : '') +
+            '<div class="item-price">' + priceLabel + '</div>' +
+            '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
+          card.querySelector('.item-add-btn').onclick = function() {
+            if (hasMods) showModificationPicker(item);
+            else addToCart(item);
+          };
+          itemsDiv.appendChild(card);
+        });
+      }
+    }
+    const tabsDiv = document.getElementById('subcat-tabs');
+    if (tabsDiv) tabsDiv.innerHTML = '';
+    return;
+  }
+  // Restore grid layout for actual menu items
+  const itemsDiv2 = document.getElementById('menu-items');
+  if (itemsDiv2) itemsDiv2.style.display = '';
   const subcats = APP_DATA.categories.filter(function(c) {
     return c.parent_id === mainCat.id;
   }).sort(function(a, b) {
@@ -1548,8 +2754,7 @@ function renderMenu() {
     state.currentSubcat = hasSubcats ? subcats[0].id : (hasDirect ? '__direct__' : null);
   }
 
-  // Context
-  // Context: show table number / virtual label / tab name
+  // Context: show in the order-context element (may not exist on all screens)
   let contextLabel = '';
   if (state.selectedTabId) {
     contextLabel = 'Счёт: <b>' + escapeHtml(state.selectedTabName || '') + '</b>';
@@ -1558,15 +2763,15 @@ function renderMenu() {
   } else {
     contextLabel = 'Стол <b>' + state.selectedTable + '</b>';
   }
-  // Show cart count in the context bar so the waiter sees items persist
-  // across category switches.
   const cartCount = state.cart.reduce(function(s, c) { return s + c.quantity; }, 0);
   const cartInfo = cartCount > 0
     ? ' · <span style="color:var(--success);font-weight:700;">🛒 ' + cartCount + '</span>'
     : '';
-  document.getElementById('menu-context').innerHTML =
-    contextLabel + ' · ' + state.guests + ' чел. · ' +
-    '<b>' + escapeHtml(mainCat.name) + '</b>' + cartInfo;
+  const menuCtxEl = document.getElementById('menu-context');
+  if (menuCtxEl) {
+    menuCtxEl.innerHTML = contextLabel + ' · ' + state.guests + ' чел. · ' +
+      '<b>' + escapeHtml(mainCat.name) + '</b>' + cartInfo;
+  }
 
   // Subcategory tabs
   // Show tabs only if there are subcategories. If the only items are direct
@@ -1629,9 +2834,8 @@ function renderMenu() {
       ? 'от ' + formatMoney(minModPrice(item))
       : formatMoney(item.price);
     card.innerHTML =
-      '<div class="item-name">' + escapeHtml(item.name) +
-        (hasMods ? ' <span style="font-size:0.75rem;color:var(--text-muted);">⚙ ' + item.modifications.length + ' вар.</span>' : '') +
-      '</div>' +
+      '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
+        (hasMods ? '<div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">⚙ ' + item.modifications.length + ' вар.</div>' : '') +
       '<div class="item-price">' + priceLabel + '</div>' +
       '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
     card.querySelector('.item-add-btn').onclick = function() {
@@ -1652,6 +2856,112 @@ function minModPrice(item) {
   return item.modifications.reduce(function(min, m) {
     return Math.min(min, Number(m.price) || 0);
   }, Infinity);
+}
+
+// ===== Menu search =====
+// Search across ALL categories regardless of which main category is selected.
+// The subcat tabs are hidden while searching. Clearing the search restores the normal view.
+function filterMenuItems() {
+  var input = document.getElementById('menu-search');
+  if (!input) return;
+  var query = input.value.toLowerCase().trim();
+  var tabsDiv = document.getElementById('subcat-tabs');
+  var itemsDiv = document.getElementById('menu-items');
+  if (!itemsDiv) return;
+  if (!query) {
+    // No query → restore normal view
+    if (tabsDiv) tabsDiv.style.display = '';
+    renderMenu();
+    return;
+  }
+  // Hide subcat tabs while searching
+  if (tabsDiv) tabsDiv.style.display = 'none';
+  // Search across ALL menu items (regardless of category)
+  var matches = (APP_DATA.menu || []).filter(function(m) {
+    // Match by name, translation, or modification name
+    var name = String(m.name || '').toLowerCase();
+    var trans = String(m.name_translation || '').toLowerCase();
+    if (name.indexOf(query) >= 0 || trans.indexOf(query) >= 0) return true;
+    if (m.modifications) {
+      for (var i = 0; i < m.modifications.length; i++) {
+        if (String(m.modifications[i].name || '').toLowerCase().indexOf(query) >= 0) return true;
+      }
+    }
+    return false;
+  });
+  // Sort matches by name
+  matches.sort(function(a, b) {
+    return String(a.name).localeCompare(String(b.name));
+  });
+  // Render
+  itemsDiv.style.display = '';
+  itemsDiv.innerHTML = '';
+  if (matches.length === 0) {
+    itemsDiv.innerHTML =
+      '<div style="text-align:center;padding:40px 20px;color:var(--text-muted);">' +
+        '<div style="font-size:2.4rem;opacity:0.35;margin-bottom:8px;">🔍</div>' +
+        '<p style="font-size:0.95rem;margin:0;">Ничего не найдено по запросу «' + escapeHtml(input.value) + '»</p>' +
+      '</div>';
+    return;
+  }
+  // Render matching items — if the match is in a modification, show that modification
+  matches.forEach(function(item) {
+    var hasMods = item.has_modifications === true && item.modifications && item.modifications.length > 0;
+    // Check if the search query matches the item name or a modification name
+    var nameMatched = String(item.name || '').toLowerCase().indexOf(query) >= 0 ||
+                      String(item.name_translation || '').toLowerCase().indexOf(query) >= 0;
+    // Find matching modifications (if any)
+    var matchedMods = [];
+    if (hasMods && !nameMatched) {
+      matchedMods = (item.modifications || []).filter(function(mod) {
+        return String(mod.name || '').toLowerCase().indexOf(query) >= 0;
+      });
+    }
+
+    if (matchedMods.length > 0) {
+      // Show each matching modification as a separate card
+      matchedMods.forEach(function(mod) {
+        var card = document.createElement('div');
+        card.className = 'menu-item-card';
+        card.innerHTML =
+          '<div class="item-name">' + escapeHtml(item.name) +
+            ' <span style="font-size:0.82rem;color:var(--primary);font-weight:600;background:rgba(211,47,47,0.08);padding:1px 6px;border-radius:4px;margin-left:4px;">' + escapeHtml(mod.name) + '</span>' +
+          '</div>' +
+          (item.name_translation ? '<div class="item-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
+          '<div class="item-price">' + formatMoney(Number(mod.price) || 0) + '</div>' +
+          '<button class="item-add-btn">+ Добавить</button>';
+        card.querySelector('.item-add-btn').onclick = function() {
+          addToCart(item, mod);
+        };
+        itemsDiv.appendChild(card);
+      });
+    } else {
+      // Normal card — item name matched (or no mods)
+      var card = document.createElement('div');
+      card.className = 'menu-item-card';
+      var priceLabel = hasMods
+        ? 'от ' + formatMoney(minModPrice(item))
+        : formatMoney(item.price);
+      card.innerHTML =
+        '<div class="item-name">' + escapeHtml(item.name) + '</div>' +
+          (hasMods ? '<div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">⚙ ' + item.modifications.length + ' вар.</div>' : '') +
+        (item.name_translation ? '<div class="item-translation">' + escapeHtml(item.name_translation) + '</div>' : '') +
+        '<div class="item-price">' + priceLabel + '</div>' +
+        '<button class="item-add-btn">' + (hasMods ? 'Выбрать' : '+ Добавить') + '</button>';
+      card.querySelector('.item-add-btn').onclick = function() {
+        if (hasMods) showModificationPicker(item);
+        else addToCart(item);
+      };
+      itemsDiv.appendChild(card);
+    }
+  });
+}
+
+// Clear the menu search field and restore the normal subcat view
+function clearMenuSearch() {
+  var input = document.getElementById('menu-search');
+  if (input) input.value = '';
+  filterMenuItems();
 }
 
 // Show a modal/bottom-sheet with the list of modifications for a menu item.
@@ -1761,8 +3071,9 @@ function removeModificationFromCart(itemId, modId) {
   if (entry.quantity <= 0) {
     state.cart.splice(idx, 1);
   }
-  // Re-render the cart panel (bottom bar with total)
+  // Re-render the cart panel + the order cart list (left panel "Добавленные блюда")
   renderCartPanel();
+  renderOrderCart();
 
   // Brief red flash on the row
   const row = document.querySelector('#mod-picker-list .mod-pick-row[data-mod-id="' + modId + '"]');
@@ -1872,6 +3183,7 @@ function addToCart(item, modification) {
     });
   }
   renderCartPanel();
+  renderOrderCart(); // update the left panel on the order screen
   beep(880, 80, 0.15);
 }
 
@@ -1884,6 +3196,7 @@ function changeCartQty(idx, delta) {
   }
   renderCartPanel();
   renderCartItems();
+  renderOrderCart(); // update the left panel on the order screen
 }
 
 function setCartQty(idx, qty) {
@@ -1896,6 +3209,7 @@ function setCartQty(idx, qty) {
 
 function renderCartPanel() {
   const panel = document.getElementById('cart-panel');
+  if (!panel) return; // cart-panel only exists on certain screens
   const count = state.cart.reduce(function(s, c) { return s + c.quantity; }, 0);
   const total = state.cart.reduce(function(s, c) { return s + c.price * c.quantity; }, 0);
   if (count === 0) {
@@ -1904,8 +3218,10 @@ function renderCartPanel() {
   } else {
     panel.style.display = 'flex';
     document.body.classList.add('has-cart-panel');
-    document.getElementById('cart-count-num').textContent = count;
-    document.getElementById('cart-total-amount').textContent = formatMoney(total);
+    const cn = document.getElementById('cart-count-num');
+    if (cn) cn.textContent = count;
+    const ct = document.getElementById('cart-total-amount');
+    if (ct) ct.textContent = formatMoney(total);
   }
 }
 
@@ -1947,10 +3263,6 @@ function renderCartItems() {
         '<button onclick="changeCartQty(' + idx + ', -1)">−</button>' +
         '<input type="number" value="' + item.quantity + '" onchange="setCartQty(' + idx + ', Number(this.value))">' +
         '<button onclick="changeCartQty(' + idx + ', 1)">+</button>' +
-      '</div>' +
-      '<div class="ci-comment">' +
-        '<input type="text" placeholder="' + (item.needs_cooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment) + '" ' +
-        'onchange="setCartComment(' + idx + ', this.value)">' +
       '</div>';
     div.appendChild(card);
   });
@@ -1961,10 +3273,17 @@ function setCartComment(idx, val) {
   if (state.cart[idx]) state.cart[idx].comment = val;
 }
 
+// Set the same "пояснение" on ALL items in the cart — used when adding
+// multiple items to an existing order and a single group-level note is entered.
+function setGroupCartComment(val) {
+  state.cart.forEach(function(item) { item.comment = val; });
+}
+
 async function clearCart() {
   const ok = await confirmDialog('Очистить корзину?', 'Очистить корзину', 'Очистить', 'Отмена', 'btn-danger');
   if (!ok) return;
   state.cart = [];
+  state.orderComment = '';
   renderCartPanel();
   renderCartItems();
 }
@@ -2015,11 +3334,12 @@ async function acceptOrder() {
       table_type: tableType,
       tab_id: tabId,
       guests: state.guests,
-      main_category_id: state.mainCategory.id,
-      main_category_name: state.mainCategory.name,
+      main_category_id: state.mainCategory ? state.mainCategory.id : '',
+      main_category_name: state.mainCategory ? state.mainCategory.name : '',
       items: state.cart,
       waiter_id: state.currentUser.id,
-      waiter_name: state.currentUser.name
+      waiter_name: state.currentUser.name,
+      waiter_note: state.orderComment || ''
     };
     const order = await apiPost('createOrder', payload);
     const displayLabel = state.selectedTabId
@@ -2027,6 +3347,7 @@ async function acceptOrder() {
       : (state.selectedTableType === 'virtual' ? (state.selectedVirtualLabel || state.selectedVirtualBase) : 'столик ' + state.selectedTable);
     showToast('Заказ для ' + displayLabel + ' принят!', 'success');
     state.cart = [];
+  state.orderComment = '';
     state.selectedTable = null;
     state.selectedTableType = null;
     state.selectedTabId = null;
@@ -2120,6 +3441,20 @@ async function refreshActiveOrders() {
     state.activeOrders = newOrders;
     state.initialLoadDone = true;
 
+    // Clean up stale table-label overrides — remove entries for orders that
+    // are no longer active (completed/cancelled by admin, etc.)
+    if (state.tableLabelOverride) {
+      const activeIds = new Set(newOrders.map(function(o) { return o.id; }));
+      let changed = false;
+      Object.keys(state.tableLabelOverride).forEach(function(oid) {
+        if (!activeIds.has(oid)) {
+          delete state.tableLabelOverride[oid];
+          changed = true;
+        }
+      });
+      if (changed) saveTableLabelOverride();
+    }
+
     updateBadge();
     // Stale-while-revalidate: update UI immediately with new data
     if (document.getElementById('screen-home').classList.contains('active')) {
@@ -2167,14 +3502,15 @@ function adjustPollingInterval(activeOrderCount) {
 
 function updateBadge() {
   const badge = document.getElementById('active-orders-badge');
+  const countEl = document.getElementById('active-orders-count');
   // Count ALL active orders (accepted + paused). Paused ones are hidden from
   // the home screen but still tracked in the badge so the waiter can find them.
   const count = state.activeOrders.length;
   if (count > 0) {
-    badge.style.display = 'inline-flex';
-    badge.textContent = count;
+    if (badge) badge.style.display = 'inline-flex';
+    if (countEl) countEl.textContent = count;
   } else {
-    badge.style.display = 'none';
+    if (badge) badge.style.display = 'none';
   }
 }
 
@@ -2272,10 +3608,11 @@ function renderHomeActiveOrders() {
   listDiv.innerHTML = '';
   sorted.forEach(function(order) {
     const items = order.items || [];
-    const cookingItems = items.filter(function(i) {
+    // Only count items as "cooking" if cook is enabled AND the item needs cooking
+    const cookingItems = (state.cookEnabled !== false) ? items.filter(function(i) {
       return i.needs_cooking === true || i.needs_cooking === 'true' ||
              i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
-    });
+    }) : [];
     const readyItems = cookingItems.filter(function(i) {
       return i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE';
     });
@@ -2284,21 +3621,25 @@ function renderHomeActiveOrders() {
 
     const card = document.createElement('div');
     card.className = 'home-order-card' + (allReady ? ' all-ready' : (hasReady ? ' has-ready' : ''));
+    // Virtual orders get a light blue background
+    if (order.table_type === 'virtual') card.classList.add('virtual-order');
     let html =
       '<div class="hoc-row1">' +
         '<div class="hoc-table">' + escapeHtml(formatTableLabel(order)) + '</div>' +
         '<div class="hoc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>';
     html += '<div class="hoc-items">' +
-      (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' +
-      items.length + ' поз. · ' + formatMoney(order.total) +
+      order.guests + ' чел. · ' +
+      items.length + ' поз. · <span style="font-size:1.15rem;font-weight:800;color:var(--primary);white-space:nowrap;">' + formatMoney(order.total) + '</span>' +
     '</div>';
+    // Order comment (if any)
+    if (order.waiter_note) {
+      html += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">💬 ' + escapeHtml(order.waiter_note) + '</div>';
+    }
     // Progress line
     if (cookingItems.length > 0) {
       html += '<div class="hoc-items">Готовность: <b>' + readyItems.length + '/' + cookingItems.length + '</b>' +
         (allReady ? ' ✅ всё готово — можно подавать!' : '') + '</div>';
-    } else {
-      html += '<div class="hoc-items">Только товары без готовки (напитки, хлеб и т.п.)</div>';
     }
     // List ready dishes if any (but not all — if all, just say "всё готово")
     if (hasReady && !allReady) {
@@ -2308,11 +3649,12 @@ function renderHomeActiveOrders() {
       html += '<div class="hoc-ready-list"><b>Готово к подаче:</b> ' + readyNames + '</div>';
     }
     // Actions — only 'accepted' orders reach here (paused are filtered out above)
-    // Disable "Завершить" if not all cooking items are ready
+    // Disable "Завершить" if not all items are served — UNLESS bar-only order
     const allServed = items.length > 0 && items.every(function(i) {
       return i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE';
     });
-    const canComplete = allServed;
+    const orderBarOnly = isOrderBarOnly(items);
+    const canComplete = allServed || orderBarOnly;
     let actions =
       '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть заказ</button>' +
       '<button class="btn btn-success' + (canComplete ? '' : ' disabled-btn') + '" ' +
@@ -2378,6 +3720,9 @@ function showActiveOrders() {
 }
 
 async function loadActiveOrders() {
+  // Render from cached data immediately
+  renderActiveOrdersList();
+  // Then refresh in the background
   await refreshActiveOrders();
   renderActiveOrdersList();
 }
@@ -2409,22 +3754,32 @@ function renderActiveOrdersList() {
     const readyCount = order.items ? order.items.filter(function(i) { return i.is_ready; }).length : 0;
     const total = Number(order.total) || 0;
     const isPaused = order.status === 'paused';
-    // Check if all cooking items are ready
+    // Check if all cooking items are ready — only if cook is enabled
     const items = order.items || [];
-    const cookingItems = items.filter(function(i) {
+    const cookingItems = (state.cookEnabled !== false) ? items.filter(function(i) {
       return i.needs_cooking === true || i.needs_cooking === 'true' ||
              i.needs_cooking === 'TRUE' || i.needs_cooking === 1 || i.needs_cooking === '1';
-    });
+    }) : [];
     const notReadyCooking = cookingItems.filter(function(i) {
       return !(i.is_ready === true || i.is_ready === 'true' || i.is_ready === 'TRUE');
     });
     const allServed = items.length > 0 && items.every(function(i) {
       return i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE';
     });
-    const canComplete = allServed;
+    const orderBarOnly = isOrderBarOnly(items);
+    const canComplete = allServed || orderBarOnly;
+    // Apply table-label override if set for this order (numbered tables only)
+    const override = state.tableLabelOverride[order.id];
+    const tableLabel = override || formatTableLabel(order);
+    // Virtual/tab orders get a light-blue background + blue left border
+    const isVirtualOrder = order.table_type === 'virtual' || order.table_type === 'tab';
     const card = document.createElement('div');
-    card.className = 'order-card' + (isPaused ? ' paused' : '');
-    card.style.cssText = isPaused ? 'border-left:5px solid var(--warning);background:#fffde7;' : '';
+    card.className = 'order-card' + (isPaused ? ' paused' : '') + (isVirtualOrder ? ' virtual-order' : '');
+    if (isPaused) {
+      card.style.cssText = 'border-left:5px solid var(--warning);background:#fffde7;';
+    } else if (isVirtualOrder) {
+      card.style.cssText = 'border-left:5px solid var(--info);background:#e3f2fd;';
+    }
     let actions =
       '<button class="btn btn-primary" onclick="openOrderDetail(\'' + order.id + '\')">Открыть / изменить</button>';
     if (isPaused) {
@@ -2441,51 +3796,402 @@ function renderActiveOrdersList() {
     }
     card.innerHTML =
       '<div class="oc-header">' +
-        '<div class="oc-table">' + escapeHtml(formatTableLabel(order)) +
+        '<div class="oc-table">' + escapeHtml(tableLabel) +
           (isPaused ? ' <span class="pill pill-warning">пауза</span>' : '') +
         '</div>' +
         '<div class="oc-time">' + formatTime(order.created_at) + ' · ' + timeAgo(order.created_at) + '</div>' +
       '</div>' +
       '<div class="oc-items">' +
-        (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' +
-        itemsCount + ' поз. · готово ' + readyCount + '/' + itemsCount +
+        order.guests + ' чел. · ' +
+        itemsCount + ' поз.' +
+        (cookingItems.length > 0 ? ' · готово ' + readyCount + '/' + cookingItems.length : '') +
       '</div>' +
-      '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;">' +
+      '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;white-space:nowrap;">' +
         formatMoney(total) +
       '</div>' +
+      (order.waiter_note ? '<div style="font-size:0.85rem;color:var(--warning);margin-bottom:8px;">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
       '<div class="oc-actions">' + actions + '</div>';
     div.appendChild(card);
   });
 }
 
+/* ---------- ARCHIVE (today's orders with search) ---------- */
+// State for the archive screen
+var _archiveOrders = [];        // all today's completed orders (cached)
+var _archiveSelectedId = null;  // currently-selected order ID in the archive
+var _archiveSearchQuery = '';   // current search filter
+var _archiveDailyNumbers = {};  // map: orderId → daily sequence number (1, 2, 3...)
+
+// Show the archive screen — fetches today's orders and renders the list
+async function showArchive() {
+  showScreen('archive');
+  // Clear any previous selection
+  _archiveSelectedId = null;
+  // Reset search
+  var searchInput = document.getElementById('archive-search');
+  if (searchInput) { searchInput.value = ''; _archiveSearchQuery = ''; }
+  // Show loading state
+  var listDiv = document.getElementById('archive-orders-list');
+  if (listDiv) listDiv.innerHTML = '<div class="archive-empty-state">Загрузка...</div>';
+  var detailDiv = document.getElementById('archive-order-detail');
+  if (detailDiv) detailDiv.innerHTML = '<div class="archive-empty-state"><div style="font-size:3rem;opacity:0.3;margin-bottom:8px;">📂</div><p>Выберите заказ слева, чтобы увидеть детали</p></div>';
+  try {
+    // Fetch ALL today's orders (all statuses) for the current waiter.
+    // We'll filter to completed-only for the archive display.
+    var today = new Date().toISOString().substring(0, 10); // YYYY-MM-DD
+    var data = await apiGet('getOrders', { status: 'all', waiter_id: state.currentUser.id });
+    var allOrders = data.orders || [];
+    // Filter: today only + completed status
+    _archiveOrders = allOrders.filter(function(o) {
+      var orderDate = (o.created_at || '').substring(0, 10);
+      return orderDate === today && o.status === 'completed';
+    });
+    // Assign daily sequence numbers (1, 2, 3...) based on creation time ascending.
+    // The earliest completed order of the day gets №1.
+    var byTimeAsc = _archiveOrders.slice().sort(function(a, b) {
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
+    _archiveDailyNumbers = {}; // { orderId: dailyNumber }
+    byTimeAsc.forEach(function(o, idx) {
+      _archiveDailyNumbers[o.id] = idx + 1;
+    });
+    // Sort the displayed list: newest first
+    _archiveOrders.sort(function(a, b) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    renderArchiveList();
+  } catch (err) {
+    if (listDiv) listDiv.innerHTML = '<div class="archive-empty-state">Ошибка: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+// Render the left-side list of orders, applying the current search filter
+function renderArchiveList() {
+  var listDiv = document.getElementById('archive-orders-list');
+  if (!listDiv) return;
+  var query = _archiveSearchQuery.toLowerCase().trim();
+  // Filter orders by search query (dish name match)
+  var filtered = _archiveOrders;
+  if (query) {
+    filtered = _archiveOrders.filter(function(o) {
+      var items = o.items || [];
+      return items.some(function(it) {
+        var name = String(it.name || '').toLowerCase();
+        var trans = String(it.name_translation || '').toLowerCase();
+        var mod = String(it.modification_name || '').toLowerCase();
+        return name.indexOf(query) >= 0 || trans.indexOf(query) >= 0 || mod.indexOf(query) >= 0;
+      });
+    });
+  }
+  if (filtered.length === 0) {
+    listDiv.innerHTML = '<div class="archive-empty-state"><p>' + (query ? 'Нет заказов с блюдом «' + escapeHtml(_archiveSearchQuery) + '»' : 'Нет завершённых заказов за сегодня') + '</p></div>';
+    return;
+  }
+  var html = '';
+  filtered.forEach(function(order) {
+    var dailyNum = _archiveDailyNumbers[order.id] || '?';
+    var total = Number(order.total) || 0;
+    var isActive = (_archiveSelectedId === order.id) ? ' active' : '';
+    // Compact row: № number / time / total — no table name, no status badge
+    // (archive shows only completed orders, so a status badge is redundant)
+    html += '<div class="archive-order-row' + isActive + '" onclick="selectArchiveOrder(\'' + order.id + '\')">';
+    html +=   '<div class="aor-info">';
+    html +=     '<div class="aor-num">Заказ №' + escapeHtml(String(dailyNum)) + '</div>';
+    html +=     '<div class="aor-time">' + formatTime(order.created_at) + '</div>';
+    html +=   '</div>';
+    html +=   '<div class="aor-total">' + formatMoney(total) + '</div>';
+    html += '</div>';
+  });
+  listDiv.innerHTML = html;
+}
+
+// Filter orders in real-time as the user types in the search box
+function filterArchiveOrders() {
+  var input = document.getElementById('archive-search');
+  if (!input) return;
+  _archiveSearchQuery = input.value;
+  renderArchiveList();
+}
+
+// Clear the search field and show all orders
+function clearArchiveSearch() {
+  var input = document.getElementById('archive-search');
+  if (input) input.value = '';
+  _archiveSearchQuery = '';
+  renderArchiveList();
+}
+
+// Select an order from the list — show its details on the right
+function selectArchiveOrder(orderId) {
+  _archiveSelectedId = orderId;
+  // Re-render list to highlight the selected row
+  renderArchiveList();
+  // Find the order in the cached array
+  var order = _archiveOrders.find(function(o) { return o.id === orderId; });
+  if (!order) return;
+  renderArchiveDetail(order);
+}
+
+// Render the full order details on the right panel
+function renderArchiveDetail(order) {
+  var detailDiv = document.getElementById('archive-order-detail');
+  if (!detailDiv) return;
+  var dailyNum = _archiveDailyNumbers[order.id] || '?';
+  var tableLabel = formatTableLabel(order);
+  if (state.tableLabelOverride && state.tableLabelOverride[order.id]) {
+    tableLabel = state.tableLabelOverride[order.id];
+  }
+  var items = order.items || [];
+  var total = Number(order.total) || 0;
+  // Build items HTML — each item as a card with name on top,
+  // then a row with [qty × price] on the left and line total on the right
+  var itemsHtml = '';
+  if (items.length === 0) {
+    itemsHtml = '<p style="color:var(--text-muted);text-align:center;padding:20px;">В заказе нет позиций</p>';
+  } else {
+    itemsHtml = '<div class="adc-items-list">';
+    items.forEach(function(it, idx) {
+      var lineTotal = Number(it.price) * Number(it.quantity);
+      // Name line: dish name + optional modification badge
+      var nameLine = escapeHtml(it.name);
+      if (it.modification_name) nameLine += ' <span style="color:var(--primary);font-size:0.82rem;font-weight:600;">· ' + escapeHtml(it.modification_name) + '</span>';
+      // Sub-line: translation (if any)
+      var subLine = '';
+      if (it.name_translation) subLine += '<div style="font-size:0.8rem;color:var(--text-muted);font-style:italic;margin-top:2px;">' + escapeHtml(it.name_translation) + '</div>';
+      // Comment line (if any)
+      if (it.comment) subLine += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">💬 ' + escapeHtml(it.comment) + '</div>';
+      // Qty × price → line total, on one row
+      itemsHtml += '<div class="adc-item-card">';
+      itemsHtml +=   '<div class="adc-item-card-name">' + nameLine + '</div>';
+      itemsHtml +=   subLine;
+      itemsHtml +=   '<div class="adc-item-card-row">';
+      itemsHtml +=     '<span class="adc-item-card-qty">' + it.quantity + ' × ' + formatMoney(it.price) + '</span>';
+      itemsHtml +=     '<span class="adc-item-card-sum">' + formatMoney(lineTotal) + '</span>';
+      itemsHtml +=   '</div>';
+      itemsHtml += '</div>';
+    });
+    itemsHtml += '</div>';
+  }
+  // Build detail HTML — header shows order number + table + time + guests
+  var html = '<div class="archive-detail-card">';
+  html += '<div class="adc-header">';
+  html +=   '<div>';
+  html +=     '<div class="adc-table">Заказ №' + escapeHtml(String(dailyNum)) + '</div>';
+  html +=     '<div class="adc-meta">' + escapeHtml(tableLabel) + ' · ' + formatDateTime(order.created_at) + ' · ' + order.guests + ' чел.</div>';
+  if (order.waiter_note) html += '<div class="adc-meta" style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-radius:4px;color:var(--warning);">💬 ' + escapeHtml(order.waiter_note) + '</div>';
+  if (order.cancel_reason) html += '<div class="adc-meta" style="margin-top:6px;padding:6px 10px;background:#ffebee;border-radius:4px;color:var(--danger);">✕ Причина отмены: ' + escapeHtml(order.cancel_reason) + '</div>';
+  html +=   '</div>';
+  html += '</div>';
+  // Items count summary
+  var itemsCount = items.length;
+  var totalQty = items.reduce(function(s, it) { return s + Number(it.quantity || 0); }, 0);
+  html += '<div style="margin-bottom:12px;font-size:0.9rem;color:var(--text-muted);"><b>' + itemsCount + '</b> поз. · <b>' + totalQty + '</b> шт всего</div>';
+  html += itemsHtml;
+  if (order.payment_method) {
+    var payLabel = order.payment_method === 'cash' ? '💵 Наличные' : order.payment_method === 'card' ? '💳 Карта' : order.payment_method === 'mixed' ? '💵 + 💳 Смешанная' : order.payment_method;
+    html += '<div style="margin:12px 0;padding:10px 12px;background:var(--bg);border-radius:6px;font-size:0.95rem;"><b>Оплата:</b> ' + payLabel + '</div>';
+  }
+  html += '<div class="adc-total">Итого: ' + formatMoney(total) + '</div>';
+  html += '</div>';
+  detailDiv.innerHTML = html;
+}
+
 /* ---------- ORDER DETAIL ---------- */
+// Update order note (waiter_note) — used by admin to edit an accepted order's comment.
+// (Waiter can't edit comments on accepted orders — only via this admin path.)
+async function updateOrderNote(orderId, note) {
+  try {
+    await apiPost('updateOrderNote', { order_id: orderId, note: note });
+    // Update local state
+    if (state.currentOrder) state.currentOrder.waiter_note = note;
+    // Update in activeOrders array too
+    const ao = state.activeOrders.find(function(o) { return o.id === orderId; });
+    if (ao) ao.waiter_note = note;
+    showToast('Комментарий обновлён', 'success');
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// "Save" button next to the order comment textarea on the NEW ORDER screen.
+// The textarea already writes to state.orderComment on every input (oninput),
+// so this button just confirms the save visually + plays a subtle feedback.
+function saveOrderCommentBtn() {
+  var ta = document.getElementById('order-comment');
+  if (ta) state.orderComment = ta.value;
+  // Brief visual feedback — flash the button green
+  showToast('Комментарий сохранён', 'success');
+}
+
 function openOrderDetail(orderId) {
   state.currentOrderId = orderId;
   showScreen('order-detail');
 }
 
+// ===== Editable table label (numbered tables only) =====
+// The waiter can rename a numbered table while an order is open — the custom
+// name lives in state.tableLabelOverride[orderId] and is cleared when the
+// order completes or is cancelled. Not persisted to the DB.
+
+// Replaces the label span + pencil button with an inline text input + checkmark.
+function startEditTableLabel() {
+  var span = document.getElementById('order-table-label-text');
+  var editBtn = document.getElementById('order-table-label-edit-btn');
+  if (!span || !editBtn) return;
+  var currentText = span.textContent;
+  var parent = span.parentNode;
+  // Build the edit row
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'order-table-label-input';
+  input.value = currentText;
+  input.style.cssText = 'font-size:1.5rem;font-weight:700;padding:4px 8px;border:2px solid var(--primary);border-radius:6px;flex:1;min-width:0;color:var(--text);background:#fff;';
+  // Replace span + edit button with input + checkmark + cancel
+  var checkBtn = document.createElement('button');
+  checkBtn.type = 'button';
+  checkBtn.innerHTML = '✓';
+  checkBtn.title = 'Сохранить название';
+  checkBtn.style.cssText = 'background:var(--success);color:#fff;border:none;border-radius:6px;width:36px;height:36px;font-size:1.2rem;font-weight:700;cursor:pointer;flex:none;';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.innerHTML = '✕';
+  cancelBtn.title = 'Отмена';
+  cancelBtn.style.cssText = 'background:var(--text-muted);color:#fff;border:none;border-radius:6px;width:36px;height:36px;font-size:1.2rem;font-weight:700;cursor:pointer;flex:none;';
+  // Remove existing children
+  parent.removeChild(span);
+  parent.removeChild(editBtn);
+  parent.appendChild(input);
+  parent.appendChild(checkBtn);
+  parent.appendChild(cancelBtn);
+  input.focus();
+  input.select();
+  // Wire up
+  checkBtn.onclick = function() { saveEditTableLabel(input.value); };
+  cancelBtn.onclick = function() { cancelEditTableLabel(); };
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); saveEditTableLabel(input.value); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEditTableLabel(); }
+  };
+}
+
+function saveEditTableLabel(newLabel) {
+  if (!state.currentOrder) return;
+  var trimmed = (newLabel || '').trim();
+  if (!trimmed) {
+    // Empty → remove override, revert to default
+    delete state.tableLabelOverride[state.currentOrder.id];
+  } else {
+    state.tableLabelOverride[state.currentOrder.id] = trimmed;
+  }
+  saveTableLabelOverride();
+  // Re-render to show the new label
+  renderOrderDetail();
+  // Also update the home screen table blocks + active orders list if visible
+  if (document.getElementById('screen-home').classList.contains('active')) renderHome();
+  if (document.getElementById('screen-orders').classList.contains('active')) renderActiveOrdersList();
+}
+
+function cancelEditTableLabel() {
+  // Just re-render — discards the in-progress input
+  renderOrderDetail();
+}
+
 async function renderOrderDetail() {
   if (!state.currentOrderId) return;
+  // Don't re-render while the waiter is actively typing in a comment field —
+  // it would reset their input. We'll re-render on the next poll tick after
+  // they finish. Also skip if they're in the order-detail screen but the
+  // document doesn't have focus (e.g. they switched to another app).
+  var activeEl = document.activeElement;
+  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+      activeEl.closest('#screen-order-detail')) {
+    // User is editing something — only update the order state silently, skip DOM rebuild
+    try {
+      const order = await apiGet('getOrder', { id: state.currentOrderId });
+      state.currentOrder = order;
+      // Only re-render if item count or qty changed (so admin deletions show up)
+      const oldItems = (state.currentOrder && state.currentOrder.items) || [];
+      const newItems = order.items || [];
+      var sameStructure = oldItems.length === newItems.length;
+      if (sameStructure) {
+        for (var i = 0; i < oldItems.length; i++) {
+          if (oldItems[i].id !== newItems[i].id ||
+              Number(oldItems[i].quantity) !== Number(newItems[i].quantity) ||
+              !!oldItems[i].is_ready !== !!newItems[i].is_ready ||
+              !!oldItems[i].is_served !== !!newItems[i].is_served) {
+            sameStructure = false;
+            break;
+          }
+        }
+      }
+      if (sameStructure) {
+        // No structural change — just update total silently
+        const totalEl = document.getElementById('order-detail-total');
+        if (totalEl) totalEl.textContent = formatMoney(order.total);
+        return;
+      }
+      // Structure changed (admin removed item or changed qty) — re-render even though
+      // user is typing. Their comment will be lost, but it's better than hiding the change.
+    } catch (err) { /* fall through to normal render */ }
+  }
   try {
     const order = await apiGet('getOrder', { id: state.currentOrderId });
     state.currentOrder = order;
 
     const infoDiv = document.getElementById('order-detail-info');
+    // Order comment now lives INSIDE the top info card, displayed as read-only
+    // text below the table/guests/time line. Waiter can't edit it on this screen —
+    // only admin can change the comment via the admin panel.
+    var commentBlock = '';
+    if (order.waiter_note) {
+      commentBlock =
+        '<div style="margin-top:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.9rem;color:var(--text);">' +
+          '<b style="color:var(--warning);">Комментарий к заказу:</b> ' + escapeHtml(order.waiter_note) +
+        '</div>';
+    } else {
+      commentBlock = ''; // no comment → show nothing
+    }
+    // Card color depends on table type:
+    // - numbered tables: white card with red left border (existing)
+    // - virtual tables: light-blue card with blue left border (so they stand out)
+    const isVirtual = order.table_type === 'virtual' || order.table_type === 'tab';
+    const cardBg = isVirtual
+      ? 'linear-gradient(135deg, #e3f2fd 0%, #f5fbff 100%)'
+      : 'linear-gradient(135deg, #fff 0%, #fafafa 100%)';
+    const cardBorder = isVirtual ? 'var(--info)' : 'var(--primary)';
+    // For numbered tables, show a pencil-edit icon next to the table label.
+    // The label is editable while the order is open — edit is stored in
+    // state.tableLabelOverride and applies only until the order completes.
+    const tableLabel = formatTableLabel(order);
+    let tableLabelHtml;
+    if (order.table_type === 'numbered' || !order.table_type) {
+      // Use the override if it exists for this order
+      const override = state.tableLabelOverride && state.tableLabelOverride[order.id];
+      const displayLabel = override || tableLabel;
+      tableLabelHtml =
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span id="order-table-label-text" style="font-size:1.5rem;font-weight:700;">' + escapeHtml(displayLabel) + '</span>' +
+          '<button type="button" id="order-table-label-edit-btn" onclick="startEditTableLabel()" title="Изменить название стола" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;font-size:1rem;line-height:1;">✎</button>' +
+        '</div>';
+    } else {
+      tableLabelHtml = '<div style="font-size:1.5rem;font-weight:700;">' + escapeHtml(tableLabel) + '</div>';
+    }
     infoDiv.innerHTML =
-      '<div class="card">' +
+      '<div class="card" style="background:' + cardBg + ';border-left:4px solid ' + cardBorder + ';margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<div>' +
-            '<div style="font-size:1.5rem;font-weight:700;">' + escapeHtml(formatTableLabel(order)) + '</div>' +
-            '<div style="color:var(--text-muted);">' +
-              (order.main_category_name || '') + ' · ' + order.guests + ' чел. · ' + formatTime(order.created_at) +
+            tableLabelHtml +
+            '<div style="color:var(--text-muted);margin-top:2px;">' +
+              order.guests + ' чел. · ' + formatTime(order.created_at) +
             '</div>' +
           '</div>' +
           '<div style="text-align:right;">' +
             '<span class="pill pill-warning">' +
-              '<span class="status-dot accepted"></span>' + (order.status === 'accepted' ? 'Принят' : order.status) +
+              '<span class="status-dot accepted"></span>' + (order.status === 'accepted' ? 'Принят' : (order.status === 'paused' ? 'На паузе' : order.status)) +
             '</span>' +
           '</div>' +
         '</div>' +
+        commentBlock +
       '</div>';
 
     const itemsDiv = document.getElementById('order-detail-items');
@@ -2493,87 +4199,160 @@ async function renderOrderDetail() {
     if (!order.items || order.items.length === 0) {
       itemsDiv.innerHTML = '<div class="empty-state"><h3>В заказе нет позиций</h3></div>';
     } else {
-      // Note: ready-item notifications + sound are handled centrally in
-      // refreshActiveOrders() so we don't double-fire them here.
+      // Compute bar-only status once before rendering items — if true, "Подано" buttons are hidden
+      const orderBarOnly = isOrderBarOnly(order.items || []);
+      // Group items by "add batch" — items added in the same button press share
+      // a created_at within a few seconds of each other. We use a 5-second window:
+      // if the gap between consecutive items is ≤5s, they belong to the same group.
+      // The first group = original order items; each subsequent group = one "Добавить в заказ" press.
+      var GROUP_WINDOW_MS = 5000; // 5 seconds
+      // Sort all items by created_at ascending
+      var sortedItems = (order.items || []).slice().sort(function(a, b) {
+        return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+      });
+      var itemGroups = [];
+      var currentGroup = null;
+      var prevTime = null;
+      sortedItems.forEach(function(item) {
+        var t = new Date(item.created_at || 0).getTime();
+        if (currentGroup && prevTime !== null && (t - prevTime) <= GROUP_WINDOW_MS) {
+          // Same group — within the window
+          currentGroup.items.push(item);
+        } else {
+          // New group
+          currentGroup = { items: [item] };
+          itemGroups.push(currentGroup);
+        }
+        prevTime = t;
+      });
+      // The first group is the "original" order; all others are "added later"
+      var firstGroupTime = itemGroups.length > 0 ? new Date(itemGroups[0].items[0].created_at || 0).getTime() : null;
 
-      order.items.forEach(function(item, idx) {
-        const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
-        const needsCooking = item.needs_cooking === true || item.needs_cooking === 'true' ||
-                             item.needs_cooking === 'TRUE' || item.needs_cooking === 1 || item.needs_cooking === '1';
-        const isServed = item.is_served === true || item.is_served === 'true' || item.is_served === 'TRUE';
-        const card = document.createElement('div');
-        // Class: 'ready' if cook marked it ready, 'served' if waiter marked it served
-        let cardClass = 'cart-item';
-        if (isServed) cardClass += ' served';
-        else if (isReady) cardClass += ' ready';
-        card.className = cardClass;
-        card.dataset.itemId = item.id;  // for reliable DOM lookup
-        // Build the dish name line: optional category badge + dish name + status badge
-        let statusBadge = '';
-        if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
-        else if (isReady) statusBadge = ' <span class="ci-ready-badge">✓ ГОТОВО</span>';
-        const nameLine = formatItemLabel(item) + statusBadge;
-        card.innerHTML =
-          '<div class="ci-top">' +
-            '<div class="ci-name">' + nameLine + '</div>' +
-            '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
-          '</div>' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
-            (isServed
-              ? '<div class="stepper" data-item-id="' + item.id + '" style="opacity:0.5;">' +
-                  '<button disabled>−</button>' +
-                  '<input type="number" value="' + item.quantity + '" readonly disabled>' +
-                  '<button disabled>+</button>' +
-                '</div>'
-              : '<div class="stepper" data-item-id="' + item.id + '">' +
-                  '<button onclick="changeOrderItemQty(\'' + item.id + '\', -1)">−</button>' +
-                  '<input type="number" value="' + item.quantity + '" readonly>' +
-                  '<button onclick="changeOrderItemQty(\'' + item.id + '\', 1)">+</button>' +
-                '</div>'
-            ) +
-            '<div style="display:flex;gap:6px;">' +
-              (isServed
-                ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
-                : (isReady || !needsCooking || !state.cookEnabled
-                  ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
-                  : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
-                  )
+      itemGroups.forEach(function(group, groupIdx) {
+        var isAddedLater = groupIdx > 0; // first group = original, rest = added later
+        // For added-later groups: collect the first non-empty comment from any
+        // item — it will be shown ONCE at the bottom of the whole block.
+        var groupComment = null;
+        if (isAddedLater) {
+          for (var i = 0; i < group.items.length; i++) {
+            if (group.items[i].comment && group.items[i].comment.trim()) {
+              groupComment = group.items[i].comment;
+              break;
+            }
+          }
+        }
+        // Wrapper for added-later groups — one solid highlighted block
+        var groupWrapper = null;
+        if (isAddedLater) {
+          groupWrapper = document.createElement('div');
+          groupWrapper.className = 'order-added-group';
+          groupWrapper.style.cssText = 'background:rgba(76,175,80,0.08);border-left:4px solid var(--success);border-radius:8px;padding:10px 12px;margin-bottom:10px;';
+          itemsDiv.appendChild(groupWrapper);
+        }
+        group.items.forEach(function(item, itemIdx) {
+          const isReady = item.is_ready === true || item.is_ready === 'true' || item.is_ready === 'TRUE';
+          const needsCooking = item.needs_cooking === true || item.needs_cooking === 'true' ||
+                               item.needs_cooking === 'TRUE' || item.needs_cooking === 1 || item.needs_cooking === '1';
+          const isServed = item.is_served === true || item.is_served === 'true' || item.is_served === 'TRUE';
+          // Build the dish name line: optional category badge + dish name + qty + status badge
+          let statusBadge = '';
+          if (isServed) statusBadge = ' <span class="ci-served-badge">✓ ПОДАНО</span>';
+          else if (isReady) statusBadge = ' <span class="ci-ready-badge">✓ ГОТОВО</span>';
+          const qtyBadge = ' <span style="color:var(--text-muted);font-weight:500;font-size:0.9rem;">· ' + item.quantity + ' шт</span>';
+          const nameLine = formatItemLabel(item) + qtyBadge + statusBadge;
+
+          if (isAddedLater) {
+            // Inside the added-later group: items are simple rows, NOT separate cards.
+            // No individual background/shadow — just name + price + served button,
+            // separated by a thin divider line between items.
+            var row = document.createElement('div');
+            row.dataset.itemId = item.id;
+            var rowStyle = 'padding:8px 0;';
+            if (itemIdx > 0) rowStyle += 'border-top:1px solid rgba(0,0,0,0.08);';
+            row.style.cssText = rowStyle;
+            row.innerHTML =
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+                '<div style="flex:1;min-width:0;font-weight:600;font-size:0.95rem;">' + nameLine + '</div>' +
+                '<div style="font-weight:700;color:var(--primary);white-space:nowrap;">' + formatMoney(item.price * item.quantity) + '</div>' +
+              '</div>' +
+              '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">' +
+                (orderBarOnly
+                  ? ''
+                  : (isServed
+                    ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                    : (isReady || !needsCooking || !state.cookEnabled
+                      ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                      : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+                      )
+                    )
+                  ) +
+              '</div>';
+            groupWrapper.appendChild(row);
+          } else {
+            // Original order items — normal cart-item cards with individual comments
+            const card = document.createElement('div');
+            let cardClass = 'cart-item';
+            if (isServed) cardClass += ' served';
+            else if (isReady) cardClass += ' ready';
+            card.className = cardClass;
+            card.dataset.itemId = item.id;
+            card.innerHTML =
+              '<div class="ci-top">' +
+                '<div class="ci-name">' + nameLine + '</div>' +
+                '<div class="ci-price">' + formatMoney(item.price * item.quantity) + '</div>' +
+              '</div>' +
+              (item.comment
+                ? '<div style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);"><b>Пояснение:</b> ' + escapeHtml(item.comment) + '</div>'
+                : ''
               ) +
-              (isServed
-                ? '' // no "Удалить" button if already served
-                : '<button class="btn btn-danger btn-sm" onclick="withLoading(this, \'...\', function() { return removeOrderItem(\'' + item.id + '\'); })">Удалить</button>'
-              ) +
-            '</div>' +
-          '</div>' +
-          (isServed
-            ? '' // no comment field if already served
-            : '<div class="ci-comment">' +
-                '<input type="text" placeholder="' + (needsCooking ? 'Комментарий повару...' : 'Комментарий...') + '" value="' + escapeHtml(item.comment || '') + '" ' +
-                'onchange="updateOrderItemComment(\'' + item.id + '\', this.value)">' +
-              '</div>'
-          );
-        itemsDiv.appendChild(card);
+              '<div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;flex-wrap:wrap;">' +
+                (orderBarOnly
+                  ? ''
+                  : (isServed
+                    ? '<button class="btn btn-outline btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', false); })">↩ Не подано</button>'
+                    : (isReady || !needsCooking || !state.cookEnabled
+                      ? '<button class="btn btn-info btn-sm" onclick="withLoading(this, \'...\', function() { return toggleItemServed(\'' + item.id + '\', true); })">✓ Подано</button>'
+                      : '<button class="btn btn-info btn-sm disabled-btn" disabled title="Блюдо ещё не готово">✓ Подано</button>'
+                      )
+                    )
+                  ) +
+              '</div>';
+            itemsDiv.appendChild(card);
+          }
+        });
+        // ONE пояснение at the very bottom of the added-later block (never per-item)
+        if (isAddedLater && groupComment) {
+          var commentDiv = document.createElement('div');
+          commentDiv.style.cssText = 'margin-top:8px;padding:8px 12px;background:#fff8e1;border-left:3px solid var(--warning);border-radius:4px;font-size:0.85rem;color:var(--text);';
+          commentDiv.innerHTML = '<b>Пояснение:</b> ' + escapeHtml(groupComment);
+          groupWrapper.appendChild(commentDiv);
+        }
       });
     }
 
+    // Order comment is now displayed INSIDE the top info card (read-only for the waiter).
+    // No separate textarea below the items list anymore.
+
     document.getElementById('order-detail-total').textContent = formatMoney(order.total);
 
-    // Enable/disable "Завершить заказ" button — requires ALL items served
+    // Enable/disable "Завершить заказ" button — requires ALL items served,
+    // UNLESS the order is bar-only (all items belong to bar categories).
     const detItems = order.items || [];
     const detNotServed = detItems.filter(function(i) {
       return !(i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE');
     });
+    const isBarOnly = isOrderBarOnly(detItems);
     const completeBtns = document.querySelectorAll('#screen-order-detail .btn-success');
     completeBtns.forEach(function(btn) {
       if (btn.textContent.indexOf('Завершить') >= 0) {
-        if (detNotServed.length > 0) {
+        if (detNotServed.length > 0 && !isBarOnly) {
           btn.disabled = true;
           btn.classList.add('disabled-btn');
           btn.title = 'Нельзя завершить: ещё не подано ' + detNotServed.length + ' поз.';
         } else {
           btn.disabled = false;
           btn.classList.remove('disabled-btn');
-          btn.title = '';
+          btn.title = isBarOnly ? 'Бар-заказ — можно завершить без подачи' : '';
         }
       }
     });
@@ -2740,21 +4519,22 @@ async function toggleItemServed(itemId, newValue) {
 }
 
 function addMoreToOrder() {
-  // Switch to menu mode for adding to existing order
+  // Switch to order screen for adding to existing order
   state.addingToOrder = true;
-  // Find main category from order
-  const mainCat = APP_DATA.categories.find(function(c) { return c.id === state.currentOrder.main_category_id; });
-  if (!mainCat) {
-    showToast('Категория не найдена', 'error');
-    return;
-  }
-  state.mainCategory = mainCat;
+  // Use the order's table info so the left panel shows the right context
+  state.selectedTable = state.currentOrder.table_number;
+  state.selectedTableType = state.currentOrder.table_type || 'numbered';
+  state.selectedTabId = state.currentOrder.tab_id || '';
+  state.selectedTabName = state.currentOrder.table_type === 'tab' ? state.currentOrder.table_number : '';
+  state.selectedVirtualBase = state.currentOrder.table_type === 'virtual' ? state.currentOrder.table_number : '';
+  state.selectedVirtualLabel = state.currentOrder.table_type === 'virtual' ? state.currentOrder.table_number : '';
+  state.cart = [];
+  state.orderComment = '';
+  state.guests = state.currentOrder.guests || 1;
+  // Reset category — let the waiter choose what to add
+  state.mainCategory = null;
   state.currentSubcat = null;
-  state.cart = []; // temporary cart for additions
-  showScreen('menu');
-  // Override the accept handler
-  // (the menu screen works the same way; we'll redirect the cart-accept to add-to-existing-order)
-  renderMenu();
+  openOrderScreen();
 }
 
 // Override: if user is in "add to order" mode, acceptOrder becomes addToExistingOrder
@@ -2790,6 +4570,7 @@ async function addToExistingOrder() {
       });
     }
     state.cart = [];
+  state.orderComment = '';
     state.addingToOrder = false;
     state.mainCategory = null;
     state.currentSubcat = null;
@@ -2808,6 +4589,7 @@ async function completeOrder() {
 }
 
 let _pendingCompleteOrderId = null;
+let _pendingCompleteTotal = 0; // fresh total from server (may differ from state.activeOrders if items were just added)
 let _selectedPaymentMethod = null;
 
 async function completeOrderById(orderId) {
@@ -2827,12 +4609,13 @@ async function completeOrderById(orderId) {
     await refreshActiveOrders();
     return;
   }
-  // Check: ALL items must be SERVED before completing the order.
+  // Check: ALL items must be SERVED before completing, UNLESS bar-only order
   const items = order.items || [];
   const notServed = items.filter(function(i) {
     return !(i.is_served === true || i.is_served === 'true' || i.is_served === 'TRUE');
   });
-  if (notServed.length > 0) {
+  const isBarOnly = isOrderBarOnly(items);
+  if (notServed.length > 0 && !isBarOnly) {
     const names = notServed.map(function(i) {
       return escapeHtml(i.name) + ' ×' + i.quantity;
     }).join(', ');
@@ -2840,16 +4623,34 @@ async function completeOrderById(orderId) {
     return;
   }
   _pendingCompleteOrderId = orderId;
+  _pendingCompleteTotal = Number(order.total) || 0; // store fresh total for payment calculation
   _selectedPaymentMethod = null;
 
-  // Reset modal state
+  // Reset payment modal state
   document.querySelectorAll('.payment-option').forEach(function(el) { el.classList.remove('selected'); });
   document.getElementById('confirm-payment-btn').disabled = true;
+  // Clear cash-received and change fields from previous orders
+  const cashInput = document.getElementById('cash-received');
+  if (cashInput) cashInput.value = '';
+  const changeEl = document.getElementById('change-display');
+  if (changeEl) changeEl.innerHTML = 'Сдача: —';
+  // Hide cash change section
+  const cashSection = document.getElementById('cash-change-section');
+  if (cashSection) cashSection.style.display = 'none';
+  // Clear mixed payment fields
+  const mixedCash = document.getElementById('mixed-cash-amount');
+  if (mixedCash) mixedCash.value = '';
+  const mixedCard = document.getElementById('mixed-card-amount');
+  if (mixedCard) mixedCard.value = '';
+  const mixedTotal = document.getElementById('mixed-total-display');
+  if (mixedTotal) { mixedTotal.innerHTML = 'Итого: —'; mixedTotal.style.background = '#f5f5f5'; }
+  const mixedSection = document.getElementById('mixed-payment-section');
+  if (mixedSection) mixedSection.style.display = 'none';
 
   // Fill order info
   const info = document.getElementById('payment-order-info');
   info.innerHTML =
-    '<div><b>' + escapeHtml(formatTableLabel(order)) + '</b> · ' + (order.main_category_name || '') + ' · ' + order.guests + ' чел.</div>' +
+    '<div><b>' + escapeHtml(formatTableLabel(order)) + '</b> · ' + order.guests + ' чел.</div>' +
     '<div style="font-size:1.5rem;font-weight:800;color:var(--primary);margin-top:6px;">' + formatMoney(order.total) + '</div>';
 
   // Pre-fill payment amounts (same total for both, just for visual clarity)
@@ -2866,19 +4667,24 @@ function selectPaymentMethod(method) {
     el.classList.toggle('selected', el.dataset.method === method);
   });
   document.getElementById('confirm-payment-btn').disabled = false;
-  // Show/hide cash change calculator
+  // Show/hide cash change calculator (cash only)
   const cashSection = document.getElementById('cash-change-section');
-  if (cashSection) {
-    cashSection.style.display = (method === 'cash') ? 'block' : 'none';
-  }
-  // Reset change display
+  if (cashSection) cashSection.style.display = (method === 'cash') ? 'block' : 'none';
+  // Show/hide mixed payment section
+  const mixedSection = document.getElementById('mixed-payment-section');
+  if (mixedSection) mixedSection.style.display = (method === 'mixed') ? 'block' : 'none';
+  // Reset cash change display
   const changeDisplay = document.getElementById('change-display');
-  if (changeDisplay) {
-    changeDisplay.textContent = 'Сдача: —';
-    changeDisplay.style.background = '';
-  }
+  if (changeDisplay) { changeDisplay.textContent = 'Сдача: —'; changeDisplay.style.background = ''; }
   const cashInput = document.getElementById('cash-received');
   if (cashInput) cashInput.value = '';
+  // Reset mixed fields
+  const mixedCash = document.getElementById('mixed-cash-amount');
+  if (mixedCash) mixedCash.value = '';
+  const mixedCard = document.getElementById('mixed-card-amount');
+  if (mixedCard) mixedCard.value = '';
+  const mixedTotal = document.getElementById('mixed-total-display');
+  if (mixedTotal) { mixedTotal.innerHTML = 'Итого: —'; mixedTotal.style.background = '#f5f5f5'; }
 }
 
 function calculateChange() {
@@ -2886,10 +4692,8 @@ function calculateChange() {
   const changeDisplay = document.getElementById('change-display');
   if (!cashInput || !changeDisplay) return;
   const received = Number(cashInput.value) || 0;
-  // Get the order total from the modal
-  const order = state.activeOrders.find(function(o) { return o.id === _pendingCompleteOrderId; });
-  if (!order) return;
-  const total = Number(order.total) || 0;
+  // Use the fresh total fetched in completeOrderById
+  const total = _pendingCompleteTotal || 0;
   if (received === 0) {
     changeDisplay.textContent = 'Сдача: —';
     changeDisplay.style.background = '';
@@ -2911,6 +4715,66 @@ function calculateChange() {
   }
 }
 
+// Calculate total for mixed payment and check if it matches the order total
+function calculateMixedTotal() {
+  const cashEl = document.getElementById('mixed-cash-amount');
+  const cardEl = document.getElementById('mixed-card-amount');
+  const totalEl = document.getElementById('mixed-total-display');
+  if (!cashEl || !cardEl || !totalEl) return;
+  const cash = Number(cashEl.value) || 0;
+  const card = Number(cardEl.value) || 0;
+  const sum = cash + card;
+  // Use the fresh total fetched in completeOrderById — state.activeOrders
+  // may be stale if items were just added to the order.
+  const total = _pendingCompleteTotal || 0;
+  if (sum === 0) {
+    totalEl.innerHTML = 'Итого: —';
+    totalEl.style.background = '#f5f5f5';
+    totalEl.style.color = '';
+    // Disable confirm button when no amounts entered
+    const confirmBtn = document.getElementById('confirm-payment-btn');
+    if (confirmBtn) confirmBtn.disabled = true;
+    return;
+  }
+  const diff = sum - total;
+  if (diff < 0) {
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--danger);">(не хватает ' + formatMoney(Math.abs(diff)) + ')</span>';
+    totalEl.style.background = '#ffebee';
+  } else if (diff === 0) {
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' ✅';
+    totalEl.style.background = '#e8f5e9';
+    totalEl.style.color = 'var(--success)';
+  } else {
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--warning);">(переплата ' + formatMoney(diff) + ')</span>';
+    totalEl.style.background = '#fff8e1';
+  }
+  // Enable/disable confirm button based on whether total matches
+  const confirmBtn = document.getElementById('confirm-payment-btn');
+  if (confirmBtn) confirmBtn.disabled = (diff !== 0);
+}
+
+// When the waiter types in one mixed-payment field, auto-calculate the remainder
+// and fill the other field. e.g. total=52, enter cash=20 → card auto-fills 32.
+function onMixedPaymentInput(which) {
+  var cashEl = document.getElementById('mixed-cash-amount');
+  var cardEl = document.getElementById('mixed-card-amount');
+  if (!cashEl || !cardEl) return;
+  // Use the fresh total fetched in completeOrderById
+  var total = _pendingCompleteTotal || 0;
+  if (which === 'cash') {
+    var cash = Number(cashEl.value) || 0;
+    var remainder = total - cash;
+    if (remainder < 0) remainder = 0;
+    cardEl.value = remainder > 0 ? remainder.toFixed(2) : '';
+  } else {
+    var card = Number(cardEl.value) || 0;
+    var remainder = total - card;
+    if (remainder < 0) remainder = 0;
+    cashEl.value = remainder > 0 ? remainder.toFixed(2) : '';
+  }
+  calculateMixedTotal();
+}
+
 function closePaymentModal() {
   document.getElementById('modal-payment').classList.remove('open');
   _pendingCompleteOrderId = null;
@@ -2925,14 +4789,37 @@ async function confirmCompleteOrder() {
   }
   const orderId = _pendingCompleteOrderId;
   const method = _selectedPaymentMethod;
+  let cashAmount = 0, cardAmount = 0;
+  // Use the fresh total stored by completeOrderById — state.activeOrders may
+  // be stale (items were added but polling hasn't updated the cached total yet).
+  const total = _pendingCompleteTotal || 0;
+
+  if (method === 'cash') {
+    cashAmount = total;
+  } else if (method === 'card') {
+    cardAmount = total;
+  } else if (method === 'mixed') {
+    cashAmount = Number(document.getElementById('mixed-cash-amount').value) || 0;
+    cardAmount = Number(document.getElementById('mixed-card-amount').value) || 0;
+    if (Math.round((cashAmount + cardAmount) * 100) !== Math.round(total * 100)) {
+      showToast('Сумма наличных и карты должна равняться ' + formatMoney(total), 'warning');
+      return;
+    }
+  }
   try {
     await apiPost('updateOrderStatus', {
       order_id: orderId,
       status: 'completed',
-      payment_method: method
+      payment_method: method,
+      cash_amount: cashAmount,
+      card_amount: cardAmount
     });
-    showToast('Заказ завершён (' + (method === 'cash' ? 'наличные' : 'карта') + ')', 'success');
+    const methodLabel = method === 'cash' ? 'наличные' : (method === 'card' ? 'карта' : 'смешанная');
+    showToast('Заказ завершён (' + methodLabel + ')', 'success');
     closePaymentModal();
+    // Clear the table-label override for this order (the custom name was
+    // only valid while the order was open)
+    if (state.tableLabelOverride) { delete state.tableLabelOverride[orderId]; saveTableLabelOverride(); }
     await refreshActiveOrders();
     if (state.currentOrderId === orderId) {
       state.currentOrderId = null;
@@ -2944,17 +4831,75 @@ async function confirmCompleteOrder() {
 }
 
 async function cancelOrder() {
-  const ok = await confirmDialog('Отменить заказ полностью? Он будет удалён.', 'Отмена заказа', 'Отменить заказ', 'Оставить', 'btn-danger');
-  if (!ok) return;
-  try {
-    await apiPost('deleteOrder', { order_id: state.currentOrderId });
-    showToast('Заказ отменён', 'info');
-    state.currentOrderId = null;
-    await refreshActiveOrders();
-    showScreen('home');
-  } catch (err) {
-    showToast('Ошибка: ' + err.message, 'error');
-  }
+  // Build a modal that requires a cancel reason
+  const existing = document.getElementById('cancel-order-overlay');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'cancel-order-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:20px;max-width:420px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.3);">' +
+      '<h3 style="margin:0 0 8px;color:var(--danger);">Отмена заказа</h3>' +
+      '<p style="margin:0 0 14px;font-size:0.9rem;color:var(--text-muted);">Укажите причину отмены — она будет показана в статистике заказов.</p>' +
+      '<textarea id="cancel-reason-input" rows="3" placeholder="Например: клиент передумал, ошибка в заказе, нет продукта..." style="width:100%;padding:10px;font-size:1rem;border:2px solid var(--border);border-radius:8px;resize:vertical;box-sizing:border-box;"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">' +
+        '<button type="button" class="btn btn-outline" id="cancel-order-abort">Оставить заказ</button>' +
+        '<button type="button" class="btn btn-danger" id="cancel-order-confirm" disabled style="opacity:0.5;cursor:not-allowed;">Отменить заказ</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  // Promise that resolves with {confirm: bool, reason: string}
+  return new Promise(function(resolve) {
+    const reasonInput = overlay.querySelector('#cancel-reason-input');
+    const confirmBtn = overlay.querySelector('#cancel-order-confirm');
+    const abortBtn = overlay.querySelector('#cancel-order-abort');
+
+    // Enable/disable confirm button based on whether reason is non-empty
+    reasonInput.addEventListener('input', function() {
+      const has = reasonInput.value.trim().length > 0;
+      confirmBtn.disabled = !has;
+      confirmBtn.style.opacity = has ? '1' : '0.5';
+      confirmBtn.style.cursor = has ? 'pointer' : 'not-allowed';
+    });
+
+    // Close on backdrop click = abort
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        overlay.remove();
+        resolve({ confirm: false, reason: '' });
+      }
+    });
+    abortBtn.addEventListener('click', function() {
+      overlay.remove();
+      resolve({ confirm: false, reason: '' });
+    });
+    confirmBtn.addEventListener('click', function() {
+      if (confirmBtn.disabled) return;
+      const reason = reasonInput.value.trim();
+      overlay.remove();
+      resolve({ confirm: true, reason: reason });
+    });
+    // Focus the textarea
+    setTimeout(function() { reasonInput.focus(); }, 50);
+  }).then(async function(result) {
+    if (!result.confirm) return;
+    try {
+      // Mark order as cancelled (instead of deleting) so it stays in statistics
+      await apiPost('cancelOrderWithReason', {
+        order_id: state.currentOrderId,
+        cancel_reason: result.reason
+      });
+      showToast('Заказ отменён', 'info');
+      // Clear the table-label override (cancelled order → table name resets)
+      if (state.tableLabelOverride) { delete state.tableLabelOverride[state.currentOrderId]; saveTableLabelOverride(); }
+      state.currentOrderId = null;
+      await refreshActiveOrders();
+      showScreen('home');
+    } catch (err) {
+      showToast('Ошибка: ' + err.message, 'error');
+    }
+  });
 }
 
 /* Override the cart accept button to handle both flows */
@@ -2983,7 +4928,9 @@ function stopBadgePolling() {
 function startOrderPolling() {
   stopOrderPolling();
   renderOrderDetail(); // initial render
-  const interval = getPollInterval('poll_interval_waiter', 'POLL_ORDERS');
+  // Faster poll when the waiter is actively viewing an order detail — admin
+  // edits should appear within ~2-3 seconds, not the default 5s.
+  const interval = Math.min(getPollInterval('poll_interval_waiter', 'POLL_ORDERS'), 3000);
   state.pollingTimer = setInterval(renderOrderDetail, interval);
   console.log('Waiter order polling started:', interval + 'ms');
 }
