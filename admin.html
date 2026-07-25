@@ -1499,11 +1499,14 @@
       </select>
     </div>
     <div class="form-group">
-      <label>Начальный баланс</label>
+      <label>Баланс</label>
       <input type="number" id="account-initial-balance" min="0" step="0.01" placeholder="0" value="0">
+      <p id="account-balance-hint" style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;line-height:1.4;">
+        Для обычного счёта — начальный баланс (не меняется автоматически).
+      </p>
     </div>
     <div class="form-group checkbox-field">
-      <input type="checkbox" id="account-is-cash-register">
+      <input type="checkbox" id="account-is-cash-register" onchange="onAccountCashRegisterToggle()">
       <label for="account-is-cash-register" style="margin:0;font-weight:600;">💵 Это счёт кассы ресторана</label>
       <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;line-height:1.4;">
         Только один счёт может быть кассой. При закрытии смены официанта фактическая сумма в кассе сравнивается с ожидаемой. Поставки с этого счёта списываются из кассы автоматически.
@@ -4863,17 +4866,21 @@ async function loadAccountsList() {
     html += '<th style="width:30%;">Название счёта</th>';
     html += '<th style="width:10%;">Валюта</th>';
     html += '<th style="width:18%;">Тип</th>';
-    html += '<th style="width:17%;text-align:right;">Начальный баланс</th>';
+    html += '<th style="width:17%;text-align:right;">Баланс</th>';
     html += '<th style="width:80px;text-align:center;"></th>';
     html += '</tr></thead><tbody>';
     const typeLabels = { cash: 'Наличный', card: 'Карта', bank: 'Безналичный' };
+    const cashRegisterValue = Number((APP_DATA.settings && APP_DATA.settings.cash_register) || 0);
     accounts.forEach(function(a) {
+      // For cash-register accounts, show the live cash_register setting value;
+      // otherwise show the static initial_balance.
+      const balance = a.is_cash_register ? cashRegisterValue : (Number(a.initial_balance) || 0);
       const cashBadge = a.is_cash_register ? ' <span style="display:inline-block;background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:700;margin-left:6px;">💵 касса ресторана</span>' : '';
       html += '<tr>'
       html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(a.name) + cashBadge + '</td>';
       html += '<td>' + escapeHtml(a.currency || '₾') + '</td>';
       html += '<td>' + escapeHtml(typeLabels[a.type] || a.type) + '</td>';
-      html += '<td style="text-align:right;font-weight:600;">' + formatMoney(a.initial_balance || 0, a.currency) + '</td>';
+      html += '<td style="text-align:right;font-weight:600;' + (a.is_cash_register ? 'color:#e65100;' : '') + '">' + formatMoney(balance, a.currency) + '</td>';
       html += '<td style="text-align:center;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openAccountModal(\'' + a.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteAccountUI(\'' + a.id + '\')">✕</button>' +
@@ -4896,8 +4903,15 @@ function openAccountModal(id, returnToDelivery) {
     document.getElementById('account-name').value = a.name || '';
     document.getElementById('account-currency').value = a.currency || '₾';
     document.getElementById('account-type').value = a.type || 'cash';
-    document.getElementById('account-initial-balance').value = a.initial_balance || 0;
     document.getElementById('account-is-cash-register').checked = a.is_cash_register === true;
+    // For cash-register accounts, show the live cash_register setting value
+    // (which reflects actual cash on hand, updated by shifts + transactions).
+    if (a.is_cash_register) {
+      const cashValue = Number((APP_DATA.settings && APP_DATA.settings.cash_register) || 0);
+      document.getElementById('account-initial-balance').value = cashValue;
+    } else {
+      document.getElementById('account-initial-balance').value = a.initial_balance || 0;
+    }
   } else {
     document.getElementById('modal-account-title').textContent = 'Новый счёт';
     document.getElementById('account-id').value = '';
@@ -4907,8 +4921,34 @@ function openAccountModal(id, returnToDelivery) {
     document.getElementById('account-initial-balance').value = 0;
     document.getElementById('account-is-cash-register').checked = false;
   }
+  onAccountCashRegisterToggle();
   window._accountModalReturnToDelivery = returnToDelivery === true;
   openModal('modal-account');
+}
+
+// Toggle the balance field hint + read-only state based on is_cash_register checkbox.
+// When checked, the balance field shows the current cash_register setting value
+// (read-only — it's managed by shifts and transactions).
+function onAccountCashRegisterToggle() {
+  const cb = document.getElementById('account-is-cash-register');
+  const input = document.getElementById('account-initial-balance');
+  const hint = document.getElementById('account-balance-hint');
+  if (!cb || !input || !hint) return;
+  if (cb.checked) {
+    // Show current cash_register value as a starting point (user can still edit
+    // to override if needed, but the field is informational)
+    const cashValue = Number((APP_DATA.settings && APP_DATA.settings.cash_register) || 0);
+    if (!input.value || Number(input.value) === 0) {
+      input.value = cashValue;
+    }
+    input.readOnly = false; // allow manual correction, but it's normally managed
+    hint.innerHTML = '💵 Баланс кассы берётся из фактической суммы в кассе (обновляется при закрытии смены, инкассациях и поставках). Можно скорректировать вручную при необходимости.';
+    hint.style.color = '#e65100';
+  } else {
+    input.readOnly = false;
+    hint.textContent = 'Для обычного счёта — начальный баланс (не меняется автоматически).';
+    hint.style.color = 'var(--text-muted)';
+  }
 }
 
 async function saveAccountUI() {

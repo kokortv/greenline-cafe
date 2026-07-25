@@ -1251,16 +1251,29 @@ async function saveAccount(data) {
         try { await dbUpdate('accounts', a.id, { is_cash_register: false }); } catch(e) { console.warn(e.message); }
       }
     }
-    // Sync the cash_register setting with this account's initial_balance (only on first designation)
-    if (existing.length === 0 || existing[0].is_cash_register !== true) {
-      try {
-        const currentCash = Number(await getSetting('cash_register')) || 0;
-        // Only override if cash_register is at 0 (initial state) — otherwise let it be
-        if (currentCash === 0 && Number(record.initial_balance) > 0) {
-          await saveSettingsToDB({ cash_register: String(record.initial_balance) });
+    // Sync the cash_register setting:
+    // - On FIRST designation (new account or non-cash → cash): only seed if cash_register is 0
+    // - On subsequent saves (already cash): if the user manually changed the balance,
+    //   treat it as a manual correction and update cash_register to match
+    const wasCashRegister = existing.length > 0 && existing[0].is_cash_register === true;
+    try {
+      const currentCash = Number(await getSetting('cash_register')) || 0;
+      const newBalance = Number(record.initial_balance) || 0;
+      if (!wasCashRegister) {
+        // First time being designated as cash register
+        if (currentCash === 0 && newBalance > 0) {
+          await saveSettingsToDB({ cash_register: String(newBalance) });
         }
-      } catch(e) { console.warn('Failed to sync cash_register', e.message); }
-    }
+      } else {
+        // Already was cash register — if balance changed, treat as manual correction
+        const oldBalance = Number(existing[0].initial_balance) || 0;
+        if (Math.abs(newBalance - currentCash) >= 0.01 && Math.abs(newBalance - oldBalance) >= 0.01) {
+          // User entered a new value that differs from both stored balance AND current cash_register
+          // → treat as a manual correction
+          await saveSettingsToDB({ cash_register: String(newBalance) });
+        }
+      }
+    } catch(e) { console.warn('Failed to sync cash_register', e.message); }
   }
   if (existing.length > 0) {
     return await dbUpdate('accounts', id, record);
