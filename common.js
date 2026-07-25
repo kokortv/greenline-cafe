@@ -286,7 +286,13 @@ async function loadAppData(force) {
 }
 
 async function loadAppDataForce() {
-  return loadAppData(true);
+  const result = await loadAppData(true);
+  // Reset the warehouse dropdown populated flag so it re-renders with fresh data
+  try {
+    const sel = document.getElementById('stock-warehouse-select');
+    if (sel) delete sel.dataset.populated;
+  } catch (e) {}
+  return result;
 }
 
 /* ---------- Orders ---------- */
@@ -826,7 +832,24 @@ async function closeShift(waiterId, actualCash) {
   });
 
   const openingCash = Number(shift.opening_cash) || 0;
-  const expectedCash = openingCash + cashTotal;
+
+  // ===== Fetch shift_transactions (incassations + supply payments) for this shift =====
+  let incassationTotal = 0, supplyPaymentTotal = 0;
+  try {
+    const { data: txs } = await _sb.from('shift_transactions')
+      .select('*')
+      .eq('shift_id', shift.id);
+    (txs || []).forEach(function(t) {
+      if (t.type === 'incassation') incassationTotal += Number(t.amount) || 0;
+      else if (t.type === 'supply_payment') supplyPaymentTotal += Number(t.amount) || 0;
+    });
+  } catch (e) {
+    console.warn('Failed to fetch shift_transactions for shift', shift.id, e.message);
+  }
+
+  // Expected cash in drawer:
+  //   openingCash + cashOrdersDuringShift - incassationsDuringShift - supplyPaymentsDuringShift
+  const expectedCash = openingCash + cashTotal - incassationTotal - supplyPaymentTotal;
   // actualCash is what the waiter counted; if not provided, fall back to expected
   const countedCash = (actualCash !== undefined && actualCash !== null && actualCash !== '')
     ? Number(actualCash) : expectedCash;
@@ -841,12 +864,15 @@ async function closeShift(waiterId, actualCash) {
     orders_count: (orders || []).length,
     guests_count: guestsCount,
     actual_cash: countedCash,
-    cash_difference: cashDifference
+    cash_difference: cashDifference,
+    incassation_total: incassationTotal,
+    supply_payment_total: supplyPaymentTotal
   });
 
-  // Add cash to register — use the COUNTED amount (what's actually in the drawer)
-  const currentCash = Number(await getSetting('cash_register')) || 0;
-  await saveSettingsToDB({ cash_register: String(currentCash + countedCash) });
+  // Set cash_register to the counted amount (the actual money in the drawer)
+  // NOTE: the previous logic added countedCash to currentCash, which double-counted.
+  // The correct value is just countedCash — that IS what's in the drawer right now.
+  await saveSettingsToDB({ cash_register: String(countedCash) });
 
   return {
     id: shift.id,
@@ -857,12 +883,161 @@ async function closeShift(waiterId, actualCash) {
     guests_count: guestsCount,
     cash_total: cashTotal,
     card_total: cardTotal,
+    incassation_total: incassationTotal,
+    supply_payment_total: supplyPaymentTotal,
     expected_cash: expectedCash,
     actual_cash: countedCash,
     cash_difference: cashDifference,
-    final_cash: currentCash + countedCash,
+    final_cash: countedCash,
     status: 'closed'
   };
+}
+
+/* ---------- Waiter transactions: incassation + supply from cash register ---------- */
+// waiterTransaction(data) — handles two types of cash-register movements initiated
+// by the waiter from the index.html top-bar transaction button.
+//
+// data.type:        'incassation' | 'supply'
+// data.amount:      number (required for incassation; for supply, computed from items if not given)
+// data.waiter_id:   string (required)
+// data.waiter_name: string
+// data.supplier_name: string (supply only)
+// data.supplier_id:   string (supply only, optional — looked up by name if absent)
+// data.items:       array (supply only) — same shape as saveDelivery items
+// data.comment:     string (optional)
+//
+// Both types:
+//   1. Find the waiter's open shift (fail if none)
+//   2. Find the cash-register account (is_cash_register=true)
+//   3. Deduct amount from cash_register setting
+//   4. Record a shift_transaction row linked to the shift
+//   'supply' type additionally:
+//   5. Create a delivery record (with warehouse = first cash-register-linked warehouse)
+//   6. Apply items to stock if data.apply_to_stock is true
+async function waiterTransaction(data) {
+  if (!data || !data.waiter_id) throw new Error('waiter_id required');
+  if (!data.type || (data.type !== 'incassation' && data.type !== 'supply')) {
+    throw new Error('type must be "incassation" or "supply"');
+  }
+
+  // 1. Find the waiter's open shift
+  const shifts = await dbSelect('shifts', { waiter_id: data.waiter_id, status: 'open' });
+  if (shifts.length === 0) throw new Error('Нет открытой смены');
+  const shift = shifts[0];
+
+  // 2. Find the cash-register account
+  const allAccs = await dbSelect('accounts', { is_active: true });
+  const cashAcc = allAccs.find(function(a) { return a.is_cash_register === true; });
+  if (!cashAcc) {
+    throw new Error('Не найден счёт кассы. Отметьте один счёт как "Касса ресторана" в админке.');
+  }
+
+  // 3. Find a warehouse linked to the cash-register account (for supply type)
+  let warehouseId = '', warehouseName = '';
+  if (data.type === 'supply') {
+    const allWhs = await dbSelect('warehouses', { is_active: true });
+    const linkedWh = allWhs.find(function(w) { return w.account_id === cashAcc.id; });
+    if (!linkedWh) {
+      throw new Error('Не найден склад, привязанный к кассе ресторана. Создайте склад и привяжите его к счёту кассы.');
+    }
+    warehouseId = linkedWh.id;
+    warehouseName = linkedWh.name;
+  }
+
+  // 4. Compute amount
+  let amount = Number(data.amount) || 0;
+  let deliveryResult = null;
+  if (data.type === 'supply') {
+    // For supply: amount = sum of items' total_price. If data.amount given, use it; else compute.
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (items.length === 0) throw new Error('Поставка должна содержать хотя бы один товар');
+    if (amount === 0) {
+      amount = items.reduce(function(s, it) {
+        return s + (Number(it.total_price) || (Number(it.quantity) * Number(it.unit_price)) || 0);
+      }, 0);
+    }
+    if (amount <= 0) throw new Error('Сумма поставки должна быть больше нуля');
+  } else {
+    // Incassation: amount is required
+    if (amount <= 0) throw new Error('Сумма инкассации должна быть больше нуля');
+  }
+
+  // 5. Deduct from cash_register
+  const currentCash = Number(await getSetting('cash_register')) || 0;
+  if (amount > currentCash) {
+    throw new Error('Недостаточно денег в кассе. Текущий остаток: ' + currentCash);
+  }
+  const newCash = currentCash - amount;
+  await saveSettingsToDB({ cash_register: String(newCash) });
+
+  // 6. For supply: create the delivery record
+  let supplierName = (data.supplier_name || '').trim();
+  let supplierId = data.supplier_id || '';
+  if (data.type === 'supply') {
+    if (!supplierName) throw new Error('Укажите поставщика');
+    // Look up supplier by name (case-insensitive) to get the id
+    if (!supplierId) {
+      const sups = await dbSelect('suppliers', { is_active: true });
+      const found = sups.find(function(s) {
+        return String(s.name || '').toLowerCase() === supplierName.toLowerCase();
+      });
+      if (found) supplierId = found.id;
+    }
+    deliveryResult = await saveDelivery({
+      delivery_date: new Date().toISOString(),
+      supplier_id: supplierId,
+      supplier_name: supplierName,
+      warehouse_id: warehouseId,
+      warehouse_name: warehouseName,
+      account_id: cashAcc.id,
+      account_name: cashAcc.name,
+      paid_amount: amount,
+      comment: data.comment || ('Поставка от официанта ' + (data.waiter_name || '')),
+      items: data.items,
+      apply_to_stock: data.apply_to_stock === true
+    });
+  }
+
+  // 7. Record the shift_transaction
+  const txId = 'stx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+  await dbInsert('shift_transactions', {
+    id: txId,
+    shift_id: shift.id,
+    waiter_id: data.waiter_id,
+    waiter_name: data.waiter_name || '',
+    type: data.type === 'incassation' ? 'incassation' : 'supply_payment',
+    amount: amount,
+    delivery_id: deliveryResult ? deliveryResult.id : '',
+    supplier_name: supplierName,
+    account_id: cashAcc.id,
+    comment: data.comment || (data.type === 'incassation'
+      ? 'Инкассация'
+      : 'Поставка: ' + supplierName)
+  });
+
+  return {
+    id: txId,
+    type: data.type,
+    amount: amount,
+    new_cash_register: newCash,
+    delivery: deliveryResult
+  };
+}
+
+// Read all shift_transactions for a given shift (or for a waiter's open shift)
+async function getShiftTransactions(shiftId, waiterId) {
+  if (!shiftId && waiterId) {
+    const shifts = await dbSelect('shifts', { waiter_id: waiterId, status: 'open' });
+    if (shifts.length === 0) return { transactions: [] };
+    shiftId = shifts[0].id;
+  }
+  if (!shiftId) return { transactions: [] };
+  const { data, error } = await _sb.from('shift_transactions')
+    .select('*')
+    .eq('shift_id', shiftId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return { transactions: data || [] };
 }
 
 async function getActiveShift(waiterId) {
@@ -1041,6 +1216,7 @@ async function saveWarehouse(data) {
   const record = {
     name: (data.name || '').trim(),
     comment: (data.comment || '').trim(),
+    account_id: data.account_id || '',
     is_active: data.is_active !== false
   };
   if (existing.length > 0) {
@@ -1063,8 +1239,29 @@ async function saveAccount(data) {
     currency: data.currency || '₾',
     type: data.type || 'cash', // cash | card | bank
     initial_balance: Number(data.initial_balance) || 0,
+    is_cash_register: data.is_cash_register === true,
     is_active: data.is_active !== false
   };
+  // Enforce: only ONE account can be the cash register
+  if (record.is_cash_register) {
+    // Find all other accounts currently flagged and unset them
+    const allAccs = await dbSelect('accounts', {});
+    for (const a of allAccs) {
+      if (a.id !== id && a.is_cash_register === true) {
+        try { await dbUpdate('accounts', a.id, { is_cash_register: false }); } catch(e) { console.warn(e.message); }
+      }
+    }
+    // Sync the cash_register setting with this account's initial_balance (only on first designation)
+    if (existing.length === 0 || existing[0].is_cash_register !== true) {
+      try {
+        const currentCash = Number(await getSetting('cash_register')) || 0;
+        // Only override if cash_register is at 0 (initial state) — otherwise let it be
+        if (currentCash === 0 && Number(record.initial_balance) > 0) {
+          await saveSettingsToDB({ cash_register: String(record.initial_balance) });
+        }
+      } catch(e) { console.warn('Failed to sync cash_register', e.message); }
+    }
+  }
   if (existing.length > 0) {
     return await dbUpdate('accounts', id, record);
   } else {
@@ -1289,7 +1486,59 @@ async function saveDelivery(data) {
     }
   }
 
-  return { id: id, number: number, total: total };
+  // ===== Auto-deduct from cash_register if account is the cash register =====
+  // If the delivery's account_id matches the account flagged is_cash_register=true,
+  // AND there's a paid_amount > 0, then deduct paid_amount from the cash_register
+  // setting and record a shift_transaction for the active waiter's open shift.
+  let cashRegisterDeducted = false;
+  let recordedShiftTxId = null;
+  if (paidAmount > 0 && data.account_id) {
+    try {
+      const accs = await dbSelect('accounts', { id: data.account_id });
+      const acc = accs.length > 0 ? accs[0] : null;
+      if (acc && acc.is_cash_register === true) {
+        // Deduct from cash_register setting
+        const currentCash = Number(await getSetting('cash_register')) || 0;
+        const newCash = Math.max(0, currentCash - paidAmount);
+        await saveSettingsToDB({ cash_register: String(newCash) });
+        cashRegisterDeducted = true;
+
+        // Record a shift_transaction if there's an open shift for ANY waiter
+        // (admin creates the delivery, but the deduction should hit the active shift)
+        // We attribute the tx to the most-recently-opened shift across all waiters.
+        try {
+          const { data: openShifts } = await _sb.from('shifts')
+            .select('*')
+            .eq('status', 'open')
+            .order('opened_at', { ascending: false })
+            .limit(1);
+          if (openShifts && openShifts.length > 0) {
+            const sh = openShifts[0];
+            const txId = 'stx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+            await dbInsert('shift_transactions', {
+              id: txId,
+              shift_id: sh.id,
+              waiter_id: sh.waiter_id,
+              waiter_name: sh.waiter_name,
+              type: 'supply_payment',
+              amount: paidAmount,
+              delivery_id: id,
+              supplier_name: supplierName,
+              account_id: data.account_id,
+              comment: 'Поставка №' + (number || '') + (supplierName ? ' — ' + supplierName : '')
+            });
+            recordedShiftTxId = txId;
+          }
+        } catch (txErr) {
+          console.warn('Failed to record shift_transaction for delivery', txErr.message);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to deduct cash_register for delivery', e.message);
+    }
+  }
+
+  return { id: id, number: number, total: total, cash_register_deducted: cashRegisterDeducted, shift_tx_id: recordedShiftTxId };
 }
 
 // Delete a delivery and all its items
@@ -1380,7 +1629,7 @@ async function replenishStock(menuItemId, quantity) {
   return result;
 }
 
-async function getStockReport() {
+async function getStockReport(warehouseId) {
   const stockTracking = String(await getSetting('stock_tracking')) === 'true';
   const threshold = Number(await getSetting('stock_threshold')) || 5;
   const allMenu = await dbSelect('menu');
@@ -1423,17 +1672,36 @@ async function getStockReport() {
   // Get all delivery items (for the "Поставки" link / count / total)
   const allDeliveries = await dbSelect('deliveries');
   const allDeliveryItems = await dbSelect('delivery_items');
-  const deliveryStats = {}; // menu_item_id → { count, total }
+
+  // ===== Per-warehouse filtering =====
+  // If warehouseId is provided, only consider deliveries that went to that warehouse.
+  // The "stock" shown will be the sum of quantities received at that warehouse.
+  let filteredDeliveryIds = null;
+  if (warehouseId) {
+    filteredDeliveryIds = new Set(
+      allDeliveries.filter(function(d) { return d.warehouse_id === warehouseId; })
+        .map(function(d) { return d.id; })
+    );
+  }
+  // deliveryStats: per menu_item_id → { count, total, qty }
+  const deliveryStats = {};
+  // whStock: per menu_item_id → total quantity received at the selected warehouse
+  const whStock = {};
   allDeliveryItems.forEach(function(dit) {
     const mid = dit.menu_item_id;
     if (!mid) return;
-    if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0 };
+    // Skip this item if it doesn't belong to a delivery at the selected warehouse
+    if (filteredDeliveryIds && !filteredDeliveryIds.has(dit.delivery_id)) return;
+    if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0, qty: 0 };
     deliveryStats[mid].count += 1;
     deliveryStats[mid].total += Number(dit.total_price) || 0;
+    deliveryStats[mid].qty += Number(dit.quantity) || 0;
+    whStock[mid] = (whStock[mid] || 0) + (Number(dit.quantity) || 0);
   });
 
   const items = menu.map(function(m) {
-    const stock = Number(m.stock) || 0;
+    // If warehouse filter is active, use warehouse-specific stock; else global menu.stock
+    const stock = warehouseId ? (whStock[m.id] || 0) : (Number(m.stock) || 0);
     const cons = consumption[m.id] || { day: 0, week: 0, month: 0, total: 0 };
     const cost = Number(m.cost) || 0;
     // Look up the category name (use parent → child format if it's a subcategory)
@@ -1446,7 +1714,7 @@ async function getStockReport() {
         categoryName = cat.name;
       }
     }
-    const dStats = deliveryStats[m.id] || { count: 0, total: 0 };
+    const dStats = deliveryStats[m.id] || { count: 0, total: 0, qty: 0 };
     return {
       id: m.id,
       name: m.name,
@@ -1465,15 +1733,19 @@ async function getStockReport() {
       low_stock: stockTracking && stock <= threshold
     };
   });
+  // If warehouse filter is active, only show items that have at least one delivery to that warehouse
+  const finalItems = warehouseId
+    ? items.filter(function(it) { return it.deliveries_count > 0 || it.stock > 0; })
+    : items;
   // Sort by sort field, then by name — keeps the order stable across reloads
-  items.sort(function(a, b) {
+  finalItems.sort(function(a, b) {
     const sa = Number(a.sort) || 0;
     const sb = Number(b.sort) || 0;
     if (sa !== sb) return sa - sb;
     return String(a.name).localeCompare(String(b.name), 'ru');
   });
 
-  return { stock_tracking: stockTracking, threshold: threshold, items: items };
+  return { stock_tracking: stockTracking, threshold: threshold, items: finalItems, warehouse_id: warehouseId || '' };
 }
 
 /* ---------- Auth (login) ---------- */
@@ -1985,7 +2257,7 @@ async function apiGet(action, params) {
     case 'getOrderLogs':
       return { logs: await getOrderLogs(params.order_id) };
     case 'getStockReport':
-      return await getStockReport();
+      return await getStockReport(params && params.warehouse_id);
     case 'getTablesConfig':
       return await getTablesConfig();
     case 'getAllDeliveries':
@@ -2188,6 +2460,10 @@ async function apiPost(action, body) {
       return await saveAccount(body);
     case 'deleteAccount':
       return await deleteAccount(body.id);
+    case 'waiterTransaction':
+      return await waiterTransaction(body);
+    case 'getShiftTransactions':
+      return await getShiftTransactions(body.shift_id, body.waiter_id);
     case 'saveDelivery':
       return await saveDelivery(body);
     case 'deleteDelivery':

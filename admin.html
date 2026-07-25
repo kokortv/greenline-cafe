@@ -911,6 +911,14 @@
     </div>
     <!-- Sub-tab contents (navigation moved to sidebar) -->
     <div id="stocksub-items" class="stocksub-content">
+      <!-- Warehouse selector + refresh -->
+      <div id="stock-warehouse-filter" style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+        <label style="font-size:0.9rem;color:var(--text-muted);">Склад:</label>
+        <select id="stock-warehouse-select" onchange="loadStockReport()" style="min-width:200px;">
+          <option value="">Все склады (по умолчанию)</option>
+        </select>
+        <button class="btn btn-outline" onclick="loadStockReport()" style="font-size:0.85rem;padding:6px 12px;">↻ Обновить</button>
+      </div>
       <div id="stock-report"></div>
     </div>
     <div id="stocksub-deliveries" class="stocksub-content" style="display:none;">
@@ -1444,6 +1452,15 @@
       <input type="text" id="warehouse-name" placeholder="Например: Кухня, Бар, Склад алкоголя">
     </div>
     <div class="form-group">
+      <label>Счёт (откуда оплачиваются поставки на этот склад)</label>
+      <select id="warehouse-account-id">
+        <option value="">— не выбран —</option>
+      </select>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
+        Если выбрать счёт «Касса ресторана», то при создании поставки сумма автоматически спишется из кассы и отобразится в кассовой смене.
+      </p>
+    </div>
+    <div class="form-group">
       <label>Комментарий</label>
       <textarea id="warehouse-comment" rows="2" placeholder="Где находится, что хранится"></textarea>
     </div>
@@ -1484,6 +1501,13 @@
     <div class="form-group">
       <label>Начальный баланс</label>
       <input type="number" id="account-initial-balance" min="0" step="0.01" placeholder="0" value="0">
+    </div>
+    <div class="form-group checkbox-field">
+      <input type="checkbox" id="account-is-cash-register">
+      <label for="account-is-cash-register" style="margin:0;font-weight:600;">💵 Это счёт кассы ресторана</label>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;line-height:1.4;">
+        Только один счёт может быть кассой. При закрытии смены официанта фактическая сумма в кассе сравнивается с ожидаемой. Поставки с этого счёта списываются из кассы автоматически.
+      </p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('modal-account')">Отмена</button>
@@ -4080,12 +4104,26 @@ function refreshStockSubTab() {
 async function loadStockReport() {
   const div = document.getElementById('stock-report');
   if (!div) return;
+  // Populate the warehouse dropdown (only on first load)
+  const whSelect = document.getElementById('stock-warehouse-select');
+  if (whSelect && !whSelect.dataset.populated) {
+    const warehouses = (APP_DATA.warehouses || []).slice();
+    warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
+    let opts = '<option value="">Все склады (по умолчанию)</option>';
+    warehouses.forEach(function(w) {
+      opts += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name) + '</option>';
+    });
+    whSelect.innerHTML = opts;
+    whSelect.dataset.populated = '1';
+  }
+  const selectedWh = whSelect ? whSelect.value : '';
   div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
   try {
-    const data = await apiGet('getStockReport', {});
+    const data = await apiGet('getStockReport', selectedWh ? { warehouse_id: selectedWh } : {});
     const items = data.items || [];
     if (items.length === 0) {
-      div.innerHTML = '<div class="empty-state"><h3>Нет товаров</h3></div>';
+      div.innerHTML = '<div class="empty-state"><h3>Нет товаров</h3>' +
+        (selectedWh ? '<p>На выбранном складе пока нет поставок.</p>' : '') + '</div>';
       return;
     }
     const tracking = data.stock_tracking;
@@ -4096,6 +4134,15 @@ async function loadStockReport() {
     let html = '';
     if (!tracking) {
       html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
+    }
+    if (selectedWh) {
+      const wh = (APP_DATA.warehouses || []).find(function(w) { return w.id === selectedWh; });
+      if (wh) {
+        html += '<div class="card" style="padding:10px 14px;background:#e3f2fd;margin-bottom:14px;font-size:0.9rem;">' +
+          '📦 Показаны товары только для склада <b>' + escapeHtml(wh.name) + '</b>. ' +
+          'Остаток = сумме поставок на этот склад.' +
+        '</div>';
+      }
     }
     html += '<table class="stock-table" id="stock-table"><thead><tr>';
     html += '<th class="st-th-name" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'name\')">Название <span class="sort-arrow" id="sort-arrow-name"></span></th>';
@@ -4702,17 +4749,21 @@ async function loadWarehousesList() {
     }
     warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
     let html = '<table class="admin-table"><thead><tr>';
-    html += '<th style="width:10%;">№</th>';
-    html += '<th style="width:30%;">Название склада</th>';
-    html += '<th style="width:35%;">Комментарий</th>';
+    html += '<th style="width:5%;">№</th>';
+    html += '<th style="width:25%;">Название склада</th>';
+    html += '<th style="width:20%;">Счёт</th>';
+    html += '<th style="width:30%;">Комментарий</th>';
     html += '<th style="width:15%;text-align:right;">Сумма</th>';
     html += '<th style="width:80px;text-align:center;"></th>';
     html += '</tr></thead><tbody>';
     warehouses.forEach(function(w, idx) {
       const total = whStats[w.id] || 0;
+      const acc = w.account_id ? (APP_DATA.accounts || []).find(function(a) { return a.id === w.account_id; }) : null;
+      const accLabel = acc ? (escapeHtml(acc.name) + (acc.is_cash_register ? ' <span style="color:#e65100;font-weight:700;">💵 касса</span>' : '')) : '<span style="color:var(--text-muted);">—</span>';
       html += '<tr>'
       html += '<td>' + (idx + 1) + '</td>';
       html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(w.name) + '</td>';
+      html += '<td style="font-size:0.9rem;">' + accLabel + '</td>';
       html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(w.comment || '—') + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(total) + '</td>';
       html += '<td style="text-align:center;white-space:nowrap;">' +
@@ -4729,6 +4780,15 @@ async function loadWarehousesList() {
 }
 
 function openWarehouseModal(id, returnToDelivery) {
+  // Populate the account dropdown
+  const accSelect = document.getElementById('warehouse-account-id');
+  if (accSelect) {
+    accSelect.innerHTML = '<option value="">— не выбран —</option>';
+    (APP_DATA.accounts || []).forEach(function(a) {
+      const label = a.name + (a.is_cash_register ? ' 💵 (касса)' : '');
+      accSelect.innerHTML += '<option value="' + escapeHtml(a.id) + '">' + escapeHtml(label) + '</option>';
+    });
+  }
   if (id) {
     const w = (APP_DATA.warehouses || []).find(function(x) { return x.id === id; });
     if (!w) return;
@@ -4736,11 +4796,13 @@ function openWarehouseModal(id, returnToDelivery) {
     document.getElementById('warehouse-id').value = w.id;
     document.getElementById('warehouse-name').value = w.name || '';
     document.getElementById('warehouse-comment').value = w.comment || '';
+    if (accSelect) accSelect.value = w.account_id || '';
   } else {
     document.getElementById('modal-warehouse-title').textContent = 'Новый склад';
     document.getElementById('warehouse-id').value = '';
     document.getElementById('warehouse-name').value = '';
     document.getElementById('warehouse-comment').value = '';
+    if (accSelect) accSelect.value = '';
   }
   window._warehouseModalReturnToDelivery = returnToDelivery === true;
   openModal('modal-warehouse');
@@ -4753,7 +4815,8 @@ async function saveWarehouseUI() {
   const payload = {
     id: id || undefined,
     name: name,
-    comment: document.getElementById('warehouse-comment').value
+    comment: document.getElementById('warehouse-comment').value,
+    account_id: document.getElementById('warehouse-account-id').value || ''
   };
   try {
     await apiPost('saveWarehouse', payload);
@@ -4805,8 +4868,9 @@ async function loadAccountsList() {
     html += '</tr></thead><tbody>';
     const typeLabels = { cash: 'Наличный', card: 'Карта', bank: 'Безналичный' };
     accounts.forEach(function(a) {
+      const cashBadge = a.is_cash_register ? ' <span style="display:inline-block;background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:700;margin-left:6px;">💵 касса ресторана</span>' : '';
       html += '<tr>'
-      html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(a.name) + '</td>';
+      html += '<td style="word-break:break-word;font-weight:600;">' + escapeHtml(a.name) + cashBadge + '</td>';
       html += '<td>' + escapeHtml(a.currency || '₾') + '</td>';
       html += '<td>' + escapeHtml(typeLabels[a.type] || a.type) + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(a.initial_balance || 0, a.currency) + '</td>';
@@ -4833,6 +4897,7 @@ function openAccountModal(id, returnToDelivery) {
     document.getElementById('account-currency').value = a.currency || '₾';
     document.getElementById('account-type').value = a.type || 'cash';
     document.getElementById('account-initial-balance').value = a.initial_balance || 0;
+    document.getElementById('account-is-cash-register').checked = a.is_cash_register === true;
   } else {
     document.getElementById('modal-account-title').textContent = 'Новый счёт';
     document.getElementById('account-id').value = '';
@@ -4840,6 +4905,7 @@ function openAccountModal(id, returnToDelivery) {
     document.getElementById('account-currency').value = '₾';
     document.getElementById('account-type').value = 'cash';
     document.getElementById('account-initial-balance').value = 0;
+    document.getElementById('account-is-cash-register').checked = false;
   }
   window._accountModalReturnToDelivery = returnToDelivery === true;
   openModal('modal-account');
@@ -4854,7 +4920,8 @@ async function saveAccountUI() {
     name: name,
     currency: document.getElementById('account-currency').value || '₾',
     type: document.getElementById('account-type').value || 'cash',
-    initial_balance: Number(document.getElementById('account-initial-balance').value) || 0
+    initial_balance: Number(document.getElementById('account-initial-balance').value) || 0,
+    is_cash_register: document.getElementById('account-is-cash-register').checked
   };
   try {
     await apiPost('saveAccount', payload);

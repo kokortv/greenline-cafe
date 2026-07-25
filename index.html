@@ -1131,6 +1131,7 @@
       <span class="header-pill-count" id="active-orders-count">0</span>
     </button>
     <button class="header-pill" id="archive-btn" onclick="showArchive()" title="Архив заказов за сегодня">📋 Архив</button>
+    <button class="header-pill" id="txn-btn" style="display:none;" onclick="showTransactionModal()" title="Транзакции по кассе (инкассация / поставка)">💸 Касса</button>
     <button class="header-pill" id="design-toggle-btn" onclick="toggleWaiterDesign()" title="Переключить дизайн">⭐</button>
     <span class="user-chip" id="user-chip" onclick="logoutUser()" title="Выйти">
       <span id="user-chip-name">—</span>
@@ -1424,6 +1425,73 @@
         Открыть смену
       </button>
       <button class="btn btn-outline" onclick="closeModal('modal-shift-open')" style="width:100%;">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transaction modal (incassation / supply from cash register) -->
+<div class="modal-backdrop" id="modal-transaction">
+  <div class="modal" style="max-width:560px;">
+    <h2>💸 Транзакция по кассе</h2>
+    <p style="margin:6px 0 14px;color:var(--text-muted);font-size:0.88rem;">
+      Списать деньги из кассы. Инкассация — просто изъятие наличных. Поставка — оплата поставщику из кассы с созданием поставки.
+    </p>
+
+    <!-- Current cash display -->
+    <div id="txn-current-cash" style="margin-bottom:14px;padding:10px 14px;background:#fff8e1;border-radius:8px;font-size:0.95rem;">
+      💵 В кассе: <b id="txn-current-cash-amount">—</b>
+    </div>
+
+    <div class="form-group">
+      <label>Тип операции</label>
+      <select id="txn-type" onchange="onTxnTypeChange()">
+        <option value="incassation">💸 Инкассация (изъятие наличных)</option>
+        <option value="supply">📦 Поставка (оплата поставщику из кассы)</option>
+      </select>
+    </div>
+
+    <div class="form-group" id="txn-amount-group">
+      <label>Сумма</label>
+      <input type="number" id="txn-amount" min="0" step="0.01" placeholder="0" autofocus
+             oninput="onTxnAmountInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmTransaction();}">
+      <div id="txn-amount-hint" style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;"></div>
+    </div>
+
+    <!-- Supplier field (supply only) -->
+    <div class="form-group" id="txn-supplier-group" style="display:none;">
+      <label>Поставщик *</label>
+      <input type="text" id="txn-supplier" placeholder="Начните вводить имя..."
+             autocomplete="off" oninput="searchTxnSuppliers(this.value)">
+      <div id="txn-supplier-suggestions" style="position:relative;"></div>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">
+        Подсказки показывают только поставщиков, ранее поставлявших на склад, привязанный к кассе.
+      </p>
+    </div>
+
+    <!-- Items list (supply only) -->
+    <div id="txn-items-section" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;">
+        <label style="margin:0;font-weight:600;">Товары в поставке</label>
+        <button type="button" class="btn btn-outline" style="font-size:0.82rem;padding:4px 10px;" onclick="addTxnItemRow()">+ Добавить</button>
+      </div>
+      <div id="txn-items-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div style="margin-top:10px;padding:8px 12px;background:var(--bg);border-radius:6px;text-align:right;">
+        Итого: <b id="txn-items-total">0</b>
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem;cursor:pointer;">
+          <input type="checkbox" id="txn-apply-to-stock" checked>
+          <span>Пополнить остатки (прибавить quantity к stock каждого товара)</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="flex-direction:column;gap:8px;margin-top:16px;">
+      <button class="btn btn-primary btn-lg" id="confirm-txn-btn" style="width:100%;"
+              onclick="withLoading(this, 'Списываем...', function() { return confirmTransaction(); })">
+        💸 Списать из кассы
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('modal-transaction')" style="width:100%;">Отмена</button>
     </div>
   </div>
 </div>
@@ -1726,12 +1794,16 @@ function updateShiftButton() {
   const btn = document.getElementById('shift-btn');
   if (!btn) return;
   btn.style.display = 'inline-block';
+  // Transaction button is only shown when a shift is open
+  const txnBtn = document.getElementById('txn-btn');
   if (_activeShift) {
     btn.textContent = '🟢 Смена открыта';
     btn.style.background = 'rgba(76,175,80,0.3)';
+    if (txnBtn) txnBtn.style.display = 'inline-block';
   } else {
     btn.textContent = '🔴 Открыть смену';
     btn.style.background = 'rgba(244,67,54,0.3)';
+    if (txnBtn) txnBtn.style.display = 'none';
   }
 }
 
@@ -1950,9 +2022,43 @@ async function showCloseShiftModal() {
     });
     const openingCash = Number(_activeShift.opening_cash) || 0;
     const grandTotal = cashTotal + cardTotal;
-    const expectedCash = openingCash + cashTotal;
+    // ===== Fetch shift_transactions (incassations + supply payments) =====
+    let incassationTotal = 0, supplyPaymentTotal = 0;
+    let txRows = [];
+    try {
+      const txData = await apiGet('getShiftTransactions', { shift_id: _activeShift.id });
+      txRows = (txData && txData.transactions) || [];
+      txRows.forEach(function(t) {
+        if (t.type === 'incassation') incassationTotal += Number(t.amount) || 0;
+        else if (t.type === 'supply_payment') supplyPaymentTotal += Number(t.amount) || 0;
+      });
+    } catch (e) { console.warn('getShiftTransactions failed', e.message); }
+    const expectedCash = openingCash + cashTotal - incassationTotal - supplyPaymentTotal;
     // Store for confirmCloseShift() to read
     window._closeShiftExpectedCash = expectedCash;
+    // Build transactions breakdown HTML (only if there are any)
+    let txBreakdownHtml = '';
+    if (txRows.length > 0) {
+      txBreakdownHtml =
+        '<div style="margin-top:12px;padding:12px;background:#f3e5f5;border-radius:8px;">' +
+          '<div style="font-weight:600;margin-bottom:8px;color:#6a1b9a;">📋 Транзакции по кассе за смену:</div>' +
+          txRows.map(function(t) {
+            const isInc = t.type === 'incassation';
+            const icon = isInc ? '💸' : '📦';
+            const label = isInc ? 'Инкассация' : ('Поставка: ' + (t.supplier_name || '—'));
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:0.88rem;">' +
+              '<span>' + icon + ' ' + escapeHtml(label) + (t.comment ? ' <span style="color:var(--text-muted);">(' + escapeHtml(t.comment) + ')</span>' : '') + '</span>' +
+              '<b style="color:#c62828;">−' + formatMoney(Number(t.amount) || 0) + '</b>' +
+            '</div>';
+          }).join('') +
+          '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;font-size:0.85rem;">' +
+            '<span>Инкассации:</span><b>−' + formatMoney(incassationTotal) + '</b>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:0.85rem;">' +
+            '<span>Поставки:</span><b>−' + formatMoney(supplyPaymentTotal) + '</b>' +
+          '</div>' +
+        '</div>';
+    }
     summaryDiv.innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
         '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:0.85rem;color:var(--text-muted);">Заказов</div><div style="font-size:1.8rem;font-weight:700;">' + orders.length + '</div></div>' +
@@ -1966,9 +2072,12 @@ async function showCloseShiftModal() {
       '</div>' +
       '<div style="margin-top:12px;padding:12px;background:#fff8e1;border-radius:8px;">' +
         '<div>Касса на начало смены: <b>' + formatMoney(openingCash) + '</b></div>' +
-        '<div>Наличные за смену: <b>' + formatMoney(cashTotal) + '</b></div>' +
+        '<div>Наличные за смену: <b>+' + formatMoney(cashTotal) + '</b></div>' +
+        (incassationTotal > 0 ? '<div>Инкассации: <b style="color:#c62828;">−' + formatMoney(incassationTotal) + '</b></div>' : '') +
+        (supplyPaymentTotal > 0 ? '<div>Поставки из кассы: <b style="color:#c62828;">−' + formatMoney(supplyPaymentTotal) + '</b></div>' : '') +
         '<div style="font-size:1.2rem;font-weight:700;color:var(--success);margin-top:4px;">Ожидается в кассе: ' + formatMoney(expectedCash) + '</div>' +
       '</div>' +
+      txBreakdownHtml +
       '<div class="form-group" style="margin-top:16px;">' +
         '<label>💵 Подсчитайте наличные в кассе и введите фактическую сумму</label>' +
         '<input type="number" id="shift-close-actual-cash" min="0" step="0.01" placeholder="' + expectedCash.toFixed(2) + '" autofocus' +
@@ -2052,6 +2161,279 @@ async function confirmCloseShift() {
     showToast('Ошибка: ' + err.message, 'error');
   }
 }
+
+/* ====================== TRANSACTIONS (incassation / supply from cash) ====================== */
+// Opens the transaction modal. Pre-fills current cash. Resets to incassation mode.
+function showTransactionModal() {
+  if (!_activeShift) {
+    showToast('Откройте смену, чтобы делать транзакции по кассе', 'warning');
+    return;
+  }
+  // Reset form
+  document.getElementById('txn-type').value = 'incassation';
+  document.getElementById('txn-amount').value = '';
+  document.getElementById('txn-supplier').value = '';
+  document.getElementById('txn-supplier-suggestions').innerHTML = '';
+  document.getElementById('txn-items-list').innerHTML = '';
+  document.getElementById('txn-items-total').textContent = '0';
+  // Show current cash
+  document.getElementById('txn-current-cash-amount').textContent = formatMoney(state.currentCash || 0);
+  // Show/hide sections based on type
+  onTxnTypeChange();
+  openModal('modal-transaction');
+  setTimeout(function() {
+    const inp = document.getElementById('txn-amount');
+    if (inp) inp.focus();
+  }, 100);
+}
+
+// Toggle visibility of supplier + items sections based on type
+function onTxnTypeChange() {
+  const type = document.getElementById('txn-type').value;
+  const supplierGroup = document.getElementById('txn-supplier-group');
+  const itemsSection = document.getElementById('txn-items-section');
+  const amountHint = document.getElementById('txn-amount-hint');
+  const confirmBtn = document.getElementById('confirm-txn-btn');
+  if (type === 'supply') {
+    supplierGroup.style.display = '';
+    itemsSection.style.display = '';
+    if (amountHint) amountHint.textContent = 'Если введите сумму вручную — она переопределит расчёт по товарам. Оставьте пустой — система посчитает сама.';
+    if (confirmBtn) confirmBtn.textContent = '📦 Создать поставку и списать';
+    // Add one empty item row if none
+    if (document.getElementById('txn-items-list').children.length === 0) {
+      addTxnItemRow();
+    }
+  } else {
+    supplierGroup.style.display = 'none';
+    itemsSection.style.display = 'none';
+    if (amountHint) amountHint.textContent = '';
+    if (confirmBtn) confirmBtn.textContent = '💸 Списать из кассы';
+  }
+  onTxnAmountInput();
+}
+
+// Live-validate amount vs current cash
+function onTxnAmountInput() {
+  const type = document.getElementById('txn-type').value;
+  if (type === 'supply') {
+    // For supply: amount is computed from items, but allow manual override
+    updateTxnItemsTotal();
+  }
+}
+
+// Add an empty item row to the supply list
+function addTxnItemRow(data) {
+  const list = document.getElementById('txn-items-list');
+  if (!list) return;
+  const rowId = 'txn-item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 60px 70px 90px 30px;gap:6px;align-items:center;';
+  row.dataset.rowId = rowId;
+  row.innerHTML =
+    '<input type="text" class="txn-item-name" placeholder="Название товара" value="' + (data && data.name ? escapeHtmlAttr(data.name) : '') + '" ' +
+      'oninput="searchTxnItems(this)" style="font-size:0.88rem;padding:6px 8px;">' +
+    '<input type="text" class="txn-item-pack" placeholder="упак." value="' + (data && data.pack ? escapeHtmlAttr(data.pack) : '') + '" style="font-size:0.82rem;padding:6px 6px;">' +
+    '<input type="number" class="txn-item-qty" placeholder="кол-во" min="0" step="0.01" value="' + (data && data.quantity ? Number(data.quantity) : '') + '" oninput="updateTxnItemsTotal()" style="font-size:0.88rem;padding:6px 6px;">' +
+    '<input type="number" class="txn-item-price" placeholder="цена" min="0" step="0.01" value="' + (data && data.unit_price ? Number(data.unit_price) : '') + '" oninput="updateTxnItemsTotal()" style="font-size:0.88rem;padding:6px 6px;">' +
+    '<button type="button" onclick="this.parentElement.remove();updateTxnItemsTotal();" style="background:#ef4444;color:#fff;border:none;border-radius:4px;padding:6px;cursor:pointer;font-size:0.85rem;">✕</button>' +
+    '<div class="txn-item-suggestions" style="grid-column:1/-1;position:relative;"></div>' +
+    '<input type="hidden" class="txn-item-menu-id" value="' + (data && data.menu_item_id ? escapeHtmlAttr(data.menu_item_id) : '') + '">';
+  list.appendChild(row);
+}
+
+function escapeHtmlAttr(s) {
+  return String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Autocomplete for item name (uses APP_DATA.menu)
+function searchTxnItems(input) {
+  const row = input.closest('[data-row-id]');
+  if (!row) return;
+  const sugg = row.querySelector('.txn-item-suggestions');
+  if (!sugg) return;
+  const q = input.value.trim().toLowerCase();
+  if (q.length < 1) { sugg.innerHTML = ''; return; }
+  const menu = (APP_DATA && APP_DATA.menu) || [];
+  const matches = menu.filter(function(m) {
+    return String(m.name || '').toLowerCase().indexOf(q) !== -1;
+  }).slice(0, 6);
+  if (matches.length === 0) { sugg.innerHTML = ''; return; }
+  sugg.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:10;max-height:200px;overflow-y:auto;">' +
+    matches.map(function(m) {
+      return '<div onclick="selectTxnItem(this, \'' + escapeHtmlAttr(m.id) + '\', \'' + escapeHtmlAttr(m.name) + '\', ' + (Number(m.cost) || 0) + ')" ' +
+        'style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.88rem;" ' +
+        'onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'#fff\'">' +
+        escapeHtml(m.name) + (m.cost ? ' — ' + formatMoney(m.cost) : '') + '</div>';
+    }).join('') + '</div>';
+}
+
+// When user picks an item from the dropdown
+function selectTxnItem(divEl, menuId, name, cost) {
+  const row = divEl.closest('[data-row-id]');
+  if (!row) return;
+  row.querySelector('.txn-item-name').value = name;
+  row.querySelector('.txn-item-menu-id').value = menuId;
+  if (cost && !row.querySelector('.txn-item-price').value) {
+    row.querySelector('.txn-item-price').value = cost;
+  }
+  row.querySelector('.txn-item-suggestions').innerHTML = '';
+  updateTxnItemsTotal();
+  // Focus the qty field
+  const qtyInput = row.querySelector('.txn-item-qty');
+  if (qtyInput) qtyInput.focus();
+}
+
+// Recompute total of all item rows
+function updateTxnItemsTotal() {
+  const rows = document.querySelectorAll('#txn-items-list [data-row-id]');
+  let total = 0;
+  rows.forEach(function(r) {
+    const qty = Number(r.querySelector('.txn-item-qty').value) || 0;
+    const price = Number(r.querySelector('.txn-item-price').value) || 0;
+    total += qty * price;
+  });
+  document.getElementById('txn-items-total').textContent = formatMoney(total);
+  // Auto-fill amount field if empty
+  const amountInput = document.getElementById('txn-amount');
+  if (amountInput && !amountInput.value) {
+    // Don't auto-fill — let the user enter or leave blank for auto-compute on backend
+  }
+}
+
+// Autocomplete supplier (filtered by suppliers that have deliveries to cash-register-linked warehouses)
+function searchTxnSuppliers(query) {
+  const sugg = document.getElementById('txn-supplier-suggestions');
+  if (!sugg) return;
+  const q = query.trim().toLowerCase();
+  // Determine which warehouses are linked to the cash register account
+  const cashAcc = (APP_DATA.accounts || []).find(function(a) { return a.is_cash_register === true; });
+  if (!cashAcc) {
+    sugg.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:10;padding:8px 10px;font-size:0.85rem;color:var(--danger);">Не найден счёт кассы. Отметьте счёт как «Касса ресторана» в админке.</div>';
+    return;
+  }
+  // Find warehouses linked to this account
+  const cashWhIds = new Set(
+    (APP_DATA.warehouses || [])
+      .filter(function(w) { return w.account_id === cashAcc.id; })
+      .map(function(w) { return w.id; })
+  );
+  // Find suppliers that have deliveries to those warehouses
+  const deliveries = APP_DATA.deliveries || [];
+  const validSupplierIds = new Set(
+    deliveries.filter(function(d) { return cashWhIds.has(d.warehouse_id); })
+      .map(function(d) { return d.supplier_id; })
+      .filter(function(id) { return id; })
+  );
+  // All suppliers (including inactive? no — only active)
+  let suppliers = (APP_DATA.suppliers || []).slice();
+  // If we have historical cash-warehouse suppliers, filter; else show all active
+  if (validSupplierIds.size > 0) {
+    suppliers = suppliers.filter(function(s) { return validSupplierIds.has(s.id); });
+  }
+  // Filter by query
+  if (q.length >= 1) {
+    suppliers = suppliers.filter(function(s) {
+      return String(s.name || '').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  if (suppliers.length === 0) {
+    sugg.innerHTML = q.length === 0 ? '' :
+      '<div style="position:absolute;top:0;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:10;padding:8px 10px;font-size:0.85rem;color:var(--text-muted);">Ничего не найдено</div>';
+    return;
+  }
+  sugg.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:10;max-height:200px;overflow-y:auto;">' +
+    suppliers.slice(0, 8).map(function(s) {
+      return '<div onclick="document.getElementById(\'txn-supplier\').value=\'' + escapeHtmlAttr(s.name).replace(/'/g, "\\'") + '\';document.getElementById(\'txn-supplier-suggestions\').innerHTML=\'\';" ' +
+        'style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.88rem;" ' +
+        'onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'#fff\'">' +
+        escapeHtml(s.name) + '</div>';
+    }).join('') + '</div>';
+}
+
+// Submit the transaction
+async function confirmTransaction() {
+  try {
+    const type = document.getElementById('txn-type').value;
+    const amount = Number(document.getElementById('txn-amount').value) || 0;
+    const currentCash = Number(state.currentCash) || 0;
+
+    if (type === 'incassation') {
+      if (amount <= 0) { showToast('Введите сумму больше нуля', 'warning'); return; }
+      if (amount > currentCash) {
+        showToast('В кассе только ' + formatMoney(currentCash), 'error');
+        return;
+      }
+      const result = await apiPost('waiterTransaction', {
+        type: 'incassation',
+        amount: amount,
+        waiter_id: state.currentUser.id,
+        waiter_name: state.currentUser.name
+      });
+      state.currentCash = result.new_cash_register;
+      showToast('Инкассация: ' + formatMoney(amount) + '. В кассе: ' + formatMoney(result.new_cash_register), 'success');
+      closeModal('modal-transaction');
+      updateShiftButton();
+    } else {
+      // supply
+      const supplierName = document.getElementById('txn-supplier').value.trim();
+      if (!supplierName) { showToast('Укажите поставщика', 'warning'); return; }
+      // Collect items
+      const rows = document.querySelectorAll('#txn-items-list [data-row-id]');
+      const items = [];
+      rows.forEach(function(r) {
+        const name = r.querySelector('.txn-item-name').value.trim();
+        const qty = Number(r.querySelector('.txn-item-qty').value) || 0;
+        const price = Number(r.querySelector('.txn-item-price').value) || 0;
+        const menuId = r.querySelector('.txn-item-menu-id').value;
+        if (name && qty > 0) {
+          items.push({
+            name: name,
+            menu_item_id: menuId,
+            pack: r.querySelector('.txn-item-pack').value.trim(),
+            quantity: qty,
+            unit_price: price,
+            total_price: qty * price
+          });
+        }
+      });
+      if (items.length === 0) { showToast('Добавьте хотя бы один товар', 'warning'); return; }
+      const total = items.reduce(function(s, it) { return s + (Number(it.total_price) || 0); }, 0);
+      if (total > currentCash) {
+        showToast('Сумма поставки ' + formatMoney(total) + ' больше, чем в кассе (' + formatMoney(currentCash) + ')', 'error');
+        return;
+      }
+      const applyToStock = document.getElementById('txn-apply-to-stock').checked;
+      const result = await apiPost('waiterTransaction', {
+        type: 'supply',
+        amount: total,
+        waiter_id: state.currentUser.id,
+        waiter_name: state.currentUser.name,
+        supplier_name: supplierName,
+        items: items,
+        apply_to_stock: applyToStock
+      });
+      state.currentCash = result.new_cash_register;
+      showToast('Поставка создана: ' + formatMoney(total) + '. В кассе: ' + formatMoney(result.new_cash_register), 'success');
+      closeModal('modal-transaction');
+      updateShiftButton();
+      // Refresh APP_DATA so the new delivery appears in admin
+      await loadAppData(true);
+    }
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Close the supplier suggestions when clicking outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#txn-supplier-group')) {
+    const sugg = document.getElementById('txn-supplier-suggestions');
+    if (sugg) sugg.innerHTML = '';
+  }
+  if (!e.target.closest('.txn-item-suggestions') && !e.target.classList.contains('txn-item-name')) {
+    document.querySelectorAll('.txn-item-suggestions').forEach(function(s) { s.innerHTML = ''; });
+  }
+});
 
 /* Refresh APP_DATA and re-render home (used when entering home screen).
    Only force-reload every 60 seconds — otherwise just re-render with cached data. */
