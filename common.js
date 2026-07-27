@@ -2143,12 +2143,15 @@ async function getStockReport(warehouseId) {
           total: 0,
           count: 0,
           pack: String(dit.pack || ''),
-          unit_price: Number(dit.unit_price) || 0
+          unit_price: Number(dit.unit_price) || 0,
+          markup: Number(dit.markup) || 0
         };
       }
       deliveryOnlyItems[key].qty += Number(dit.quantity) || 0;
       deliveryOnlyItems[key].total += Number(dit.total_price) || 0;
       deliveryOnlyItems[key].count += 1;
+      // Keep the latest non-zero markup
+      if (Number(dit.markup) > 0) deliveryOnlyItems[key].markup = Number(dit.markup);
     }
   });
 
@@ -2212,6 +2215,7 @@ async function getStockReport(warehouseId) {
       sort: 9999, // sort after menu items
       stock: d.qty,
       cost: d.unit_price,
+      markup: d.markup || 0,
       stock_value: d.qty * d.unit_price,
       consumed_day: 0,
       consumed_week: 0,

@@ -419,6 +419,10 @@
     text-overflow: ellipsis;
     letter-spacing: 0.02em;
   }
+  .admin-table thead th.no-ellipsis {
+    overflow: visible;
+    text-overflow: clip;
+  }
   .admin-table tbody td {
     padding: 10px 12px;
     border-bottom: 1px solid #f0f0f0;
@@ -426,6 +430,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .admin-table tbody td.no-ellipsis {
+    overflow: visible;
+    text-overflow: clip;
   }
   .admin-table tbody td.wrap {
     white-space: normal;
@@ -1798,6 +1806,34 @@ function startApp() {
   loadOrders();
   // Start auto-polling for orders (the default tab is "orders")
   startOrdersPolling();
+  // Restore the tab from URL hash (e.g. #stock/writeoffs → Stock → Списания)
+  restoreTabFromHash();
+}
+
+// Restore the active tab + sub-tab from the URL hash.
+// Supported formats:
+//   #stock/writeoffs  → Stock tab, Списания sub-tab
+//   #stock            → Stock tab, default sub-tab (Остатки)
+//   #menu             → Menu tab
+//   #statistics       → Statistics tab
+//   etc.
+function restoreTabFromHash() {
+  var hash = window.location.hash.replace(/^#/, '');
+  if (!hash) return;
+  var parts = hash.split('/');
+  var tab = parts[0];
+  var sub = parts[1];
+  // Validate that the tab exists
+  var validTabs = ['orders', 'menu', 'categories', 'staff', 'sounds', 'stock', 'tables', 'qrmenu', 'statistics', 'settings'];
+  if (validTabs.indexOf(tab) === -1) return;
+  // Set the sub-tab BEFORE calling switchTab, so switchTab's internal
+  // switchStockSub/switchStatisticsSub uses the correct sub-tab
+  if (sub && tab === 'stock') {
+    window._currentStockSub = sub;
+  } else if (sub && tab === 'statistics') {
+    window._currentStatsSub = sub;
+  }
+  switchTab(tab);
 }
 
 /* ---------- Tab switching ---------- */
@@ -1814,18 +1850,24 @@ function switchTab(name) {
   if (name === 'stock') {
     expandStockSidebar(true);
     if (!window._currentStockSub) window._currentStockSub = 'items';
-    switchStockSub(window._currentStockSub);
+    switchStockSub(window._currentStockSub); // this sets the hash to stock/sub
   } else {
-    // Collapse Stock sub-items when navigating to another section
     expandStockSidebar(false);
   }
   // Same pattern for Statistics sub-group
   if (name === 'statistics') {
     expandStatisticsSidebar(true);
     if (!window._currentStatsSub) window._currentStatsSub = 'overview';
-    switchStatisticsSub(window._currentStatsSub);
+    switchStatisticsSub(window._currentStatsSub); // this sets the hash to statistics/sub
   } else {
     expandStatisticsSidebar(false);
+  }
+  // Save current tab to URL hash (only if not a sub-tab-managed tab like stock/statistics,
+  // which already set their own hash above)
+  if (name && name !== 'orders' && name !== 'stock' && name !== 'statistics') {
+    try { window.location.hash = name; } catch (e) {}
+  } else if (name === 'orders') {
+    try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) {}
   }
   if (name === 'orders') { loadOrders(); startOrdersPolling(); }
   else { stopOrdersPolling(); }
@@ -1837,15 +1879,11 @@ function switchTab(name) {
   if (name === 'qrmenu') {
     renderQrMenuCategories();
     loadQrMenuAppearance();
-    // Re-run previews in case settings changed
     if (typeof updateCirclePreview === 'function') updateCirclePreview();
     if (typeof updateLivePreview === 'function') updateLivePreview();
-    // Load view statistics (top of the page)
     if (typeof loadMenuViewStats === 'function') loadMenuViewStats();
     if (typeof setQrStatsMode === 'function') setQrStatsMode(window._qrStatsMode || 'day');
   }
-  // Statistics sub-tab switching is handled above by switchStatisticsSub()
-  // On mobile, close the sidebar after selecting a tab
   closeSidebarOnMobile();
 }
 
@@ -1853,8 +1891,10 @@ function switchTab(name) {
 // Always opens the Stock section first (in case user was elsewhere),
 // then switches to the chosen sub-tab.
 function openStockSub(sub) {
+  // Set the desired sub-tab BEFORE calling switchTab, so switchTab's internal
+  // switchStockSub(window._currentStockSub) call uses the correct sub-tab.
+  window._currentStockSub = sub;
   switchTab('stock');
-  switchStockSub(sub);
 }
 
 // Expand/collapse the Stock sub-items in the sidebar
@@ -1873,8 +1913,10 @@ function expandStockSidebar(expand) {
 
 // ===== Statistics sub-section (same pattern as Stock) =====
 function openStatisticsSub(sub) {
+  // Set the desired sub-tab BEFORE calling switchTab, so switchTab's internal
+  // switchStatisticsSub(window._currentStatsSub) call uses the correct sub-tab.
+  window._currentStatsSub = sub;
   switchTab('statistics');
-  switchStatisticsSub(sub);
 }
 
 function expandStatisticsSidebar(expand) {
@@ -1892,6 +1934,8 @@ function expandStatisticsSidebar(expand) {
 
 function switchStatisticsSub(sub) {
   window._currentStatsSub = sub;
+  // Save statistics sub-tab to URL hash (format: #statistics/shifts)
+  try { window.location.hash = 'statistics/' + sub; } catch (e) {}
   // Toggle active state on the sidebar sub-items
   document.querySelectorAll('[data-statssub]').forEach(function(b) {
     b.classList.toggle('active', b.dataset.statssub === sub);
@@ -4139,6 +4183,8 @@ async function deleteCategory(id) {
 // Updates the sidebar sub-item active state AND the section title.
 function switchStockSub(sub) {
   window._currentStockSub = sub;
+  // Save stock sub-tab to URL hash (format: #stock/writeoffs)
+  try { window.location.hash = 'stock/' + sub; } catch (e) {}
   // Toggle active state on the sidebar sub-items
   document.querySelectorAll('.sidebar-subitem').forEach(function(b) {
     b.classList.toggle('active', b.dataset.stocksub === sub);
@@ -4346,9 +4392,12 @@ function renderStockRow(it, tracking) {
   // Себестоимость
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
   // Наценка (только для delivery-only items, у которых есть markup)
-  var markupDisplay = '—';
+  var markupDisplay = '0%';
   if (it.is_menu_item === false && Number(it.markup) > 0) {
     markupDisplay = Number(it.markup) + '%';
+  } else if (it.is_menu_item !== false) {
+    // For menu items, markup isn't tracked here — show '—'
+    markupDisplay = '—';
   }
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + markupDisplay + '</td>';
   // Сумма = остаток × себестоимость
@@ -4767,7 +4816,7 @@ async function loadSuppliersList() {
       html += '<td style="text-align:right;">' + st.count + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(st.total) + '</td>';
       html += '<td style="text-align:right;' + debtColor + '">' + (st.debt > 0 ? formatMoney(st.debt) : '—') + '</td>';
-      html += '<td style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openSupplierModal(\'' + s.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteSupplierUI(\'' + s.id + '\')">✕</button>' +
         '</td>';
@@ -4940,7 +4989,7 @@ async function loadWarehousesList() {
     html += '<th style="width:13%;text-align:right;">Сумма поставок</th>';
     html += '<th style="width:13%;text-align:right;">Баланс счёта</th>';
     html += '<th style="width:20%;">Комментарий</th>';
-    html += '<th style="width:90px;text-align:right;"></th>';
+    html += '<th class="no-ellipsis" style="width:90px;text-align:right;"></th>';
     html += '</tr></thead><tbody>';
     warehouses.forEach(function(w, idx) {
       const total = whStats[w.id] || 0;
@@ -4971,7 +5020,7 @@ async function loadWarehousesList() {
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(total) + '</td>';
       html += '<td style="text-align:right;' + accBalanceColor + '">' + accBalance + '</td>';
       html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(w.comment || '—') + '</td>';
-      html += '<td style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openWarehouseModal(\'' + w.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteWarehouseUI(\'' + w.id + '\')">✕</button>' +
         '</td>';
@@ -5071,7 +5120,7 @@ async function loadAccountsList() {
     html += '<th style="width:14%;text-align:right;">Начальный</th>';
     html += '<th style="width:14%;text-align:right;">Поставки</th>';
     html += '<th style="width:14%;text-align:right;">Баланс</th>';
-    html += '<th style="width:90px;text-align:right;"></th>';
+    html += '<th class="no-ellipsis" style="width:90px;text-align:right;"></th>';
     html += '</tr></thead><tbody>';
     const typeLabels = { cash: 'Наличный', card: 'Карта', bank: 'Безналичный' };
     const cashRegisterValue = Number((APP_DATA.settings && APP_DATA.settings.cash_register) || 0);
@@ -5116,7 +5165,7 @@ async function loadAccountsList() {
       html += '<td style="text-align:right;">' + initialDisplay + '</td>';
       html += '<td style="text-align:right;color:' + (paidFromAccount > 0 ? 'var(--danger);' : 'var(--text-muted);') + '">' + paidDisplay + '</td>';
       html += '<td style="text-align:right;font-weight:700;' + balanceColor + '">' + formatMoney(balance, a.currency) + '</td>';
-      html += '<td style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openAccountModal(\'' + a.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteAccountUI(\'' + a.id + '\')">✕</button>' +
         '</td>';
@@ -5280,7 +5329,7 @@ async function loadDeliveriesList() {
     html += '<th style="width:9%;">Статус</th>';
     html += th('total_amount', 'Сумма', 'width:10%;text-align:right;');
     html += th('debt', 'Долг', 'width:9%;text-align:right;');
-    html += '<th style="width:80px;text-align:right;white-space:nowrap;"></th>';
+    html += '<th class="no-ellipsis" style="width:80px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
     deliveries.forEach(function(d) {
       const debt = (Number(d.total_amount) || 0) - (Number(d.paid_amount) || 0);
@@ -5309,7 +5358,7 @@ async function loadDeliveriesList() {
       html += '<td>' + statusBadge + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(d.total_amount) + '</td>';
       html += '<td style="text-align:right;' + debtColor + '">' + (debt > 0 ? formatMoney(debt) : '—') + '</td>';
-      html += '<td style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openDeliveryModal(\'' + d.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteDeliveryUI(\'' + d.id + '\')">✕</button>' +
         '</td>';
@@ -5409,7 +5458,10 @@ function addDeliveryItemRow(data) {
   row.innerHTML =
     '<input type="hidden" class="di-menu-id" value="' + escapeHtmlAttr((data && data.menu_item_id) || '') + '">' +
     '<input type="text" class="di-name" placeholder="Начните вводить название..." value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;" oninput="searchDeliveryItems(this);var _r=this.closest(\'.delivery-item-row\');if(_r){var _id=_r.querySelector(\'.di-menu-id\');if(_id)_id.value=\'\';}" onfocus="searchDeliveryItems(this)" onblur="setTimeout(function(){hideDeliverySuggestions();},200)">' +
-    '<input type="text" class="di-pack" placeholder="Фасовка" value="' + escapeHtmlAttr((data && data.pack) || '') + '" title="Фасовка (коробка, упаковка)">' +
+    '<select class="di-pack" title="Тип фасовки">' +
+      '<option value="упаковка"' + ((data && data.pack) === 'упаковка' || (!data || !data.pack) ? ' selected' : '') + '>упаковка</option>' +
+      '<option value="поштучно"' + ((data && data.pack) === 'поштучно' ? ' selected' : '') + '>поштучно</option>' +
+    '</select>' +
     '<input type="number" class="di-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="recalcDeliveryItem(this);updateDeliveryTotal();">' +
     '<input type="number" class="di-price" min="0" step="0.01" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcDeliveryItem(this);updateDeliveryTotal();">' +
     '<input type="number" class="di-markup" min="0" step="1" placeholder="Нац.%" value="' + ((data && data.markup !== undefined) ? data.markup : '') + '" title="Наценка, %" oninput="recalcDeliveryItem(this);updateDeliveryTotal();">' +
@@ -5654,7 +5706,7 @@ async function loadWriteoffsList() {
     html += '<th style="width:9%;text-align:right;">Себест.</th>';
     html += '<th style="width:7%;text-align:right;">Нац.%</th>';
     html += '<th style="width:9%;text-align:right;">Сумма</th>';
-    html += '<th style="width:80px;text-align:right;white-space:nowrap;"></th>';
+    html += '<th class="no-ellipsis" style="width:80px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
     writeoffs.forEach(function(w, idx) {
       const items = w.items || [];
@@ -5803,7 +5855,10 @@ function addWriteoffItemRow(data) {
   row.innerHTML =
     '<input type="hidden" class="wi-menu-id" value="' + escapeHtmlAttr((data && data.menu_item_id) || '') + '">' +
     '<input type="text" class="wi-name" placeholder="Начните вводить название..." value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;" oninput="searchWriteoffItems(this);var _r=this.closest(\'.writeoff-item-row\');if(_r){var _id=_r.querySelector(\'.wi-menu-id\');if(_id)_id.value=\'\';}" onfocus="searchWriteoffItems(this)" onblur="setTimeout(function(){hideWriteoffSuggestions();},200)">' +
-    '<input type="text" class="wi-pack" placeholder="Фасовка" value="' + escapeHtmlAttr((data && data.pack) || '') + '" title="Фасовка (коробка, упаковка)">' +
+    '<select class="wi-pack" title="Тип фасовки">' +
+      '<option value="упаковка"' + ((data && data.pack) === 'упаковка' || (!data || !data.pack) ? ' selected' : '') + '>упаковка</option>' +
+      '<option value="поштучно"' + ((data && data.pack) === 'поштучно' ? ' selected' : '') + '>поштучно</option>' +
+    '</select>' +
     '<input type="number" class="wi-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="recalcWriteoffItem(this);updateWriteoffTotal();">' +
     '<input type="number" class="wi-price" min="0" step="0.01" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcWriteoffItem(this);updateWriteoffTotal();">' +
     '<input type="number" class="wi-markup" min="0" step="1" placeholder="Нац.%" value="' + ((data && data.markup !== undefined) ? data.markup : '') + '" title="Наценка, %" oninput="recalcWriteoffItem(this);updateWriteoffTotal();">' +
