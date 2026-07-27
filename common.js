@@ -1473,6 +1473,26 @@ async function getDeliveriesForMenuItem(menuItemId) {
   });
 }
 
+// Get deliveries that contain an item with a specific NAME (case-insensitive).
+// Used for delivery-only items (no menu_item_id) — e.g. "Соль", "Моющее средство".
+// Optionally filter by warehouse_id.
+async function getDeliveriesForItemName(itemName, warehouseId) {
+  const all = await getAllDeliveries();
+  const lowerName = String(itemName || '').toLowerCase().trim();
+  return all.filter(function(d) {
+    if (warehouseId && d.warehouse_id !== warehouseId) return false;
+    return d.items.some(function(it) {
+      return String(it.name || '').toLowerCase().trim() === lowerName;
+    });
+  }).map(function(d) {
+    return Object.assign({}, d, {
+      items: d.items.filter(function(it) {
+        return String(it.name || '').toLowerCase().trim() === lowerName;
+      })
+    });
+  });
+}
+
 // Save a delivery (insert or update) with all its items.
 // Items list replaces the existing items for this delivery.
 async function saveDelivery(data) {
@@ -1835,19 +1855,45 @@ async function getStockReport(warehouseId) {
   const deliveryStats = {};
   // whStock: per menu_item_id → total quantity received at the selected warehouse
   const whStock = {};
+  // deliveryOnlyItems: items that appear in deliveries but have NO menu_item_id
+  // (custom-named supplies like "Соль", "Моющее средство", etc.). These should
+  // appear in the warehouse stock list even though they're not on the restaurant menu.
+  // Keyed by item name (case-insensitive) → aggregated { name, qty, total, count, pack, unit_price }
+  const deliveryOnlyItems = {};
   allDeliveryItems.forEach(function(dit) {
-    const mid = dit.menu_item_id;
-    if (!mid) return;
     // Skip this item if it doesn't belong to a delivery at the selected warehouse
     if (filteredDeliveryIds && !filteredDeliveryIds.has(dit.delivery_id)) return;
-    if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0, qty: 0 };
-    deliveryStats[mid].count += 1;
-    deliveryStats[mid].total += Number(dit.total_price) || 0;
-    deliveryStats[mid].qty += Number(dit.quantity) || 0;
-    whStock[mid] = (whStock[mid] || 0) + (Number(dit.quantity) || 0);
+    const mid = dit.menu_item_id;
+    const itemName = String(dit.name || '').trim();
+    if (mid) {
+      // Linked to a menu item — aggregate by menu_item_id
+      if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0, qty: 0 };
+      deliveryStats[mid].count += 1;
+      deliveryStats[mid].total += Number(dit.total_price) || 0;
+      deliveryStats[mid].qty += Number(dit.quantity) || 0;
+      whStock[mid] = (whStock[mid] || 0) + (Number(dit.quantity) || 0);
+    } else if (itemName) {
+      // No menu_item_id — aggregate by name (case-insensitive) so the same
+      // custom item across multiple deliveries appears as one row
+      const key = itemName.toLowerCase();
+      if (!deliveryOnlyItems[key]) {
+        deliveryOnlyItems[key] = {
+          name: itemName,
+          qty: 0,
+          total: 0,
+          count: 0,
+          pack: String(dit.pack || ''),
+          unit_price: Number(dit.unit_price) || 0
+        };
+      }
+      deliveryOnlyItems[key].qty += Number(dit.quantity) || 0;
+      deliveryOnlyItems[key].total += Number(dit.total_price) || 0;
+      deliveryOnlyItems[key].count += 1;
+    }
   });
 
-  const items = menu.map(function(m) {
+  // Build the items array: menu items + delivery-only items (when warehouse filter is active)
+  const menuItems = menu.map(function(m) {
     // If warehouse filter is active, use warehouse-specific stock; else global menu.stock
     const stock = warehouseId ? (whStock[m.id] || 0) : (Number(m.stock) || 0);
     const cons = consumption[m.id] || { day: 0, week: 0, month: 0, total: 0 };
@@ -1878,13 +1924,39 @@ async function getStockReport(warehouseId) {
       consumed_total: cons.total,
       deliveries_count: dStats.count,
       deliveries_total: dStats.total,
-      low_stock: stockTracking && stock <= threshold
+      low_stock: stockTracking && stock <= threshold,
+      is_menu_item: true
     };
   });
-  // If warehouse filter is active, show ALL active menu items so the user can see
-  // what's available and what's missing (stock will be 0 for items never delivered).
-  // Previously filtered to items with deliveries_count > 0, which made new warehouses
-  // appear empty until the first delivery was made — confusing.
+
+  // When warehouse filter is active, also include delivery-only items
+  // (items that have deliveries to this warehouse but no menu_item_id)
+  const deliveryOnlyArray = warehouseId ? Object.keys(deliveryOnlyItems).map(function(key) {
+    const d = deliveryOnlyItems[key];
+    return {
+      id: 'custom_' + key, // synthetic id for sorting/display
+      name: d.name,
+      category_id: '',
+      category_name: 'Поставка (не в меню)',
+      sort: 9999, // sort after menu items
+      stock: d.qty,
+      cost: d.unit_price,
+      stock_value: d.qty * d.unit_price,
+      consumed_day: 0,
+      consumed_week: 0,
+      consumed_month: 0,
+      consumed_total: 0,
+      deliveries_count: d.count,
+      deliveries_total: d.total,
+      low_stock: false,
+      is_menu_item: false,
+      pack: d.pack
+    };
+  }) : [];
+
+  const items = menuItems.concat(deliveryOnlyArray);
+  // Show ALL items (menu + delivery-only). Previously filtered to items with
+  // deliveries_count > 0, which hid new warehouses and custom-named supplies.
   const finalItems = items;
   // Sort by sort field, then by name — keeps the order stable across reloads
   finalItems.sort(function(a, b) {
@@ -2415,6 +2487,8 @@ async function apiGet(action, params) {
       return await getDelivery(params.id);
     case 'getDeliveriesForMenuItem':
       return { deliveries: await getDeliveriesForMenuItem(params.menu_item_id) };
+    case 'getDeliveriesForItemName':
+      return { deliveries: await getDeliveriesForItemName(params.item_name, params.warehouse_id) };
     case 'getTabs': {
       let tabs = await dbSelect('tabs');
       if (params.status && params.status !== 'all') {

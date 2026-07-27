@@ -4145,9 +4145,18 @@ async function loadStockReport() {
     if (selectedWh) {
       const wh = (APP_DATA.warehouses || []).find(function(w) { return w.id === selectedWh; });
       if (wh) {
+        // Find the account linked to this warehouse (if any)
+        const whAccount = wh.account_id ? (APP_DATA.accounts || []).find(function(a) { return a.id === wh.account_id; }) : null;
+        let accountInfo = '';
+        if (whAccount) {
+          accountInfo = ' Счёт: <b>' + escapeHtml(whAccount.name) + '</b>' +
+            (whAccount.is_cash_register ? ' 💵 (касса)' : '');
+        }
         html += '<div class="card" style="padding:10px 14px;background:#e3f2fd;margin-bottom:14px;font-size:0.9rem;">' +
-          '📦 Показаны остатки для склада <b>' + escapeHtml(wh.name) + '</b>. ' +
-          'Остаток = сумме поставок на этот склад. У товаров без поставок будет 0 — создайте поставку, чтобы пополнить.' +
+          '📦 Склад: <b>' + escapeHtml(wh.name) + '</b>.' + accountInfo +
+          '<br>Остаток = сумме поставок на этот склад. ' +
+          'Показаны товары из меню + товары из поставок (даже если их нет в меню). ' +
+          'У товаров без поставок будет 0.' +
         '</div>';
       }
     }
@@ -4200,8 +4209,12 @@ function renderStockRow(it, tracking) {
   const nameClass = fontClass(it.name);
   const catClass = fontClass(it.category_name);
   let row = '<tr' + lowClass + ' id="stock-row-' + it.id + '" data-stock="' + it.stock + '">';
-  // Название
-  row += '<td class="st-td-name ' + nameClass + '">' + escapeHtml(it.name) + '</td>';
+  // Название (+ pack info for delivery-only items)
+  var nameDisplay = escapeHtml(it.name);
+  if (it.is_menu_item === false && it.pack) {
+    nameDisplay += ' <span style="color:var(--text-muted);font-size:0.78rem;">(' + escapeHtml(it.pack) + ')</span>';
+  }
+  row += '<td class="st-td-name ' + nameClass + '">' + nameDisplay + '</td>';
   // Категория
   row += '<td class="st-td-cat ' + catClass + '">' + escapeHtml(it.category_name || '—') + '</td>';
   // Остатки
@@ -4212,9 +4225,21 @@ function renderStockRow(it, tracking) {
   row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
   // Поставки — кликабельная ссылка "поставки" (expandable inline), или "—"
   if (hasDeliveries) {
+    // For delivery-only items (custom_ prefix), pass the item name + warehouse
+    // so we can query by name instead of menu_item_id
+    var isCustom = String(it.id || '').indexOf('custom_') === 0;
+    var toggleArgs;
+    if (isCustom) {
+      // Encode the name for safe attribute passing
+      var encodedName = encodeURIComponent(it.name);
+      var whId = (document.getElementById('stock-warehouse-select') || {}).value || '';
+      toggleArgs = '\'' + it.id + '\', this, \'' + encodedName + '\', \'' + whId + '\'';
+    } else {
+      toggleArgs = '\'' + it.id + '\', this';
+    }
     row += '<td class="st-td-center">' +
       '<a href="#" style="color:var(--primary);font-weight:600;text-decoration:underline;cursor:pointer;" ' +
-      'onclick="event.preventDefault();toggleStockDeliveries(\'' + it.id + '\', this)">поставки</a></td>';
+      'onclick="event.preventDefault();toggleStockDeliveries(' + toggleArgs + ')">поставки</a></td>';
   } else {
     row += '<td class="st-td-center" style="color:var(--text-muted);">—</td>';
   }
@@ -5330,7 +5355,7 @@ async function deleteDeliveryUI(id) {
 
 // Show a modal with the deliveries that contain a specific menu item
 // Toggle the expandable delivery history row under a stock item
-async function toggleStockDeliveries(menuItemId, linkEl) {
+async function toggleStockDeliveries(menuItemId, linkEl, encodedItemName, warehouseId) {
   var row = document.getElementById('stock-deliveries-' + menuItemId);
   if (!row) return;
   if (row.style.display !== 'none') {
@@ -5348,7 +5373,15 @@ async function toggleStockDeliveries(menuItemId, linkEl) {
   if (contentDiv.getAttribute('data-loaded') === 'true') return;
   contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
   try {
-    var data = await apiGet('getDeliveriesForMenuItem', { menu_item_id: menuItemId });
+    var data;
+    // If encodedItemName is provided, this is a delivery-only item (custom_) —
+    // query by item name + warehouse_id instead of menu_item_id
+    if (encodedItemName) {
+      var itemName = decodeURIComponent(encodedItemName);
+      data = await apiGet('getDeliveriesForItemName', { item_name: itemName, warehouse_id: warehouseId || '' });
+    } else {
+      data = await apiGet('getDeliveriesForMenuItem', { menu_item_id: menuItemId });
+    }
     var deliveries = data.deliveries || [];
     if (deliveries.length === 0) {
       contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Поставок нет</p>';
