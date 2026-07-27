@@ -605,11 +605,29 @@
   </div>
 </header>
 
-<!-- Login screen for admin: just a password field (single admin user) -->
+<!-- Login screen: role selector (admin/supplier) + password -->
 <div class="login-screen" id="login-screen" style="display:none;">
-  <h1>Администратор</h1>
-  <p class="login-subtitle">Введите пароль для входа</p>
+  <h1 id="login-title">Вход в систему</h1>
+  <p class="login-subtitle">Выберите тип входа и введите пароль</p>
   <form id="login-form" onsubmit="event.preventDefault(); document.getElementById('login-submit-btn').click();" autocomplete="off">
+    <!-- Role selector -->
+    <div class="form-group" style="max-width:400px;margin:0 auto 12px;">
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:8px;border:2px solid var(--border);font-weight:600;" id="login-role-admin-label">
+          <input type="radio" name="login-role" value="admin" checked onchange="onLoginRoleChange()" style="margin:0;">
+          🔑 Администратор
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:8px;border:2px solid var(--border);font-weight:600;" id="login-role-supplier-label">
+          <input type="radio" name="login-role" value="supplier" onchange="onLoginRoleChange()" style="margin:0;">
+          📦 Поставщик
+        </label>
+      </div>
+    </div>
+    <!-- Supplier user selector (hidden by default, shown when supplier is selected) -->
+    <div class="form-group" id="login-supplier-select-group" style="max-width:400px;margin:0 auto 12px;display:none;">
+      <label>Поставщик:</label>
+      <select id="login-supplier-select" onchange="document.getElementById('login-password').focus()"></select>
+    </div>
     <div class="form-group" style="max-width:400px;margin:0 auto;">
       <label>Пароль:</label>
       <input type="password" id="login-password" placeholder="Введите пароль" autocomplete="off" autofocus>
@@ -872,6 +890,8 @@
     <div id="waiters-list"></div>
     <h3 style="margin:20px 0 10px;">Повара</h3>
     <div id="cooks-list"></div>
+    <h3 style="margin:20px 0 10px;">Поставщики <span style="font-size:0.78rem;font-weight:normal;color:var(--text-muted);">(доступ к складу)</span></h3>
+    <div id="suppliers-list"></div>
   </div>
 
   <!-- SOUNDS TAB -->
@@ -1357,10 +1377,19 @@
     </div>
     <div class="form-group">
       <label>Роль</label>
-      <select id="user-role">
+      <select id="user-role" onchange="onUserRoleChange()">
         <option value="waiter">Официант</option>
         <option value="cook">Повар</option>
+        <option value="supplier">Поставщик</option>
       </select>
+    </div>
+    <!-- Warehouse selection for supplier role (hidden by default) -->
+    <div class="form-group" id="user-warehouses-group" style="display:none;">
+      <label>Разрешённые склады</label>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:0;margin-bottom:8px;">
+        Выберите склады, к которым поставщик будет иметь доступ. Если выбран один склад — он будет выбран автоматически при входе.
+      </p>
+      <div id="user-warehouses-list" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;padding:8px;background:var(--bg);border-radius:8px;border:1px solid var(--border);"></div>
     </div>
     <div class="form-group">
       <label>Телефон</label>
@@ -1715,14 +1744,14 @@ async function init() {
     document.getElementById('restaurant-name').textContent =
       (APP_DATA.settings.restaurant_name || 'Ресторан') + ' — Админ';
 
-    // Check session
+    // Check session — allow both admin and supplier roles
     const session = getCurrentSession();
-    if (!session || !session.user || session.user.role !== 'admin') {
+    if (!session || !session.user || (session.user.role !== 'admin' && session.user.role !== 'supplier')) {
       showLoginScreen();
       return;
     }
     // Verify user still exists in current users list
-    const stillExists = APP_DATA.users.find(function(u) { return u.id === session.user.id && u.role === 'admin'; });
+    const stillExists = APP_DATA.users_all.find(function(u) { return u.id === session.user.id && (u.role === 'admin' || u.role === 'supplier'); });
     if (!stillExists) {
       setCurrentSession(null);
       showLoginScreen();
@@ -1744,6 +1773,12 @@ function showLoginScreen(dataFailed) {
   document.getElementById('app-header').style.display = 'none';
   document.getElementById('app-main').style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
+  // Populate supplier dropdown (if data is available)
+  populateSupplierDropdown();
+  // Reset to admin role by default
+  var adminRadio = document.querySelector('input[name="login-role"][value="admin"]');
+  if (adminRadio) adminRadio.checked = true;
+  onLoginRoleChange();
   // Focus password field
   setTimeout(function() {
     const pwd = document.getElementById('login-password');
@@ -1764,6 +1799,45 @@ function showLoginScreen(dataFailed) {
   }
 }
 
+// Populate the supplier dropdown on the login screen with all active supplier users
+function populateSupplierDropdown() {
+  var sel = document.getElementById('login-supplier-select');
+  if (!sel) return;
+  var suppliers = (APP_DATA && APP_DATA.users_all ? APP_DATA.users_all : [])
+    .filter(function(u) { return u.role === 'supplier' && u.is_active; })
+    .sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
+  if (suppliers.length === 0) {
+    sel.innerHTML = '<option value="">— нет поставщиков —</option>';
+  } else {
+    sel.innerHTML = '<option value="">— Выберите поставщика —</option>' +
+      suppliers.map(function(s) {
+        return '<option value="' + escapeHtml(s.id) + '">' + escapeHtml(s.name) + '</option>';
+      }).join('');
+  }
+}
+
+// Toggle login form based on selected role (admin vs supplier)
+function onLoginRoleChange() {
+  var role = document.querySelector('input[name="login-role"]:checked');
+  role = role ? role.value : 'admin';
+  var supplierGroup = document.getElementById('login-supplier-select-group');
+  var adminLabel = document.getElementById('login-role-admin-label');
+  var supplierLabel = document.getElementById('login-role-supplier-label');
+  if (role === 'supplier') {
+    if (supplierGroup) supplierGroup.style.display = '';
+    if (supplierLabel) supplierLabel.style.borderColor = 'var(--primary)';
+    if (supplierLabel) supplierLabel.style.background = '#e0e7ff';
+    if (adminLabel) adminLabel.style.borderColor = 'var(--border)';
+    if (adminLabel) adminLabel.style.background = '';
+  } else {
+    if (supplierGroup) supplierGroup.style.display = 'none';
+    if (adminLabel) adminLabel.style.borderColor = 'var(--primary)';
+    if (adminLabel) adminLabel.style.background = '#e0e7ff';
+    if (supplierLabel) supplierLabel.style.borderColor = 'var(--border)';
+    if (supplierLabel) supplierLabel.style.background = '';
+  }
+}
+
 // Admin user id is fixed — there is only one admin
 const ADMIN_USER_ID = 'u_admin';
 
@@ -1773,8 +1847,21 @@ async function submitLogin() {
     showToast('Введите пароль', 'warning');
     return;
   }
+  // Determine which role is selected
+  var roleRadio = document.querySelector('input[name="login-role"]:checked');
+  var role = roleRadio ? roleRadio.value : 'admin';
+  var userId;
+  if (role === 'supplier') {
+    userId = document.getElementById('login-supplier-select').value;
+    if (!userId) {
+      showToast('Выберите поставщика', 'warning');
+      return;
+    }
+  } else {
+    userId = ADMIN_USER_ID;
+  }
   try {
-    const session = await loginWithPassword(ADMIN_USER_ID, password);
+    const session = await loginWithPassword(userId, password);
     setCurrentSession(session);
     adminState.currentUser = session.user;
     adminState.sessionToken = session.token;
@@ -1797,6 +1884,8 @@ function startApp() {
   var sidebarName = document.getElementById('sidebar-restaurant-name');
   if (sidebarName && APP_DATA.settings) sidebarName.textContent = APP_DATA.settings.restaurant_name || 'Ресторан';
   requestWakeLock();
+  // Apply role-based UI restrictions (hide sidebar items for supplier, etc.)
+  applyRoleRestrictions();
   populateSettingsForm();
   populateCategoryFilter();
   renderMenuList();
@@ -1808,6 +1897,39 @@ function startApp() {
   startOrdersPolling();
   // Restore the tab from URL hash (e.g. #stock/writeoffs → Stock → Списания)
   restoreTabFromHash();
+}
+
+// Get the allowed warehouse IDs for the current user (supplier role only).
+// Returns null for admin (no restriction).
+function getAllowedWarehouseIds() {
+  if (!adminState.currentUser || adminState.currentUser.role !== 'supplier') return null;
+  var raw = adminState.currentUser.allowed_warehouses || '';
+  if (!raw) return [];
+  return raw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+}
+
+// Apply role-based restrictions to the UI.
+// Supplier: hide all sidebar items except "Склад"; hide stock sub-tabs except Остатки/Поставки/Списания.
+function applyRoleRestrictions() {
+  var role = adminState.currentUser ? adminState.currentUser.role : 'admin';
+  if (role === 'supplier') {
+    // Hide all sidebar items except "stock"
+    document.querySelectorAll('.sidebar-item[data-tab]').forEach(function(item) {
+      if (item.dataset.tab !== 'stock') {
+        item.style.display = 'none';
+      }
+    });
+    // Hide stock sub-items except items/deliveries/writeoffs
+    document.querySelectorAll('.sidebar-subitem[data-stocksub]').forEach(function(item) {
+      if (['suppliers', 'warehouses', 'accounts'].indexOf(item.dataset.stocksub) !== -1) {
+        item.style.display = 'none';
+      }
+    });
+    // Hide the "+ Добавить склад" button and other management UI that supplier shouldn't see
+    // (handled by hiding the warehouses/accounts/suppliers sub-tabs above)
+    // Auto-switch to stock tab on login
+    switchTab('stock');
+  }
 }
 
 // Restore the active tab + sub-tab from the URL hash.
@@ -4277,19 +4399,31 @@ async function loadStockReport() {
   // Populate the warehouse dropdown (only on first load)
   const whSelect = document.getElementById('stock-warehouse-select');
   if (whSelect && !whSelect.dataset.populated) {
-    const warehouses = (APP_DATA.warehouses || []).slice();
+    let warehouses = (APP_DATA.warehouses || []).slice();
+    // Filter by allowed_warehouses for supplier role
+    var stockAllowedWhIds = getAllowedWarehouseIds();
+    if (stockAllowedWhIds !== null) {
+      warehouses = warehouses.filter(function(w) { return stockAllowedWhIds.indexOf(w.id) !== -1; });
+    }
     warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
-    let opts = '<option value="">Все склады (по умолчанию)</option>';
+    // For supplier with only 1 warehouse, no "all warehouses" option
+    var defaultLabel = (stockAllowedWhIds !== null && stockAllowedWhIds.length === 1) ? '— все —' : 'Все склады (по умолчанию)';
+    let opts = '<option value="">' + defaultLabel + '</option>';
     warehouses.forEach(function(w) {
       opts += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name) + '</option>';
     });
     whSelect.innerHTML = opts;
     whSelect.dataset.populated = '1';
-    // Restore saved default warehouse from localStorage
-    try {
-      const savedWh = localStorage.getItem('stockDefaultWarehouse');
-      if (savedWh) whSelect.value = savedWh;
-    } catch (e) {}
+    // For supplier with exactly 1 warehouse, auto-select it
+    if (stockAllowedWhIds !== null && stockAllowedWhIds.length === 1) {
+      whSelect.value = stockAllowedWhIds[0];
+    } else {
+      // Restore saved default warehouse from localStorage
+      try {
+        const savedWh = localStorage.getItem('stockDefaultWarehouse');
+        if (savedWh) whSelect.value = savedWh;
+      } catch (e) {}
+    }
   }
   const selectedWh = whSelect ? whSelect.value : '';
   // Update the "По умолчанию" button state
@@ -5286,6 +5420,11 @@ async function loadDeliveriesList() {
   try {
     const data = await apiGet('getAllDeliveries', {});
     let deliveries = data.deliveries || [];
+    // Filter by allowed_warehouses for supplier role
+    var delAllowedWhIds = getAllowedWarehouseIds();
+    if (delAllowedWhIds !== null) {
+      deliveries = deliveries.filter(function(d) { return delAllowedWhIds.indexOf(d.warehouse_id) !== -1; });
+    }
     if (deliveries.length === 0) {
       div.innerHTML = '<div class="empty-state"><h3>Нет поставок</h3><p>Нажмите «+ Добавить поставку»</p></div>';
       return;
@@ -5399,7 +5538,13 @@ async function openDeliveryModal(id) {
   (APP_DATA.suppliers || []).forEach(function(s) {
     supplierSel.innerHTML += '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>';
   });
-  (APP_DATA.warehouses || []).forEach(function(w) {
+  // Filter warehouses by allowed_warehouses (for supplier role)
+  var allowedWhIds = getAllowedWarehouseIds();
+  var warehouses = APP_DATA.warehouses || [];
+  if (allowedWhIds !== null) {
+    warehouses = warehouses.filter(function(w) { return allowedWhIds.indexOf(w.id) !== -1; });
+  }
+  warehouses.forEach(function(w) {
     warehouseSel.innerHTML += '<option value="' + w.id + '">' + escapeHtml(w.name) + '</option>';
   });
   (APP_DATA.accounts || []).forEach(function(a) {
@@ -5687,7 +5832,13 @@ async function loadWriteoffsList() {
   try {
     // Use apiGet to get writeoffs WITH items (APP_DATA.writeoffs doesn't have items joined)
     const data = await apiGet('getAllWriteoffs', {});
-    const writeoffs = (data.writeoffs || []).slice().sort(function(a, b) {
+    let writeoffs = (data.writeoffs || []).slice();
+    // Filter by allowed_warehouses for supplier role
+    var wofAllowedWhIds2 = getAllowedWarehouseIds();
+    if (wofAllowedWhIds2 !== null) {
+      writeoffs = writeoffs.filter(function(w) { return wofAllowedWhIds2.indexOf(w.warehouse_id) !== -1; });
+    }
+    writeoffs.sort(function(a, b) {
       return new Date(b.writeoff_date || 0) - new Date(a.writeoff_date || 0);
     });
     if (writeoffs.length === 0) {
@@ -5789,10 +5940,15 @@ async function openWriteoffModal(id) {
   document.getElementById('writeoff-comment').value = '';
   document.getElementById('modal-writeoff-title').textContent = id ? 'Изменить списание' : 'Новое списание';
 
-  // Populate warehouse dropdown
+  // Populate warehouse dropdown (filtered by allowed_warehouses for supplier role)
   const whSel = document.getElementById('writeoff-warehouse');
   whSel.innerHTML = '<option value="">— Выберите склад —</option>';
-  (APP_DATA.warehouses || []).forEach(function(w) {
+  var wofAllowedWhIds = getAllowedWarehouseIds();
+  var wofWarehouses = APP_DATA.warehouses || [];
+  if (wofAllowedWhIds !== null) {
+    wofWarehouses = wofWarehouses.filter(function(w) { return wofAllowedWhIds.indexOf(w.id) !== -1; });
+  }
+  wofWarehouses.forEach(function(w) {
     whSel.innerHTML += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name) + '</option>';
   });
 
@@ -6495,6 +6651,8 @@ function renderStaffList() {
     .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
   const cooks = all.filter(function(u) { return u.role === 'cook'; })
     .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
+  const suppliers = all.filter(function(u) { return u.role === 'supplier'; })
+    .sort(function(a, b) { return (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(String(b.name)); });
 
   const waitersDiv = document.getElementById('waiters-list');
   const cooksDiv = document.getElementById('cooks-list');
@@ -6547,8 +6705,8 @@ function renderStaffList() {
           '<div class="user-name">' + escapeHtml(u.name) + (isHidden ? ' <span style="color:#e65100;font-size:0.78rem;font-weight:600;">(скрыт)</span>' : '') + '</div>' +
           contact +
         '</div>' +
-        '<span class="user-role-badge ' + (role === 'cook' ? 'cook' : '') + '">' +
-          (role === 'cook' ? 'повар' : 'официант') +
+        '<span class="user-role-badge ' + (role === 'cook' ? 'cook' : role === 'supplier' ? 'supplier' : '') + '">' +
+          (role === 'cook' ? 'повар' : role === 'supplier' ? 'поставщик' : 'официант') +
         '</span>' +
         (u.has_password
           ? '<span class="user-role-badge" style="background:#c8e6c9;color:#1b5e20;">🔑 есть пароль</span>'
@@ -6563,6 +6721,9 @@ function renderStaffList() {
   }
   renderList(waitersDiv, waiters, 'waiter');
   renderList(cooksDiv, cooks, 'cook');
+  // Render suppliers if the suppliers-list div exists
+  var suppliersDiv = document.getElementById('suppliers-list');
+  if (suppliersDiv) renderList(suppliersDiv, suppliers, 'supplier');
 }
 
 // Toggle hide/show on start page (sets is_active flag)
@@ -6578,7 +6739,8 @@ async function toggleUserHidden(userId) {
       is_active: newActive,
       sort: u.sort || 0,
       phone: u.phone || '',
-      email: u.email || ''
+      email: u.email || '',
+      allowed_warehouses: u.allowed_warehouses || ''
     });
     showToast(newActive ? 'Сотрудник снова виден на стартовой странице' : 'Сотрудник скрыт с стартовой страницы', 'success');
     await loadAppDataForce();
@@ -6590,6 +6752,8 @@ async function toggleUserHidden(userId) {
 
 function openUserModal(id) {
   const title = document.getElementById('modal-user-title');
+  // Populate warehouse checkboxes (always, in case user switches to supplier role)
+  populateUserWarehousesList();
   if (id) {
     // Look in users_all (includes hidden employees) so admin can edit hidden ones too
     const u = (APP_DATA.users_all || APP_DATA.users || []).find(function(x) { return x.id === id; });
@@ -6601,6 +6765,13 @@ function openUserModal(id) {
     document.getElementById('user-phone').value = u.phone || '';
     document.getElementById('user-email').value = u.email || '';
     document.getElementById('user-is-active').checked = (u.is_active !== false);
+    // Pre-check allowed warehouses for supplier
+    if (u.role === 'supplier') {
+      var allowedIds = (u.allowed_warehouses || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      document.querySelectorAll('#user-warehouses-list input[type="checkbox"]').forEach(function(cb) {
+        cb.checked = allowedIds.indexOf(cb.value) !== -1;
+      });
+    }
   } else {
     title.textContent = 'Новый сотрудник';
     document.getElementById('user-id').value = '';
@@ -6609,20 +6780,59 @@ function openUserModal(id) {
     document.getElementById('user-phone').value = '';
     document.getElementById('user-email').value = '';
     document.getElementById('user-is-active').checked = true;
+    // Uncheck all warehouse checkboxes
+    document.querySelectorAll('#user-warehouses-list input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
   }
+  onUserRoleChange();
   openModal('modal-user');
+}
+
+// Populate the warehouse checkboxes in the user modal
+function populateUserWarehousesList() {
+  var container = document.getElementById('user-warehouses-list');
+  if (!container) return;
+  var warehouses = (APP_DATA.warehouses || []).slice();
+  warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
+  if (warehouses.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Сначала создайте склады во вкладке Склад → Склады.</p>';
+    return;
+  }
+  container.innerHTML = warehouses.map(function(w) {
+    return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 6px;border-radius:4px;">' +
+      '<input type="checkbox" value="' + escapeHtml(w.id) + '" style="width:auto;">' +
+      '<span>' + escapeHtml(w.name) + '</span>' +
+    '</label>';
+  }).join('');
+}
+
+// Show/hide warehouse selection based on role
+function onUserRoleChange() {
+  var role = document.getElementById('user-role').value;
+  var whGroup = document.getElementById('user-warehouses-group');
+  if (whGroup) whGroup.style.display = (role === 'supplier') ? '' : 'none';
 }
 
 async function saveUserBtn() {
   const id = document.getElementById('user-id').value;
+  const role = document.getElementById('user-role').value;
   const payload = {
     id: id || undefined,
     name: document.getElementById('user-name').value.trim(),
-    role: document.getElementById('user-role').value,
+    role: role,
     is_active: document.getElementById('user-is-active').checked,
     phone: document.getElementById('user-phone').value.trim(),
     email: document.getElementById('user-email').value.trim()
   };
+  // Collect allowed warehouses for supplier
+  if (role === 'supplier') {
+    var checkedIds = [];
+    document.querySelectorAll('#user-warehouses-list input[type="checkbox"]:checked').forEach(function(cb) {
+      checkedIds.push(cb.value);
+    });
+    payload.allowed_warehouses = checkedIds.join(',');
+  } else {
+    payload.allowed_warehouses = '';
+  }
   if (!payload.name) { showToast('Введите имя', 'warning'); return; }
   try {
     await apiPost('saveUser', payload);

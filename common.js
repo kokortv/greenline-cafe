@@ -266,7 +266,8 @@ async function loadAppData(force) {
         phone: u.phone || '',
         email: u.email || '',
         last_login: u.last_login || null,
-        has_password: !!(u.pin && String(u.pin).length > 0)
+        has_password: !!(u.pin && String(u.pin).length > 0),
+        allowed_warehouses: u.allowed_warehouses || ''
       };
     }),
     // Include hidden (is_active=false) users separately so admin can manage them
@@ -281,7 +282,8 @@ async function loadAppData(force) {
         email: u.email || '',
         last_login: u.last_login || null,
         has_password: !!(u.pin && String(u.pin).length > 0),
-        created_at: u.created_at || null
+        created_at: u.created_at || null,
+        allowed_warehouses: u.allowed_warehouses || ''
       };
     })
   };
@@ -2356,7 +2358,7 @@ async function loginWithPassword(userId, password) {
 
   return {
     token: 'session_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 12),
-    user: { id: user.id, name: user.name, role: user.role },
+    user: { id: user.id, name: user.name, role: user.role, allowed_warehouses: user.allowed_warehouses || '' },
     expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
   };
 }
@@ -3012,7 +3014,8 @@ async function apiPost(action, body) {
         is_active: body.is_active !== false,
         sort: body.sort || 0,
         phone: body.phone || '',
-        email: body.email || ''
+        email: body.email || '',
+        allowed_warehouses: body.allowed_warehouses || ''
       };
       if (existing.length > 0) {
         return await dbUpdate('users', uId, record);
