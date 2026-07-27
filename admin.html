@@ -6047,12 +6047,13 @@ async function toggleStockDeliveries(menuItemId, linkEl, encodedItemName, wareho
   if (row.style.display !== 'none') {
     // Already open — close it
     row.style.display = 'none';
-    if (linkEl) linkEl.textContent = 'поставки';
+    if (linkEl) { linkEl.textContent = '👁'; linkEl.style.background = ''; }
     return;
   }
   // Open it — load delivery data if not yet loaded
   row.style.display = 'table-row';
-  if (linkEl) linkEl.textContent = 'скрыть';
+  // Highlight the eye icon when expanded so user sees the row is open
+  if (linkEl) { linkEl.textContent = '👁'; linkEl.style.background = '#c7d2fe'; }
   var contentDiv = document.getElementById('stock-deliveries-content-' + menuItemId);
   if (!contentDiv) return;
   // Check if already loaded (skip if content is not "Загрузка...")

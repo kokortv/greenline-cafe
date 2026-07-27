@@ -2100,6 +2100,9 @@ async function getStockReport(warehouseId) {
   // Get all delivery items (for the "Поставки" link / count / total)
   const allDeliveries = await dbSelect('deliveries');
   const allDeliveryItems = await dbSelect('delivery_items');
+  // Get all writeoff items (to subtract from stock)
+  const allWriteoffs = await dbSelect('writeoffs');
+  const allWriteoffItems = await dbSelect('writeoff_items');
 
   // ===== Per-warehouse filtering =====
   // If warehouseId is provided, only consider deliveries that went to that warehouse.
@@ -2173,6 +2176,46 @@ async function getStockReport(warehouseId) {
         deliveryOnlyItems[key].count += 1;
         if (Number(dit.markup) > 0) deliveryOnlyItems[key].markup = Number(dit.markup);
       }
+    }
+  });
+
+  // ===== Subtract writeoffs from stock =====
+  // Writeoffs remove items from the warehouse. We need to:
+  // 1. Find writeoffs for the selected warehouse (or all warehouses if no filter)
+  // 2. For each writeoff item, subtract its quantity from the corresponding item
+  let filteredWriteoffIds = null;
+  if (warehouseId) {
+    filteredWriteoffIds = new Set(
+      allWriteoffs.filter(function(w) { return w.warehouse_id === warehouseId; })
+        .map(function(w) { return w.id; })
+    );
+  }
+  // writeoffByName: per item name (lowercase) → total quantity written off
+  const writeoffByName = {};
+  // writeoffByMenuId: per menu_item_id → total quantity written off
+  const writeoffByMenuId = {};
+  allWriteoffItems.forEach(function(wit) {
+    // Skip if warehouse filter is active and this writeoff doesn't belong to the selected warehouse
+    if (filteredWriteoffIds && !filteredWriteoffIds.has(wit.writeoff_id)) return;
+    const qty = Number(wit.quantity) || 0;
+    if (qty <= 0) return;
+    const itemName = String(wit.name || '').trim().toLowerCase();
+    const mid = wit.menu_item_id;
+    if (itemName) writeoffByName[itemName] = (writeoffByName[itemName] || 0) + qty;
+    if (mid) writeoffByMenuId[mid] = (writeoffByMenuId[mid] || 0) + qty;
+  });
+  // Subtract writeoffs from deliveryOnlyItems (by name)
+  Object.keys(writeoffByName).forEach(function(name) {
+    if (deliveryOnlyItems[name]) {
+      deliveryOnlyItems[name].qty -= writeoffByName[name];
+      if (deliveryOnlyItems[name].qty < 0) deliveryOnlyItems[name].qty = 0;
+    }
+  });
+  // Subtract writeoffs from whStock (by menu_item_id) — for the "all warehouses" view
+  Object.keys(writeoffByMenuId).forEach(function(mid) {
+    if (whStock[mid]) {
+      whStock[mid] -= writeoffByMenuId[mid];
+      if (whStock[mid] < 0) whStock[mid] = 0;
     }
   });
 
