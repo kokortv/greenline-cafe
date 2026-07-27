@@ -612,14 +612,14 @@
   <form id="login-form" onsubmit="event.preventDefault(); document.getElementById('login-submit-btn').click();" autocomplete="off">
     <!-- Role selector -->
     <div class="form-group" style="max-width:400px;margin:0 auto 12px;">
-      <div style="display:flex;gap:8px;justify-content:center;">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:8px;border:2px solid var(--border);font-weight:600;" id="login-role-admin-label">
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:nowrap;">
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:8px;border:2px solid var(--border);font-weight:600;white-space:nowrap;" id="login-role-admin-label">
           <input type="radio" name="login-role" value="admin" checked onchange="onLoginRoleChange()" style="margin:0;">
-          🔑 Администратор
+          <span>🔑 Администратор</span>
         </label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:8px;border:2px solid var(--border);font-weight:600;" id="login-role-supplier-label">
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:8px;border:2px solid var(--border);font-weight:600;white-space:nowrap;" id="login-role-supplier-label">
           <input type="radio" name="login-role" value="supplier" onchange="onLoginRoleChange()" style="margin:0;">
-          📦 Поставщик
+          <span>📦 Поставщик</span>
         </label>
       </div>
     </div>
@@ -647,7 +647,7 @@
     <aside class="admin-sidebar" id="admin-sidebar">
       <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
         <div style="font-size:1.1rem;font-weight:700;color:#1e293b;" id="sidebar-restaurant-name">Ресторан</div>
-        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">Панель администратора</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;" id="sidebar-panel-label">Панель администратора</div>
       </div>
       <nav class="sidebar-nav">
         <button class="sidebar-item active" data-tab="orders" onclick="switchTab('orders')">
@@ -1912,7 +1912,10 @@ function getAllowedWarehouseIds() {
 // Supplier: hide all sidebar items except "Склад"; hide stock sub-tabs except Остатки/Поставки/Списания.
 function applyRoleRestrictions() {
   var role = adminState.currentUser ? adminState.currentUser.role : 'admin';
+  var panelLabel = document.getElementById('sidebar-panel-label');
   if (role === 'supplier') {
+    // Change panel label
+    if (panelLabel) panelLabel.textContent = 'Панель поставщика';
     // Hide all sidebar items except "stock"
     document.querySelectorAll('.sidebar-item[data-tab]').forEach(function(item) {
       if (item.dataset.tab !== 'stock') {
@@ -4326,7 +4329,10 @@ function switchStockSub(sub) {
       warehouses: 'Склад — Склады',
       accounts: 'Склад — Счета'
     };
-    titleEl.textContent = labels[sub] || 'Склад';
+    // For supplier role, remove the "Склад — " prefix
+    var role = adminState.currentUser ? adminState.currentUser.role : 'admin';
+    var label = labels[sub] || 'Склад';
+    titleEl.textContent = (role === 'supplier') ? label.replace('Склад — ', '') : label;
   }
   // Load data for the sub-tab — force-refresh APP_DATA so dropdowns/lists are current
   // (replaces the old manual "↻ Обновить" buttons)
@@ -4396,38 +4402,47 @@ function updateDefaultWarehouseBtn(currentVal) {
 async function loadStockReport() {
   const div = document.getElementById('stock-report');
   if (!div) return;
-  // Populate the warehouse dropdown (only on first load)
+  // Check role + allowed warehouses
+  var stockAllowedWhIds = getAllowedWarehouseIds();
+  var isSupplierSingleWh = (stockAllowedWhIds !== null && stockAllowedWhIds.length === 1);
+  // Populate the warehouse dropdown (only on first load, and only if not supplier-with-1-warehouse)
   const whSelect = document.getElementById('stock-warehouse-select');
-  if (whSelect && !whSelect.dataset.populated) {
-    let warehouses = (APP_DATA.warehouses || []).slice();
-    // Filter by allowed_warehouses for supplier role
-    var stockAllowedWhIds = getAllowedWarehouseIds();
-    if (stockAllowedWhIds !== null) {
-      warehouses = warehouses.filter(function(w) { return stockAllowedWhIds.indexOf(w.id) !== -1; });
+  const whFilter = document.getElementById('stock-warehouse-filter');
+  const defaultBtn = document.getElementById('stock-warehouse-default-btn');
+  if (isSupplierSingleWh) {
+    // Supplier with exactly 1 warehouse: hide the filter row entirely, show just the warehouse name
+    if (whFilter) whFilter.style.display = 'none';
+    // Auto-select the single allowed warehouse
+    if (whSelect) whSelect.value = stockAllowedWhIds[0];
+  } else {
+    if (whFilter) whFilter.style.display = '';
+    if (whSelect && !whSelect.dataset.populated) {
+      let warehouses = (APP_DATA.warehouses || []).slice();
+      if (stockAllowedWhIds !== null) {
+        warehouses = warehouses.filter(function(w) { return stockAllowedWhIds.indexOf(w.id) !== -1; });
+      }
+      warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
+      var defaultLabel = (stockAllowedWhIds !== null) ? '— все —' : 'Все склады (по умолчанию)';
+      let opts = '<option value="">' + defaultLabel + '</option>';
+      warehouses.forEach(function(w) {
+        opts += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name) + '</option>';
+      });
+      whSelect.innerHTML = opts;
+      whSelect.dataset.populated = '1';
+      // For supplier with multiple warehouses, no localStorage default (admin-only feature)
+      if (stockAllowedWhIds === null) {
+        try {
+          const savedWh = localStorage.getItem('stockDefaultWarehouse');
+          if (savedWh) whSelect.value = savedWh;
+        } catch (e) {}
+      }
     }
-    warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
-    // For supplier with only 1 warehouse, no "all warehouses" option
-    var defaultLabel = (stockAllowedWhIds !== null && stockAllowedWhIds.length === 1) ? '— все —' : 'Все склады (по умолчанию)';
-    let opts = '<option value="">' + defaultLabel + '</option>';
-    warehouses.forEach(function(w) {
-      opts += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name) + '</option>';
-    });
-    whSelect.innerHTML = opts;
-    whSelect.dataset.populated = '1';
-    // For supplier with exactly 1 warehouse, auto-select it
-    if (stockAllowedWhIds !== null && stockAllowedWhIds.length === 1) {
-      whSelect.value = stockAllowedWhIds[0];
-    } else {
-      // Restore saved default warehouse from localStorage
-      try {
-        const savedWh = localStorage.getItem('stockDefaultWarehouse');
-        if (savedWh) whSelect.value = savedWh;
-      } catch (e) {}
-    }
+    // Show/hide "По умолчанию" button: only for admin
+    if (defaultBtn) defaultBtn.style.display = (stockAllowedWhIds === null) ? '' : 'none';
   }
   const selectedWh = whSelect ? whSelect.value : '';
-  // Update the "По умолчанию" button state
-  updateDefaultWarehouseBtn(selectedWh);
+  // Update the "По умолчанию" button state (admin only)
+  if (stockAllowedWhIds === null) updateDefaultWarehouseBtn(selectedWh);
   div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
   try {
     const data = await apiGet('getStockReport', selectedWh ? { warehouse_id: selectedWh } : {});
@@ -4443,24 +4458,27 @@ async function loadStockReport() {
     window._stockTracking = tracking;
     window._stockThreshold = threshold;
     let html = '';
-    if (!tracking) {
-      html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
-    }
-    if (selectedWh) {
-      const wh = (APP_DATA.warehouses || []).find(function(w) { return w.id === selectedWh; });
-      if (wh) {
-        // Find the account linked to this warehouse (if any)
-        const whAccount = wh.account_id ? (APP_DATA.accounts || []).find(function(a) { return a.id === wh.account_id; }) : null;
-        let accountInfo = '';
-        if (whAccount) {
-          accountInfo = ' Счёт: <b>' + escapeHtml(whAccount.name) + '</b>' +
-            (whAccount.is_cash_register ? ' 💵 (касса)' : '');
+    // Info blocks: only show for admin (supplier doesn't need them)
+    if (stockAllowedWhIds === null) {
+      if (!tracking) {
+        html += '<div class="card" style="padding:12px;background:#fffde7;margin-bottom:16px;">⚠ Учёт склада отключён в Настройках — списание при заказах не производится. Склад отображается, можно пополнять вручную.</div>';
+      }
+      if (selectedWh) {
+        const wh = (APP_DATA.warehouses || []).find(function(w) { return w.id === selectedWh; });
+        if (wh) {
+          // Find the account linked to this warehouse (if any)
+          const whAccount = wh.account_id ? (APP_DATA.accounts || []).find(function(a) { return a.id === wh.account_id; }) : null;
+          let accountInfo = '';
+          if (whAccount) {
+            accountInfo = ' Счёт: <b>' + escapeHtml(whAccount.name) + '</b>' +
+              (whAccount.is_cash_register ? ' 💵 (касса)' : '');
+          }
+          html += '<div class="card" style="padding:10px 14px;background:#e3f2fd;margin-bottom:14px;font-size:0.9rem;">' +
+            '📦 Склад: <b>' + escapeHtml(wh.name) + '</b>.' + accountInfo +
+            '<br>Показаны товары только из поставок на этот склад (независимо от меню ресторана). ' +
+            'Остаток = сумме поставок. Товары без поставок здесь не отображаются.' +
+          '</div>';
         }
-        html += '<div class="card" style="padding:10px 14px;background:#e3f2fd;margin-bottom:14px;font-size:0.9rem;">' +
-          '📦 Склад: <b>' + escapeHtml(wh.name) + '</b>.' + accountInfo +
-          '<br>Показаны товары только из поставок на этот склад (независимо от меню ресторана). ' +
-          'Остаток = сумме поставок. Товары без поставок здесь не отображаются.' +
-        '</div>';
       }
     }
     html += '<table class="stock-table" id="stock-table"><thead><tr>';
