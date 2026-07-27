@@ -1892,7 +1892,11 @@ async function getStockReport(warehouseId) {
     }
   });
 
-  // Build the items array: menu items + delivery-only items (when warehouse filter is active)
+  // Build the items array.
+  // - When NO warehouse filter: show all menu items with their global stock (as before)
+  // - When warehouse filter IS active: show ONLY items that have deliveries to this
+  //   warehouse — both menu items (with menu_item_id) and custom-named items (without).
+  //   Items with zero stock at this warehouse are NOT shown (user said "только из этого склада").
   const menuItems = menu.map(function(m) {
     // If warehouse filter is active, use warehouse-specific stock; else global menu.stock
     const stock = warehouseId ? (whStock[m.id] || 0) : (Number(m.stock) || 0);
@@ -1929,6 +1933,13 @@ async function getStockReport(warehouseId) {
     };
   });
 
+  // When warehouse filter is active, filter menu items to only those with deliveries
+  // to this warehouse. Items with stock=0 at this warehouse are excluded — the user
+  // wants to see ONLY what's actually on this warehouse.
+  const filteredMenuItems = warehouseId
+    ? menuItems.filter(function(it) { return it.deliveries_count > 0; })
+    : menuItems;
+
   // When warehouse filter is active, also include delivery-only items
   // (items that have deliveries to this warehouse but no menu_item_id)
   const deliveryOnlyArray = warehouseId ? Object.keys(deliveryOnlyItems).map(function(key) {
@@ -1954,9 +1965,7 @@ async function getStockReport(warehouseId) {
     };
   }) : [];
 
-  const items = menuItems.concat(deliveryOnlyArray);
-  // Show ALL items (menu + delivery-only). Previously filtered to items with
-  // deliveries_count > 0, which hid new warehouses and custom-named supplies.
+  const items = filteredMenuItems.concat(deliveryOnlyArray);
   const finalItems = items;
   // Sort by sort field, then by name — keeps the order stable across reloads
   finalItems.sort(function(a, b) {
