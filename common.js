@@ -170,7 +170,9 @@ async function loadAppData(force) {
     dbSelect('warehouses'),
     dbSelect('accounts'),
     dbSelect('deliveries'),
-    dbSelect('delivery_items')
+    dbSelect('delivery_items'),
+    dbSelect('writeoffs'),
+    dbSelect('writeoff_items')
   ]);
 
   // Filter active items on client side
@@ -252,6 +254,8 @@ async function loadAppData(force) {
     accounts: accounts.filter(function(a) { return a.is_active === true || a.is_active === 'true'; }),
     deliveries: deliveries, // all deliveries, including historic — don't filter
     delivery_items: deliveryItems,
+    writeoffs: writeoffs,
+    writeoff_items: writeoffItems,
     users: activeUsers.map(function(u) {
       return {
         id: u.id,
@@ -833,8 +837,8 @@ async function closeShift(waiterId, actualCash) {
 
   const openingCash = Number(shift.opening_cash) || 0;
 
-  // ===== Fetch shift_transactions (incassations + supply payments) for this shift =====
-  let incassationTotal = 0, supplyPaymentTotal = 0;
+  // ===== Fetch shift_transactions (incassations + supply payments + writeoffs) for this shift =====
+  let incassationTotal = 0, supplyPaymentTotal = 0, writeoffTotal = 0;
   try {
     const { data: txs } = await _sb.from('shift_transactions')
       .select('*')
@@ -842,14 +846,17 @@ async function closeShift(waiterId, actualCash) {
     (txs || []).forEach(function(t) {
       if (t.type === 'incassation') incassationTotal += Number(t.amount) || 0;
       else if (t.type === 'supply_payment') supplyPaymentTotal += Number(t.amount) || 0;
+      else if (t.type === 'writeoff') writeoffTotal += Number(t.amount) || 0;
     });
   } catch (e) {
     console.warn('Failed to fetch shift_transactions for shift', shift.id, e.message);
   }
 
   // Expected cash in drawer:
-  //   openingCash + cashOrdersDuringShift - incassationsDuringShift - supplyPaymentsDuringShift
-  const expectedCash = openingCash + cashTotal - incassationTotal - supplyPaymentTotal;
+  //   openingCash + cashOrdersDuringShift + writeoffsCreditedDuringShift
+  //   - incassationsDuringShift - supplyPaymentsDuringShift
+  // (writeoffs ADD to cash because the sale amount is credited to the cash register)
+  const expectedCash = openingCash + cashTotal + writeoffTotal - incassationTotal - supplyPaymentTotal;
   // actualCash is what the waiter counted; if not provided, fall back to expected
   const countedCash = (actualCash !== undefined && actualCash !== null && actualCash !== '')
     ? Number(actualCash) : expectedCash;
@@ -866,7 +873,8 @@ async function closeShift(waiterId, actualCash) {
     actual_cash: countedCash,
     cash_difference: cashDifference,
     incassation_total: incassationTotal,
-    supply_payment_total: supplyPaymentTotal
+    supply_payment_total: supplyPaymentTotal,
+    writeoff_total: writeoffTotal
   });
 
   // Set cash_register to the counted amount (the actual money in the drawer)
@@ -885,6 +893,7 @@ async function closeShift(waiterId, actualCash) {
     card_total: cardTotal,
     incassation_total: incassationTotal,
     supply_payment_total: supplyPaymentTotal,
+    writeoff_total: writeoffTotal,
     expected_cash: expectedCash,
     actual_cash: countedCash,
     cash_difference: cashDifference,
@@ -1087,13 +1096,15 @@ async function getAllShiftsWithTransactions() {
   shifts.forEach(function(s) {
     s.transactions = txsByShift[s.id] || [];
     // Recompute totals from transactions (in case the columns weren't saved)
-    let inc = 0, sup = 0;
+    let inc = 0, sup = 0, wof = 0;
     s.transactions.forEach(function(t) {
       if (t.type === 'incassation') inc += Number(t.amount) || 0;
       else if (t.type === 'supply_payment') sup += Number(t.amount) || 0;
+      else if (t.type === 'writeoff') wof += Number(t.amount) || 0;
     });
     s.incassation_total = s.incassation_total !== undefined ? Number(s.incassation_total) || 0 : inc;
     s.supply_payment_total = s.supply_payment_total !== undefined ? Number(s.supply_payment_total) || 0 : sup;
+    s.writeoff_total = s.writeoff_total !== undefined ? Number(s.writeoff_total) || 0 : wof;
   });
   return { shifts: shifts };
 }
@@ -1120,12 +1131,18 @@ async function getWaiterCurrentCash(waiterId) {
       if (o.payment_method === 'cash') cashSales += Number(o.total) || 0;
     });
   } catch (e) { console.warn('getWaiterCurrentCash: failed to fetch orders', e.message); }
-  let deductions = 0;
+  let deductions = 0, writeoffCredits = 0;
   try {
     const { data: txs } = await _sb.from('shift_transactions')
-      .select('amount')
+      .select('amount,type')
       .eq('shift_id', shift.id);
-    (txs || []).forEach(function(t) { deductions += Number(t.amount) || 0; });
+    (txs || []).forEach(function(t) {
+      const amt = Number(t.amount) || 0;
+      // Deductions (incassation, supply_payment) subtract from cash.
+      // Writeoffs ADD to cash (sale amount credited to cash register).
+      if (t.type === 'writeoff') writeoffCredits += amt;
+      else deductions += amt;
+    });
   } catch (e) { console.warn('getWaiterCurrentCash: failed to fetch transactions', e.message); }
   return {
     has_open_shift: true,
@@ -1133,7 +1150,8 @@ async function getWaiterCurrentCash(waiterId) {
     opening_cash: openingCash,
     cash_sales: cashSales,
     deductions: deductions,
-    current_cash: openingCash + cashSales - deductions
+    writeoff_credits: writeoffCredits,
+    current_cash: openingCash + cashSales + writeoffCredits - deductions
   };
 }
 
@@ -1429,6 +1447,7 @@ async function getAllDeliveries() {
       quantity: Number(it.quantity) || 0,
       unit: it.unit || 'шт',
       unit_price: Number(it.unit_price) || 0,
+      markup: Number(it.markup) || 0,
       total_price: Number(it.total_price) || 0,
       sort: Number(it.sort) || 0
     });
@@ -1585,6 +1604,7 @@ async function saveDelivery(data) {
     }
     const qty = Number(it.quantity) || 0;
     const unitPrice = Number(it.unit_price) || 0;
+    const markup = Math.round(Number(it.markup) || 0);
     const totalPrice = Number(it.total_price) || (qty * unitPrice);
     const itemId = 'dit_' + Date.now().toString(36) + '_' + i + '_' + Math.random().toString(36).substr(2, 4);
     await dbInsert('delivery_items', {
@@ -1596,6 +1616,7 @@ async function saveDelivery(data) {
       quantity: qty,
       unit: it.unit || 'шт',
       unit_price: unitPrice,
+      markup: markup,
       total_price: totalPrice,
       sort: i,
       created_at: new Date().toISOString()
@@ -1716,6 +1737,245 @@ async function deleteDelivery(deliveryId) {
     try { await dbDelete('delivery_items', it.id); } catch (e) {}
   }
   return await dbDelete('deliveries', deliveryId);
+}
+
+/* ---------- Writeoffs (списание товаров со склада) ---------- */
+// A writeoff is like an internal sale: items are removed from a warehouse and
+// the total amount (with markup) is credited to the warehouse's linked account.
+// For cash-register accounts, this adds to cash_register + records a shift_transaction.
+
+// Get the next writeoff number
+async function getNextWriteoffNumber() {
+  const cur = await getSetting('writeoff_number_seq');
+  let n = parseInt(cur, 10);
+  if (isNaN(n)) n = 1;
+  await saveSettingsToDB({ writeoff_number_seq: String(n + 1) });
+  return n;
+}
+
+// Get all writeoffs with their items
+async function getAllWriteoffs() {
+  const writeoffs = await dbSelect('writeoffs');
+  const items = await dbSelect('writeoff_items');
+  const itemsByWriteoff = {};
+  items.forEach(function(it) {
+    if (!itemsByWriteoff[it.writeoff_id]) itemsByWriteoff[it.writeoff_id] = [];
+    itemsByWriteoff[it.writeoff_id].push({
+      id: it.id,
+      menu_item_id: it.menu_item_id || '',
+      name: it.name,
+      pack: it.pack || '',
+      quantity: Number(it.quantity) || 0,
+      unit: it.unit || 'шт',
+      unit_price: Number(it.unit_price) || 0,
+      markup: Number(it.markup) || 0,
+      total_price: Number(it.total_price) || 0,
+      sort: Number(it.sort) || 0
+    });
+  });
+  const result = writeoffs.map(function(w) {
+    return Object.assign({}, w, {
+      items: (itemsByWriteoff[w.id] || []).sort(function(a, b) { return a.sort - b.sort; })
+    });
+  });
+  result.sort(function(a, b) {
+    return new Date(b.writeoff_date || 0) - new Date(a.writeoff_date || 0);
+  });
+  return result;
+}
+
+// Get a single writeoff with items
+async function getWriteoff(writeoffId) {
+  const writeoffs = await dbSelect('writeoffs', { id: writeoffId });
+  if (writeoffs.length === 0) throw new Error('Списание не найдено');
+  const writeoff = writeoffs[0];
+  const items = await dbSelect('writeoff_items', { writeoff_id: writeoffId });
+  items.sort(function(a, b) { return (Number(a.sort) || 0) - (Number(b.sort) || 0); });
+  writeoff.items = items;
+  return writeoff;
+}
+
+// Save a writeoff: create header + items, credit the account, record shift_transaction
+async function saveWriteoff(data) {
+  const id = data.id || 'wof_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+
+  // Look up warehouse + account names
+  let warehouseName = data.warehouse_name || '';
+  let warehouseId = data.warehouse_id || '';
+  if (warehouseId && !warehouseName) {
+    const whs = await dbSelect('warehouses', { id: warehouseId });
+    if (whs.length > 0) warehouseName = whs[0].name;
+  }
+  let accountName = data.account_name || '';
+  let accountId = data.account_id || '';
+  // If no account specified, try to find it from the warehouse
+  if (!accountId && warehouseId) {
+    const whs = await dbSelect('warehouses', { id: warehouseId });
+    if (whs.length > 0 && whs[0].account_id) {
+      accountId = whs[0].account_id;
+    }
+  }
+  if (accountId && !accountName) {
+    const accs = await dbSelect('accounts', { id: accountId });
+    if (accs.length > 0) accountName = accs[0].name;
+  }
+
+  // Calculate total from items
+  const items = Array.isArray(data.items) ? data.items : [];
+  const total = items.reduce(function(s, it) {
+    return s + (Number(it.total_price) || 0);
+  }, 0);
+
+  // Determine if this is a new writeoff
+  const existing = await dbSelect('writeoffs', { id: id });
+  let number = data.number;
+  if (!number && existing.length === 0) {
+    number = await getNextWriteoffNumber();
+  } else if (!number && existing.length > 0) {
+    number = existing[0].number;
+  }
+
+  const now = new Date().toISOString();
+  const record = {
+    number: number,
+    writeoff_date: data.writeoff_date || now,
+    warehouse_id: warehouseId,
+    warehouse_name: warehouseName,
+    account_id: accountId,
+    account_name: accountName,
+    total_amount: total,
+    comment: data.comment || ''
+  };
+
+  if (existing.length > 0) {
+    await dbUpdate('writeoffs', id, record);
+    // Delete old items
+    const oldItems = await dbSelect('writeoff_items', { writeoff_id: id });
+    for (const oi of oldItems) {
+      try { await dbDelete('writeoff_items', oi.id); } catch (e) {}
+    }
+  } else {
+    record.id = id;
+    record.created_at = now;
+    await dbInsert('writeoffs', record);
+  }
+
+  // Insert items
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it.name && !it.menu_item_id) continue;
+    const itemId = 'woi_' + Date.now().toString(36) + '_' + i + '_' + Math.random().toString(36).substr(2, 4);
+    await dbInsert('writeoff_items', {
+      id: itemId,
+      writeoff_id: id,
+      menu_item_id: it.menu_item_id || '',
+      name: it.name || '',
+      pack: it.pack || '',
+      quantity: Number(it.quantity) || 0,
+      unit: it.unit || 'шт',
+      unit_price: Number(it.unit_price) || 0,
+      markup: Math.round(Number(it.markup) || 0),
+      total_price: Number(it.total_price) || 0,
+      sort: i,
+      created_at: now
+    });
+  }
+
+  // ===== Credit the linked account =====
+  // If the account is the cash register, add total to cash_register + record shift_transaction.
+  // For non-cash accounts, the balance is computed dynamically (initial + writeoffs - deliveries).
+  let cashRegisterCredited = false;
+  let recordedShiftTxId = null;
+  if (total > 0 && accountId) {
+    try {
+      const accs = await dbSelect('accounts', { id: accountId });
+      const acc = accs.length > 0 ? accs[0] : null;
+      if (acc && acc.is_cash_register === true) {
+        // Find the most-recently-opened shift
+        let openShift = null;
+        try {
+          const { data: openShifts } = await _sb.from('shifts')
+            .select('*')
+            .eq('status', 'open')
+            .order('opened_at', { ascending: false })
+            .limit(1);
+          if (openShifts && openShifts.length > 0) openShift = openShifts[0];
+        } catch (e) { console.warn('Failed to find open shift for writeoff tx', e.message); }
+
+        // Compute live cash
+        let currentCash;
+        if (openShift) {
+          const openingCash = Number(openShift.opening_cash) || 0;
+          let cashSales = 0;
+          try {
+            const { data: shiftOrders } = await _sb
+              .from('orders')
+              .select('total,payment_method')
+              .eq('waiter_id', openShift.waiter_id)
+              .eq('status', 'completed')
+              .gte('completed_at', openShift.opened_at);
+            (shiftOrders || []).forEach(function(o) {
+              if (o.payment_method === 'cash') cashSales += Number(o.total) || 0;
+            });
+          } catch (e) { console.warn('Failed to fetch shift orders', e.message); }
+          let existingTxTotal = 0;
+          try {
+            const { data: existingTxs } = await _sb.from('shift_transactions')
+              .select('amount,type')
+              .eq('shift_id', openShift.id);
+            (existingTxs || []).forEach(function(t) {
+              const amt = Number(t.amount) || 0;
+              // Deductions subtract, writeoffs (credits) add
+              if (t.type === 'incassation' || t.type === 'supply_payment') existingTxTotal += amt;
+              else if (t.type === 'writeoff') existingTxTotal -= amt;
+            });
+          } catch (e) { console.warn('Failed to fetch existing txs', e.message); }
+          currentCash = openingCash + cashSales - existingTxTotal;
+        } else {
+          currentCash = Number(await getSetting('cash_register')) || 0;
+        }
+
+        const newCash = currentCash + total;
+        await saveSettingsToDB({ cash_register: String(newCash) });
+        cashRegisterCredited = true;
+
+        // Record a shift_transaction (type='writeoff', amount is positive = credit)
+        if (openShift) {
+          try {
+            const txId = 'stx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+            await dbInsert('shift_transactions', {
+              id: txId,
+              shift_id: openShift.id,
+              waiter_id: openShift.waiter_id,
+              waiter_name: openShift.waiter_name,
+              type: 'writeoff',
+              amount: total,
+              delivery_id: '',
+              supplier_name: '',
+              account_id: accountId,
+              comment: 'Списание №' + (number || '') + (warehouseName ? ' — ' + warehouseName : '')
+            });
+            recordedShiftTxId = txId;
+          } catch (txErr) {
+            console.warn('Failed to record shift_transaction for writeoff', txErr.message);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to credit account for writeoff', e.message);
+    }
+  }
+
+  return { id: id, number: number, total: total, cash_register_credited: cashRegisterCredited, shift_tx_id: recordedShiftTxId };
+}
+
+// Delete a writeoff and all its items
+async function deleteWriteoff(writeoffId) {
+  const items = await dbSelect('writeoff_items', { writeoff_id: writeoffId });
+  for (const it of items) {
+    try { await dbDelete('writeoff_items', it.id); } catch (e) {}
+  }
+  return await dbDelete('writeoffs', writeoffId);
 }
 
 /* ---------- Menu modifications ---------- */
@@ -2702,6 +2962,14 @@ async function apiPost(action, body) {
       return await saveDelivery(body);
     case 'deleteDelivery':
       return await deleteDelivery(body.id);
+    case 'getAllWriteoffs':
+      return { writeoffs: await getAllWriteoffs() };
+    case 'getWriteoff':
+      return await getWriteoff(params.id);
+    case 'saveWriteoff':
+      return await saveWriteoff(body);
+    case 'deleteWriteoff':
+      return await deleteWriteoff(body.id);
     case 'reorderMenu': {
       const items = body.items || [];
       for (const it of items) {

@@ -2022,8 +2022,8 @@ async function showCloseShiftModal() {
     });
     const openingCash = Number(_activeShift.opening_cash) || 0;
     const grandTotal = cashTotal + cardTotal;
-    // ===== Fetch shift_transactions (incassations + supply payments) =====
-    let incassationTotal = 0, supplyPaymentTotal = 0;
+    // ===== Fetch shift_transactions (incassations + supply payments + writeoffs) =====
+    let incassationTotal = 0, supplyPaymentTotal = 0, writeoffTotal = 0;
     let txRows = [];
     try {
       const txData = await apiGet('getShiftTransactions', { shift_id: _activeShift.id });
@@ -2031,9 +2031,12 @@ async function showCloseShiftModal() {
       txRows.forEach(function(t) {
         if (t.type === 'incassation') incassationTotal += Number(t.amount) || 0;
         else if (t.type === 'supply_payment') supplyPaymentTotal += Number(t.amount) || 0;
+        else if (t.type === 'writeoff') writeoffTotal += Number(t.amount) || 0;
       });
     } catch (e) { console.warn('getShiftTransactions failed', e.message); }
-    const expectedCash = openingCash + cashTotal - incassationTotal - supplyPaymentTotal;
+    // Expected = opening + cashSales + writeoffs - incassations - supplyPayments
+    // (writeoffs ADD to cash because the sale amount is credited to the cash register)
+    const expectedCash = openingCash + cashTotal + writeoffTotal - incassationTotal - supplyPaymentTotal;
     // Store for confirmCloseShift() to read
     window._closeShiftExpectedCash = expectedCash;
     // Build transactions breakdown HTML (only if there are any)
@@ -2044,19 +2047,25 @@ async function showCloseShiftModal() {
           '<div style="font-weight:600;margin-bottom:8px;color:#6a1b9a;">📋 Транзакции по кассе за смену:</div>' +
           txRows.map(function(t) {
             const isInc = t.type === 'incassation';
-            const icon = isInc ? '💸' : '📦';
-            const label = isInc ? 'Инкассация' : ('Поставка: ' + (t.supplier_name || '—'));
+            const isWof = t.type === 'writeoff';
+            const icon = isInc ? '💸' : (isWof ? '🧾' : '📦');
+            const label = isInc ? 'Инкассация' : (isWof ? 'Списание' : ('Поставка: ' + (t.supplier_name || '—')));
+            const amountPrefix = isWof ? '+' : '−';
+            const amountColor = isWof ? 'var(--success);' : '#c62828;';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:0.88rem;">' +
               '<span>' + icon + ' ' + escapeHtml(label) + (t.comment ? ' <span style="color:var(--text-muted);">(' + escapeHtml(t.comment) + ')</span>' : '') + '</span>' +
-              '<b style="color:#c62828;">−' + formatMoney(Number(t.amount) || 0) + '</b>' +
+              '<b style="color:' + amountColor + '">' + amountPrefix + formatMoney(Number(t.amount) || 0) + '</b>' +
             '</div>';
           }).join('') +
           '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;font-size:0.85rem;">' +
-            '<span>Инкассации:</span><b>−' + formatMoney(incassationTotal) + '</b>' +
+            '<span>Инкассации:</span><b style="color:#c62828;">−' + formatMoney(incassationTotal) + '</b>' +
           '</div>' +
           '<div style="display:flex;justify-content:space-between;font-size:0.85rem;">' +
-            '<span>Поставки:</span><b>−' + formatMoney(supplyPaymentTotal) + '</b>' +
+            '<span>Поставки из кассы:</span><b style="color:#c62828;">−' + formatMoney(supplyPaymentTotal) + '</b>' +
           '</div>' +
+          (writeoffTotal > 0 ? '<div style="display:flex;justify-content:space-between;font-size:0.85rem;">' +
+            '<span>Списания в кассу:</span><b style="color:var(--success);">+' + formatMoney(writeoffTotal) + '</b>' +
+          '</div>' : '') +
         '</div>';
     }
     summaryDiv.innerHTML =
@@ -2073,6 +2082,7 @@ async function showCloseShiftModal() {
       '<div style="margin-top:12px;padding:12px;background:#fff8e1;border-radius:8px;">' +
         '<div>Касса на начало смены: <b>' + formatMoney(openingCash) + '</b></div>' +
         '<div>Наличные за смену: <b>+' + formatMoney(cashTotal) + '</b></div>' +
+        (writeoffTotal > 0 ? '<div>Списания в кассу: <b style="color:var(--success);">+' + formatMoney(writeoffTotal) + '</b></div>' : '') +
         (incassationTotal > 0 ? '<div>Инкассации: <b style="color:#c62828;">−' + formatMoney(incassationTotal) + '</b></div>' : '') +
         (supplyPaymentTotal > 0 ? '<div>Поставки из кассы: <b style="color:#c62828;">−' + formatMoney(supplyPaymentTotal) + '</b></div>' : '') +
         '<div style="font-size:1.2rem;font-weight:700;color:var(--success);margin-top:4px;">Ожидается в кассе: ' + formatMoney(expectedCash) + '</div>' +
@@ -2186,9 +2196,11 @@ async function showTransactionModal() {
     const cashData = await apiGet('getWaiterCurrentCash', { waiter_id: state.currentUser.id });
     state.currentCash = Number(cashData.current_cash) || 0;
     window._txnCashBreakdown = cashData;
+    const wofCredits = Number(cashData.writeoff_credits) || 0;
     const breakdownText =
       ' (открытие ' + formatMoney(Number(cashData.opening_cash) || 0) +
       ' + наличные ' + formatMoney(Number(cashData.cash_sales) || 0) +
+      (wofCredits > 0 ? ' + списания ' + formatMoney(wofCredits) : '') +
       ' − вычеты ' + formatMoney(Number(cashData.deductions) || 0) + ')';
     document.getElementById('txn-current-cash-amount').innerHTML =
       formatMoney(state.currentCash) +

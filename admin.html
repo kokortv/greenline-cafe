@@ -648,6 +648,7 @@
           <div class="sidebar-subitems" id="stock-subitems" style="display:none;">
             <button class="sidebar-subitem active" data-stocksub="items" onclick="openStockSub('items')">Остатки</button>
             <button class="sidebar-subitem" data-stocksub="deliveries" onclick="openStockSub('deliveries')">Поставки</button>
+            <button class="sidebar-subitem" data-stocksub="writeoffs" onclick="openStockSub('writeoffs')">Списания</button>
             <button class="sidebar-subitem" data-stocksub="suppliers" onclick="openStockSub('suppliers')">Поставщики</button>
             <button class="sidebar-subitem" data-stocksub="warehouses" onclick="openStockSub('warehouses')">Склады</button>
             <button class="sidebar-subitem" data-stocksub="accounts" onclick="openStockSub('accounts')">Счета</button>
@@ -924,6 +925,12 @@
         <button class="btn btn-primary" onclick="openDeliveryModal()">+ Добавить поставку</button>
       </div>
       <div id="deliveries-list"></div>
+    </div>
+    <div id="stocksub-writeoffs" class="stocksub-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="openWriteoffModal()">+ Добавить списание</button>
+      </div>
+      <div id="writeoffs-list"></div>
     </div>
     <div id="stocksub-suppliers" class="stocksub-content" style="display:none;">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
@@ -1571,6 +1578,15 @@
     </div>
 
     <h3 style="margin:16px 0 8px;font-size:1rem;">Товары в поставке</h3>
+    <div id="delivery-items-header" style="display:grid;grid-template-columns:1fr 90px 60px 90px 70px 90px 32px;gap:6px;align-items:center;padding:4px 6px;font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
+      <span>Название</span>
+      <span>Фасовка</span>
+      <span style="text-align:right;">Кол-во</span>
+      <span style="text-align:right;">Себест.</span>
+      <span style="text-align:right;">Наценка %</span>
+      <span style="text-align:right;">Сумма</span>
+      <span></span>
+    </div>
     <div id="delivery-items-list" style="display:flex;flex-direction:column;gap:8px;"></div>
     <button type="button" class="btn btn-outline" style="margin-top:8px;width:100%;" onclick="addDeliveryItemRow()">+ Добавить ещё товар</button>
 
@@ -1587,6 +1603,59 @@
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('modal-delivery')">Отмена</button>
       <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveDeliveryUI(); })">Сохранить поставку</button>
+    </div>
+  </div>
+</div>
+
+<!-- Writeoff modal (списание товаров со склада) -->
+<div class="modal-backdrop" id="modal-writeoff">
+  <div class="modal" style="max-width:900px;">
+    <h2 id="modal-writeoff-title">Новое списание</h2>
+    <input type="hidden" id="writeoff-id">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label>Дата списания</label>
+        <input type="datetime-local" id="writeoff-date">
+      </div>
+      <div class="form-group">
+        <label>Склад *</label>
+        <select id="writeoff-warehouse"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Счёт (куда зачисляется сумма списания)</label>
+      <select id="writeoff-account"></select>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">
+        По умолчанию берётся счёт, привязанный к выбранному складу. Сумма списания зачисляется на этот счёт.
+      </p>
+    </div>
+
+    <h3 style="margin:16px 0 8px;font-size:1rem;">Товары к списанию</h3>
+    <div id="writeoff-items-header" style="display:grid;grid-template-columns:1fr 90px 60px 90px 70px 90px 32px;gap:6px;align-items:center;padding:4px 6px;font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
+      <span>Название</span>
+      <span>Фасовка</span>
+      <span style="text-align:right;">Кол-во</span>
+      <span style="text-align:right;">Себест.</span>
+      <span style="text-align:right;">Наценка %</span>
+      <span style="text-align:right;">Сумма</span>
+      <span></span>
+    </div>
+    <div id="writeoff-items-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <button type="button" class="btn btn-outline" style="margin-top:8px;width:100%;" onclick="addWriteoffItemRow()">+ Добавить ещё товар</button>
+
+    <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:1.05rem;font-weight:600;">Общая сумма списания:</span>
+      <span id="writeoff-total" style="font-size:1.4rem;font-weight:700;color:var(--success);">0</span>
+    </div>
+
+    <div class="form-group" style="margin-top:12px;">
+      <label>Комментарий</label>
+      <input type="text" id="writeoff-comment" placeholder="Заметки к списанию">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-writeoff')">Отмена</button>
+      <button class="btn btn-primary" onclick="withLoading(this, 'Сохраняем...', function() { return saveWriteoffUI(); })">Сохранить списание</button>
     </div>
   </div>
 </div>
@@ -4083,6 +4152,7 @@ function switchStockSub(sub) {
     const labels = {
       items: 'Склад — Остатки',
       deliveries: 'Склад — Поставки',
+      writeoffs: 'Склад — Списания',
       suppliers: 'Склад — Поставщики',
       warehouses: 'Склад — Склады',
       accounts: 'Склад — Счета'
@@ -4094,6 +4164,7 @@ function switchStockSub(sub) {
   loadAppDataForce().then(function() {
     if (sub === 'items') loadStockReport();
     if (sub === 'deliveries') loadDeliveriesList();
+    if (sub === 'writeoffs') loadWriteoffsList();
     if (sub === 'suppliers') loadSuppliersList();
     if (sub === 'warehouses') loadWarehousesList();
     if (sub === 'accounts') loadAccountsList();
@@ -4793,6 +4864,13 @@ async function loadWarehousesList() {
       if (!d.account_id) return;
       paidByAccount[d.account_id] = (paidByAccount[d.account_id] || 0) + (Number(d.paid_amount) || 0);
     });
+    // Compute total writeoff amount per account (credits — add to balance)
+    const allWriteoffs = APP_DATA.writeoffs || [];
+    const creditedByAccount = {};
+    allWriteoffs.forEach(function(w) {
+      if (!w.account_id) return;
+      creditedByAccount[w.account_id] = (creditedByAccount[w.account_id] || 0) + (Number(w.total_amount) || 0);
+    });
     const cashRegisterValue = Number((APP_DATA.settings && APP_DATA.settings.cash_register) || 0);
 
     warehouses.sort(function(a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); });
@@ -4819,7 +4897,8 @@ async function loadWarehousesList() {
         } else {
           const initial = Number(acc.initial_balance) || 0;
           const paid = paidByAccount[acc.id] || 0;
-          bal = initial - paid;
+          const credited = creditedByAccount[acc.id] || 0;
+          bal = initial - paid + credited;
         }
         accBalance = formatMoney(bal, acc.currency);
         accBalanceColor = bal < 0 ? 'color:var(--danger);font-weight:700;' : (acc.is_cash_register ? 'color:#e65100;font-weight:600;' : 'font-weight:600;');
@@ -4937,27 +5016,37 @@ async function loadAccountsList() {
     html += '</tr></thead><tbody>';
     const typeLabels = { cash: 'Наличный', card: 'Карта', bank: 'Безналичный' };
     const cashRegisterValue = Number((APP_DATA.settings && APP_DATA.settings.cash_register) || 0);
-    // Compute total paid_amount per account from deliveries
+    // Compute total paid_amount per account from deliveries (deductions)
     const deliveries = APP_DATA.deliveries || [];
     const paidByAccount = {};
     deliveries.forEach(function(d) {
       if (!d.account_id) return;
       paidByAccount[d.account_id] = (paidByAccount[d.account_id] || 0) + (Number(d.paid_amount) || 0);
     });
+    // Compute total writeoff amount per account (credits — add to balance)
+    const writeoffs = APP_DATA.writeoffs || [];
+    const creditedByAccount = {};
+    writeoffs.forEach(function(w) {
+      if (!w.account_id) return;
+      creditedByAccount[w.account_id] = (creditedByAccount[w.account_id] || 0) + (Number(w.total_amount) || 0);
+    });
     accounts.forEach(function(a) {
       const paidFromAccount = paidByAccount[a.id] || 0;
+      const creditedToAccount = creditedByAccount[a.id] || 0;
       // For cash-register accounts, show the live cash_register setting value;
-      // for non-cash accounts: balance = initial_balance - sum(paid_amount of deliveries linked to this account)
+      // for non-cash accounts: balance = initial_balance - paid + writeoffs_credited
       let balance, initialDisplay, paidDisplay;
       if (a.is_cash_register) {
         balance = cashRegisterValue;
         initialDisplay = formatMoney(Number(a.initial_balance) || 0, a.currency);
         paidDisplay = paidFromAccount > 0 ? '−' + formatMoney(paidFromAccount, a.currency) : '—';
+        if (creditedToAccount > 0) paidDisplay += ' <span style="color:var(--success);">+' + formatMoney(creditedToAccount, a.currency) + '</span>';
       } else {
         const initial = Number(a.initial_balance) || 0;
-        balance = initial - paidFromAccount;
+        balance = initial - paidFromAccount + creditedToAccount;
         initialDisplay = formatMoney(initial, a.currency);
         paidDisplay = paidFromAccount > 0 ? '−' + formatMoney(paidFromAccount, a.currency) : '—';
+        if (creditedToAccount > 0) paidDisplay += ' <span style="color:var(--success);">+' + formatMoney(creditedToAccount, a.currency) + '</span>';
       }
       const balanceColor = balance < 0 ? 'color:var(--danger);' : (a.is_cash_register ? 'color:#e65100;' : '');
       const cashBadge = a.is_cash_register ? ' <span style="display:inline-block;background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:700;margin-left:6px;">💵 касса ресторана</span>' : '';
@@ -5220,16 +5309,48 @@ function addDeliveryItemRow(data) {
   const list = document.getElementById('delivery-items-list');
   const row = document.createElement('div');
   row.className = 'delivery-item-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 70px 100px 100px 32px;gap:6px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
+  // grid: name | pack | qty | cost | markup | total | delete
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 90px 60px 90px 70px 90px 32px;gap:6px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
   row.innerHTML =
     '<input type="hidden" class="di-menu-id" value="' + escapeHtmlAttr((data && data.menu_item_id) || '') + '">' +
     '<input type="text" class="di-name" placeholder="Начните вводить название..." value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;" oninput="searchDeliveryItems(this);var _r=this.closest(\'.delivery-item-row\');if(_r){var _id=_r.querySelector(\'.di-menu-id\');if(_id)_id.value=\'\';}" onfocus="searchDeliveryItems(this)" onblur="setTimeout(function(){hideDeliverySuggestions();},200)">' +
     '<input type="text" class="di-pack" placeholder="Фасовка" value="' + escapeHtmlAttr((data && data.pack) || '') + '" title="Фасовка (коробка, упаковка)">' +
-    '<input type="number" class="di-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
-    '<input type="number" class="di-price" min="0" step="0.01" placeholder="Цена за ед." value="' + ((data && data.unit_price) || '') + '" title="Цена за единицу" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
-    '<input type="number" class="di-total" min="0" step="0.01" placeholder="Сумма" value="' + ((data && data.total_price) || '') + '" title="Общая сумма" style="font-weight:700;" oninput="updateDeliveryTotal();">' +
+    '<input type="number" class="di-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="recalcDeliveryItem(this);updateDeliveryTotal();">' +
+    '<input type="number" class="di-price" min="0" step="0.01" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcDeliveryItem(this);updateDeliveryTotal();">' +
+    '<input type="number" class="di-markup" min="0" step="1" placeholder="Нац.%" value="' + ((data && data.markup !== undefined) ? data.markup : '') + '" title="Наценка, %" oninput="recalcDeliveryItem(this);updateDeliveryTotal();">' +
+    '<input type="number" class="di-total" min="0" step="0.01" placeholder="Сумма" value="' + ((data && data.total_price) || '') + '" title="Общая сумма с наценкой" style="font-weight:700;" oninput="recalcDeliveryTotalFromTotal(this);updateDeliveryTotal();">' +
     '<button type="button" class="btn-icon btn-icon-delete" onclick="this.parentElement.remove();updateDeliveryTotal();" title="Удалить">✕</button>';
   list.appendChild(row);
+}
+
+// Recalculate the total for a delivery item row based on qty × price × (1 + markup/100).
+// Triggered when qty, price (cost), or markup changes. The total field is the OUTPUT.
+// Formula: total = qty × cost × (1 + markup/100)
+function recalcDeliveryItem(input) {
+  var row = input.closest('.delivery-item-row');
+  if (!row) return;
+  var qty = parseFloat(row.querySelector('.di-qty').value) || 0;
+  var cost = parseFloat(row.querySelector('.di-price').value) || 0;
+  var markup = parseFloat(row.querySelector('.di-markup').value) || 0;
+  // If markup field is empty, treat as 0 (no markup)
+  var effectiveMarkup = row.querySelector('.di-markup').value === '' ? 0 : markup;
+  var unitPriceWithMarkup = cost * (1 + effectiveMarkup / 100);
+  var total = qty * unitPriceWithMarkup;
+  row.querySelector('.di-total').value = total.toFixed(2);
+}
+
+// Recalculate markup when the user manually edits the total field.
+// Formula: total = qty × cost × (1 + markup/100) → markup = (total / (qty × cost) - 1) × 100
+function recalcDeliveryTotalFromTotal(input) {
+  var row = input.closest('.delivery-item-row');
+  if (!row) return;
+  var qty = parseFloat(row.querySelector('.di-qty').value) || 0;
+  var cost = parseFloat(row.querySelector('.di-price').value) || 0;
+  var total = parseFloat(row.querySelector('.di-total').value) || 0;
+  if (qty > 0 && cost > 0) {
+    var markup = ((total / (qty * cost)) - 1) * 100;
+    row.querySelector('.di-markup').value = Math.round(markup);
+  }
 }
 
 // Autocomplete: search menu items as the user types in the delivery item name field
@@ -5352,6 +5473,7 @@ async function saveDeliveryUI() {
     const qty = parseFloat(row.querySelector('.di-qty').value) || 0;
     const unitPrice = parseFloat(row.querySelector('.di-price').value) || 0;
     const totalPrice = parseFloat(row.querySelector('.di-total').value) || 0;
+    const markup = parseFloat(row.querySelector('.di-markup').value) || 0;
     if (!name && !pack && !qty && !unitPrice) return; // skip empty rows
     if (!name) { showToast('У одного из товаров не заполнено наименование', 'warning'); return; }
     // Use the menu_item_id stored in the hidden field (set by autocomplete).
@@ -5367,6 +5489,7 @@ async function saveDeliveryUI() {
       pack: pack,
       quantity: qty,
       unit_price: unitPrice,
+      markup: markup,
       total_price: totalPrice
     });
     hasValidItem = true;
@@ -5403,6 +5526,308 @@ async function deleteDeliveryUI(id) {
     showToast('Поставка удалена', 'info');
     await loadAppDataForce();
     loadDeliveriesList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+/* ---------- WRITEOFFS (списание товаров со склада) ---------- */
+
+// Render the writeoffs list table
+async function loadWriteoffsList() {
+  const div = document.getElementById('writeoffs-list');
+  if (!div) return;
+  div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
+  try {
+    const writeoffs = (APP_DATA.writeoffs || []).slice().sort(function(a, b) {
+      return new Date(b.writeoff_date || 0) - new Date(a.writeoff_date || 0);
+    });
+    if (writeoffs.length === 0) {
+      div.innerHTML = '<div class="empty-state"><h3>Нет списаний</h3><p>Нажмите «+ Добавить списание»</p></div>';
+      return;
+    }
+    let html = '<table class="admin-table"><thead><tr>';
+    html += '<th style="width:5%;">№</th>';
+    html += '<th style="width:15%;">Дата</th>';
+    html += '<th style="width:18%;">Склад</th>';
+    html += '<th style="width:18%;">Счёт</th>';
+    html += '<th style="width:24%;">Товары</th>';
+    html += '<th style="width:13%;text-align:right;">Сумма</th>';
+    html += '<th style="width:90px;text-align:right;"></th>';
+    html += '</tr></thead><tbody>';
+    writeoffs.forEach(function(w) {
+      const itemsLabel = (w.items || []).map(function(it) {
+        return escapeHtml(it.name) + ' (' + it.quantity + ')';
+      }).join(', ').slice(0, 80);
+      html += '<tr>';
+      html += '<td style="font-weight:600;">' + (w.number || '—') + '</td>';
+      html += '<td>' + (w.writeoff_date ? formatDateTime(w.writeoff_date) : '—') + '</td>';
+      html += '<td>' + escapeHtml(w.warehouse_name || '—') + '</td>';
+      html += '<td>' + escapeHtml(w.account_name || '—') + '</td>';
+      html += '<td style="word-break:break-word;font-size:0.85rem;">' + (itemsLabel || '—') + '</td>';
+      html += '<td style="text-align:right;font-weight:600;color:var(--success);">+' + formatMoney(Number(w.total_amount) || 0) + '</td>';
+      html += '<td style="text-align:right;white-space:nowrap;">' +
+        '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openWriteoffModal(\'' + w.id + '\')">✎</button> ' +
+        '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteWriteoffUI(\'' + w.id + '\')">✕</button>' +
+        '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+  } catch (err) {
+    div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+// Open the writeoff modal — for creating or editing
+async function openWriteoffModal(id) {
+  document.getElementById('writeoff-id').value = id || '';
+  document.getElementById('writeoff-comment').value = '';
+  document.getElementById('modal-writeoff-title').textContent = id ? 'Изменить списание' : 'Новое списание';
+
+  // Populate warehouse dropdown
+  const whSel = document.getElementById('writeoff-warehouse');
+  whSel.innerHTML = '<option value="">— Выберите склад —</option>';
+  (APP_DATA.warehouses || []).forEach(function(w) {
+    whSel.innerHTML += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name) + '</option>';
+  });
+
+  // Populate account dropdown
+  const accSel = document.getElementById('writeoff-account');
+  accSel.innerHTML = '<option value="">— Авто (из склада) —</option>';
+  (APP_DATA.accounts || []).forEach(function(a) {
+    const label = a.name + (a.is_cash_register ? ' 💵 (касса)' : '');
+    accSel.innerHTML += '<option value="' + escapeHtml(a.id) + '">' + escapeHtml(label) + '</option>';
+  });
+
+  // Wire warehouse change → auto-select its linked account
+  whSel.onchange = function() {
+    const wh = (APP_DATA.warehouses || []).find(function(w) { return w.id === whSel.value; });
+    if (wh && wh.account_id) {
+      accSel.value = wh.account_id;
+    }
+  };
+
+  // Set default date to now
+  const tzOffset = new Date().getTimezoneOffset() * 60000;
+  document.getElementById('writeoff-date').value = new Date(Date.now() - tzOffset).toISOString().slice(0, 16);
+
+  // Clear items list and add one empty row
+  document.getElementById('writeoff-items-list').innerHTML = '';
+  addWriteoffItemRow();
+  updateWriteoffTotal();
+
+  // If editing, load existing writeoff
+  if (id) {
+    try {
+      const w = await apiGet('getWriteoff', { id: id });
+      document.getElementById('writeoff-date').value = new Date(new Date(w.writeoff_date).getTime() - tzOffset).toISOString().slice(0, 16);
+      whSel.value = w.warehouse_id || '';
+      accSel.value = w.account_id || '';
+      document.getElementById('writeoff-comment').value = w.comment || '';
+      // Render existing items
+      const itemsList = document.getElementById('writeoff-items-list');
+      itemsList.innerHTML = '';
+      (w.items || []).forEach(function(it) {
+        addWriteoffItemRow(it);
+      });
+      if ((w.items || []).length === 0) addWriteoffItemRow();
+      updateWriteoffTotal();
+    } catch (err) {
+      showToast('Ошибка загрузки списания: ' + err.message, 'error');
+    }
+  }
+
+  openModal('modal-writeoff');
+}
+
+// Add a row to the writeoff items list
+function addWriteoffItemRow(data) {
+  const list = document.getElementById('writeoff-items-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'writeoff-item-row';
+  // grid: name | pack | qty | cost | markup | total | delete
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 90px 60px 90px 70px 90px 32px;gap:6px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
+  row.innerHTML =
+    '<input type="hidden" class="wi-menu-id" value="' + escapeHtmlAttr((data && data.menu_item_id) || '') + '">' +
+    '<input type="text" class="wi-name" placeholder="Начните вводить название..." value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;" oninput="searchWriteoffItems(this);var _r=this.closest(\'.writeoff-item-row\');if(_r){var _id=_r.querySelector(\'.wi-menu-id\');if(_id)_id.value=\'\';}" onfocus="searchWriteoffItems(this)" onblur="setTimeout(function(){hideWriteoffSuggestions();},200)">' +
+    '<input type="text" class="wi-pack" placeholder="Фасовка" value="' + escapeHtmlAttr((data && data.pack) || '') + '" title="Фасовка (коробка, упаковка)">' +
+    '<input type="number" class="wi-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="recalcWriteoffItem(this);updateWriteoffTotal();">' +
+    '<input type="number" class="wi-price" min="0" step="0.01" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcWriteoffItem(this);updateWriteoffTotal();">' +
+    '<input type="number" class="wi-markup" min="0" step="1" placeholder="Нац.%" value="' + ((data && data.markup !== undefined) ? data.markup : '') + '" title="Наценка, %" oninput="recalcWriteoffItem(this);updateWriteoffTotal();">' +
+    '<input type="number" class="wi-total" min="0" step="0.01" placeholder="Сумма" value="' + ((data && data.total_price) || '') + '" title="Общая сумма с наценкой" style="font-weight:700;" oninput="recalcWriteoffTotalFromTotal(this);updateWriteoffTotal();">' +
+    '<button type="button" class="btn-icon btn-icon-delete" onclick="this.parentElement.remove();updateWriteoffTotal();" title="Удалить">✕</button>';
+  list.appendChild(row);
+}
+
+// Recalculate total for a writeoff item row: total = qty × cost × (1 + markup/100)
+function recalcWriteoffItem(input) {
+  var row = input.closest('.writeoff-item-row');
+  if (!row) return;
+  var qty = parseFloat(row.querySelector('.wi-qty').value) || 0;
+  var cost = parseFloat(row.querySelector('.wi-price').value) || 0;
+  var markup = parseFloat(row.querySelector('.wi-markup').value) || 0;
+  var effectiveMarkup = row.querySelector('.wi-markup').value === '' ? 0 : markup;
+  var unitPriceWithMarkup = cost * (1 + effectiveMarkup / 100);
+  var total = qty * unitPriceWithMarkup;
+  row.querySelector('.wi-total').value = total.toFixed(2);
+}
+
+// Recalculate markup when total is manually edited
+function recalcWriteoffTotalFromTotal(input) {
+  var row = input.closest('.writeoff-item-row');
+  if (!row) return;
+  var qty = parseFloat(row.querySelector('.wi-qty').value) || 0;
+  var cost = parseFloat(row.querySelector('.wi-price').value) || 0;
+  var total = parseFloat(row.querySelector('.wi-total').value) || 0;
+  if (qty > 0 && cost > 0) {
+    var markup = ((total / (qty * cost)) - 1) * 100;
+    row.querySelector('.wi-markup').value = Math.round(markup);
+  }
+}
+
+// Update the grand total of all writeoff items
+function updateWriteoffTotal() {
+  let total = 0;
+  document.querySelectorAll('.writeoff-item-row').forEach(function(row) {
+    const t = parseFloat(row.querySelector('.wi-total').value) || 0;
+    total += t;
+  });
+  document.getElementById('writeoff-total').textContent = formatMoney(total);
+}
+
+// Autocomplete for writeoff item name — searches menu items + delivery items
+// (so the user can pick items that exist on the warehouse but not in the menu)
+function searchWriteoffItems(input) {
+  var query = input.value.toLowerCase().trim();
+  hideWriteoffSuggestions();
+  if (query.length < 1) return;
+  var row = input.closest('.writeoff-item-row');
+  if (!row) return;
+  // Get the selected warehouse to filter delivery items
+  var whId = document.getElementById('writeoff-warehouse').value;
+  // Build a unique list of items: menu items + delivery items for this warehouse
+  var candidates = {};
+  (APP_DATA.menu || []).forEach(function(m) {
+    candidates[m.name.toLowerCase()] = { name: m.name, cost: Number(m.cost) || 0, menu_item_id: m.id, pack: '' };
+  });
+  // Add delivery items for this warehouse
+  var deliveryIds = new Set();
+  (APP_DATA.deliveries || []).forEach(function(d) {
+    if (whId && d.warehouse_id !== whId) return;
+    deliveryIds.add(d.id);
+  });
+  (APP_DATA.delivery_items || []).forEach(function(dit) {
+    if (whId && !deliveryIds.has(dit.delivery_id)) return;
+    var name = String(dit.name || '').trim();
+    if (!name) return;
+    if (!candidates[name.toLowerCase()]) {
+      candidates[name.toLowerCase()] = { name: name, cost: Number(dit.unit_price) || 0, menu_item_id: dit.menu_item_id || '', pack: dit.pack || '' };
+    }
+  });
+  var matches = Object.keys(candidates)
+    .filter(function(k) { return k.indexOf(query) >= 0; })
+    .slice(0, 8)
+    .map(function(k) { return candidates[k]; });
+  if (matches.length === 0) return;
+  var box = document.createElement('div');
+  box.id = 'writeoff-suggestions';
+  box.style.cssText = 'position:absolute;z-index:1000;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);max-height:200px;overflow-y:auto;width:100%;top:100%;left:0;';
+  matches.forEach(function(m) {
+    var item = document.createElement('div');
+    item.style.cssText = 'padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.9rem;';
+    item.innerHTML = escapeHtml(m.name) + ' <span style="color:var(--text-muted);font-size:0.8rem;">' + formatMoney(m.cost) + '</span>';
+    item.onmousedown = function(e) {
+      e.preventDefault();
+      input.value = m.name;
+      if (row) {
+        var costEl = row.querySelector('.wi-price');
+        var packEl = row.querySelector('.wi-pack');
+        var idEl = row.querySelector('.wi-menu-id');
+        if (costEl && !costEl.value) costEl.value = m.cost.toFixed(2);
+        if (packEl && !packEl.value && m.pack) packEl.value = m.pack;
+        if (idEl) idEl.value = m.menu_item_id || '';
+        recalcWriteoffItem(input);
+        updateWriteoffTotal();
+      }
+      hideWriteoffSuggestions();
+    };
+    item.onmouseenter = function() { this.style.background = 'var(--bg)'; };
+    item.onmouseleave = function() { this.style.background = ''; };
+    box.appendChild(item);
+  });
+  row.style.position = 'relative';
+  row.appendChild(box);
+}
+
+function hideWriteoffSuggestions() {
+  var box = document.getElementById('writeoff-suggestions');
+  if (box) box.remove();
+}
+
+// Save the writeoff
+async function saveWriteoffUI() {
+  const writeoffDate = document.getElementById('writeoff-date').value;
+  if (!writeoffDate) { showToast('Укажите дату списания', 'warning'); return; }
+  const warehouseId = document.getElementById('writeoff-warehouse').value;
+  if (!warehouseId) { showToast('Выберите склад', 'warning'); return; }
+  const accountId = document.getElementById('writeoff-account').value;
+  // Collect items
+  const items = [];
+  const rows = document.querySelectorAll('.writeoff-item-row');
+  let hasValidItem = false;
+  rows.forEach(function(row) {
+    const name = (row.querySelector('.wi-name').value || '').trim();
+    const pack = (row.querySelector('.wi-pack').value || '').trim();
+    const qty = parseFloat(row.querySelector('.wi-qty').value) || 0;
+    const unitPrice = parseFloat(row.querySelector('.wi-price').value) || 0;
+    const markup = parseFloat(row.querySelector('.wi-markup').value) || 0;
+    const totalPrice = parseFloat(row.querySelector('.wi-total').value) || 0;
+    const menuItemId = (row.querySelector('.wi-menu-id') || {}).value || '';
+    if (!name && !pack && !qty && !unitPrice) return;
+    if (!name) { showToast('У одного из товаров не заполнено наименование', 'warning'); return; }
+    items.push({
+      menu_item_id: menuItemId,
+      name: name,
+      pack: pack,
+      quantity: qty,
+      unit_price: unitPrice,
+      markup: markup,
+      total_price: totalPrice
+    });
+    hasValidItem = true;
+  });
+  if (!hasValidItem) { showToast('Добавьте хотя бы один товар', 'warning'); return; }
+
+  const payload = {
+    id: document.getElementById('writeoff-id').value || undefined,
+    writeoff_date: new Date(writeoffDate).toISOString(),
+    warehouse_id: warehouseId,
+    account_id: accountId,
+    comment: document.getElementById('writeoff-comment').value,
+    items: items
+  };
+  try {
+    await apiPost('saveWriteoff', payload);
+    showToast('Списание сохранено', 'success');
+    closeModal('modal-writeoff');
+    await loadAppDataForce();
+    loadWriteoffsList();
+  } catch (err) {
+    showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Delete a writeoff
+async function deleteWriteoffUI(id) {
+  const ok = await confirmDialog('Удалить списание безвозвратно?', 'Удаление списания', 'Удалить', 'Отмена', 'btn-danger');
+  if (!ok) return;
+  try {
+    await apiPost('deleteWriteoff', { id: id });
+    showToast('Списание удалено', 'info');
+    await loadAppDataForce();
+    loadWriteoffsList();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
@@ -5716,8 +6141,9 @@ async function renderStatisticsShifts() {
       var cashTotal = Number(s.cash_total) || 0;
       var incTotal = Number(s.incassation_total) || 0;
       var supTotal = Number(s.supply_payment_total) || 0;
-      // Expected = opening + cash sales - incassations - supply payments
-      var expectedCash = openingCash + cashTotal - incTotal - supTotal;
+      var wofTotal = Number(s.writeoff_total) || 0;
+      // Expected = opening + cash sales + writeoffs - incassations - supply payments
+      var expectedCash = openingCash + cashTotal + wofTotal - incTotal - supTotal;
       // actual_cash may be missing on old shifts (closed before this feature)
       var hasActual = s.actual_cash !== undefined && s.actual_cash !== null && s.actual_cash !== '';
       var actualCash = hasActual ? Number(s.actual_cash) : expectedCash;
@@ -5753,7 +6179,7 @@ async function renderStatisticsShifts() {
       }
       // Transactions detail toggle (only if there are transactions OR deductions were non-zero)
       var txs = s.transactions || [];
-      var hasTxs = txs.length > 0 || incTotal > 0 || supTotal > 0;
+      var hasTxs = txs.length > 0 || incTotal > 0 || supTotal > 0 || wofTotal > 0;
       var toggleCell = hasTxs
         ? '<button class="btn-icon" title="Показать транзакции" onclick="toggleShiftTransactions(\'' + s.id + '\')" style="background:transparent;border:1px solid var(--border);">▼</button>'
         : '';
@@ -5777,6 +6203,7 @@ async function renderStatisticsShifts() {
         html += '<b>Расчёт ожидаемой суммы:</b><br>';
         html += 'Касса на начало: <b>' + formatMoney(openingCash) + '</b><br>';
         html += '+ Наличные за смену: <b>' + formatMoney(cashTotal) + '</b><br>';
+        if (wofTotal > 0) html += '+ Списания в кассу: <b style="color:var(--success);">' + formatMoney(wofTotal) + '</b><br>';
         if (incTotal > 0) html += '− Инкассации: <b style="color:#c62828;">' + formatMoney(incTotal) + '</b><br>';
         if (supTotal > 0) html += '− Поставки из кассы: <b style="color:#c62828;">' + formatMoney(supTotal) + '</b><br>';
         html += '<b>= Ожидается: ' + formatMoney(expectedCash) + '</b>';
@@ -5793,8 +6220,23 @@ async function renderStatisticsShifts() {
             '<th style="padding:6px;text-align:right;">Сумма</th>' +
             '</tr></thead><tbody>';
           txs.forEach(function(t) {
-            var tType = t.type === 'incassation' ? '💸 Инкассация' : '📦 Поставка';
-            var tTarget = t.type === 'incassation' ? 'Изъятие наличных' : escapeHtml(t.supplier_name || '—');
+            var tType, tTarget, tAmountPrefix, tAmountColor;
+            if (t.type === 'incassation') {
+              tType = '💸 Инкассация';
+              tTarget = 'Изъятие наличных';
+              tAmountPrefix = '−';
+              tAmountColor = '#c62828;';
+            } else if (t.type === 'writeoff') {
+              tType = '🧾 Списание';
+              tTarget = 'Зачисление в кассу';
+              tAmountPrefix = '+';
+              tAmountColor = 'var(--success);';
+            } else {
+              tType = '📦 Поставка';
+              tTarget = escapeHtml(t.supplier_name || '—');
+              tAmountPrefix = '−';
+              tAmountColor = '#c62828;';
+            }
             var tTime = t.created_at ? formatDateTime(t.created_at) : '—';
             var tComment = t.comment ? escapeHtml(t.comment) : '';
             html += '<tr>' +
@@ -5802,7 +6244,7 @@ async function renderStatisticsShifts() {
               '<td style="padding:6px;">' + tType + '</td>' +
               '<td style="padding:6px;">' + tTarget + '</td>' +
               '<td style="padding:6px;color:var(--text-muted);">' + tComment + '</td>' +
-              '<td style="padding:6px;text-align:right;font-weight:600;color:#c62828;">−' + formatMoney(Number(t.amount) || 0) + '</td>' +
+              '<td style="padding:6px;text-align:right;font-weight:600;color:' + tAmountColor + '">' + tAmountPrefix + formatMoney(Number(t.amount) || 0) + '</td>' +
             '</tr>';
           });
           html += '</tbody></table>';
