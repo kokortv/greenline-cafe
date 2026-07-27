@@ -2795,6 +2795,10 @@ async function apiGet(action, params) {
         server_time: new Date().toISOString()
       };
     }
+    case 'getAllWriteoffs':
+      return { writeoffs: await getAllWriteoffs() };
+    case 'getWriteoff':
+      return await getWriteoff(params.id);
     default:
       throw new Error('Unknown apiGet action: ' + action);
   }
@@ -2962,10 +2966,6 @@ async function apiPost(action, body) {
       return await saveDelivery(body);
     case 'deleteDelivery':
       return await deleteDelivery(body.id);
-    case 'getAllWriteoffs':
-      return { writeoffs: await getAllWriteoffs() };
-    case 'getWriteoff':
-      return await getWriteoff(params.id);
     case 'saveWriteoff':
       return await saveWriteoff(body);
     case 'deleteWriteoff':
