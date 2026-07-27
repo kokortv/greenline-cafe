@@ -1621,7 +1621,7 @@
       <span>Фасовка</span>
       <span style="text-align:right;">Кол-во</span>
       <span style="text-align:right;">Себест.</span>
-      <span style="text-align:right;">Наценка %</span>
+      <span style="text-align:right;white-space:nowrap;">Наценка %</span>
       <span style="text-align:right;">Сумма</span>
       <span></span>
     </div>
@@ -1674,7 +1674,7 @@
       <span>Фасовка</span>
       <span style="text-align:right;">Кол-во</span>
       <span style="text-align:right;">Себест.</span>
-      <span style="text-align:right;">Наценка %</span>
+      <span style="text-align:right;white-space:nowrap;">Наценка %</span>
       <span style="text-align:right;">Сумма</span>
       <span></span>
     </div>
@@ -5557,6 +5557,10 @@ async function openDeliveryModal(id) {
   document.getElementById('delivery-apply-to-stock').checked = false;
   document.getElementById('modal-delivery-title').textContent = id ? 'Изменить поставку' : 'Новая поставка';
 
+  // Determine role + allowed warehouses
+  var delAllowedWhIds = getAllowedWarehouseIds();
+  var isSupplierSingleWh = (delAllowedWhIds !== null && delAllowedWhIds.length === 1);
+
   // Populate supplier/warehouse/account dropdowns from APP_DATA
   const supplierSel = document.getElementById('delivery-supplier');
   const warehouseSel = document.getElementById('delivery-warehouse');
@@ -5568,17 +5572,52 @@ async function openDeliveryModal(id) {
     supplierSel.innerHTML += '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>';
   });
   // Filter warehouses by allowed_warehouses (for supplier role)
-  var allowedWhIds = getAllowedWarehouseIds();
   var warehouses = APP_DATA.warehouses || [];
-  if (allowedWhIds !== null) {
-    warehouses = warehouses.filter(function(w) { return allowedWhIds.indexOf(w.id) !== -1; });
+  if (delAllowedWhIds !== null) {
+    warehouses = warehouses.filter(function(w) { return delAllowedWhIds.indexOf(w.id) !== -1; });
   }
   warehouses.forEach(function(w) {
     warehouseSel.innerHTML += '<option value="' + w.id + '">' + escapeHtml(w.name) + '</option>';
   });
-  (APP_DATA.accounts || []).forEach(function(a) {
+  // For supplier: only show accounts linked to allowed warehouses
+  var delAccounts = APP_DATA.accounts || [];
+  if (delAllowedWhIds !== null) {
+    var linkedAccIds = warehouses.map(function(w) { return w.account_id; }).filter(Boolean);
+    delAccounts = delAccounts.filter(function(a) { return linkedAccIds.indexOf(a.id) !== -1; });
+  }
+  delAccounts.forEach(function(a) {
     accountSel.innerHTML += '<option value="' + a.id + '">' + escapeHtml(a.name) + '</option>';
   });
+
+  // For supplier: hide the "+" add buttons next to supplier/warehouse/account
+  if (delAllowedWhIds !== null) {
+    // Hide inline add buttons (the "+" buttons that toggle inline forms)
+    document.querySelectorAll('#modal-delivery .btn-icon-success, #modal-delivery button[onclick*="toggleInlineSupplier"], #modal-delivery button[onclick*="openWarehouseModal"], #modal-delivery button[onclick*="openAccountModal"]').forEach(function(btn) {
+      btn.style.display = 'none';
+    });
+  }
+
+  // For supplier with 1 warehouse: hide warehouse + account selectors, auto-select
+  var delWhRow = warehouseSel ? warehouseSel.closest('.form-group') : null;
+  var delAccRow = accountSel ? accountSel.closest('.form-group') : null;
+  if (isSupplierSingleWh) {
+    if (delWhRow) delWhRow.style.display = 'none';
+    if (delAccRow) delAccRow.style.display = 'none';
+    warehouseSel.value = delAllowedWhIds[0];
+    var singleWh = warehouses.find(function(w) { return w.id === delAllowedWhIds[0]; });
+    if (singleWh && singleWh.account_id) accountSel.value = singleWh.account_id;
+  } else {
+    if (delWhRow) delWhRow.style.display = '';
+    // For supplier with multiple warehouses: hide account selector (auto from warehouse)
+    if (delAccRow) delAccRow.style.display = (delAllowedWhIds !== null) ? 'none' : '';
+  }
+
+  // Hide "apply to stock" checkbox for supplier
+  var applyStockRow = document.getElementById('delivery-apply-to-stock');
+  if (applyStockRow) {
+    var applyGroup = applyStockRow.closest('.form-group');
+    if (applyGroup) applyGroup.style.display = (delAllowedWhIds !== null) ? 'none' : '';
+  }
 
   // Default date = now (in local datetime-local format)
   const now = new Date();
@@ -5598,7 +5637,10 @@ async function openDeliveryModal(id) {
       const d = await apiGet('getDelivery', { id: id });
       document.getElementById('delivery-date').value = new Date(new Date(d.delivery_date).getTime() - tzOffset).toISOString().slice(0, 16);
       document.getElementById('delivery-supplier').value = d.supplier_id || '';
-      document.getElementById('delivery-warehouse').value = d.warehouse_id || '';
+      // For supplier with hidden warehouse selector, keep the value from the delivery
+      if (!isSupplierSingleWh) {
+        document.getElementById('delivery-warehouse').value = d.warehouse_id || '';
+      }
       document.getElementById('delivery-account').value = d.account_id || '';
       document.getElementById('delivery-paid-amount').value = d.paid_amount || 0;
       document.getElementById('delivery-comment').value = d.comment || '';
@@ -5677,11 +5719,35 @@ function searchDeliveryItems(input) {
   // Remove any existing suggestion box
   hideDeliverySuggestions();
   if (query.length < 1) return;
-  // Find matching menu items
-  var matches = (APP_DATA.menu || []).filter(function(m) {
-    var name = String(m.name || '').toLowerCase();
-    return name.indexOf(query) >= 0;
-  }).slice(0, 8); // limit to 8 results
+  // For supplier role: only search delivery items for the selected warehouse (NOT menu items)
+  // For admin: search both menu items and delivery items
+  var delAllowedWhIds = getAllowedWarehouseIds();
+  var matches = [];
+  if (delAllowedWhIds !== null) {
+    // Supplier: search only delivery items for allowed warehouses
+    var whId = document.getElementById('delivery-warehouse').value;
+    var deliveryIds = new Set();
+    (APP_DATA.deliveries || []).forEach(function(d) {
+      if (whId && d.warehouse_id !== whId) return;
+      deliveryIds.add(d.id);
+    });
+    var seen = {};
+    (APP_DATA.delivery_items || []).forEach(function(dit) {
+      if (whId && !deliveryIds.has(dit.delivery_id)) return;
+      var name = String(dit.name || '').toLowerCase();
+      if (name.indexOf(query) >= 0 && !seen[name]) {
+        seen[name] = true;
+        matches.push({ id: dit.menu_item_id || '', name: dit.name, cost: Number(dit.unit_price) || 0, pack: dit.pack || '' });
+      }
+    });
+  } else {
+    // Admin: search menu items
+    matches = (APP_DATA.menu || []).filter(function(m) {
+      var name = String(m.name || '').toLowerCase();
+      return name.indexOf(query) >= 0;
+    }).slice(0, 8);
+  }
+  matches = matches.slice(0, 8);
   if (matches.length === 0) return;
   // Build suggestion box
   var box = document.createElement('div');
@@ -5969,10 +6035,14 @@ async function openWriteoffModal(id) {
   document.getElementById('writeoff-comment').value = '';
   document.getElementById('modal-writeoff-title').textContent = id ? 'Изменить списание' : 'Новое списание';
 
+  // Determine role + allowed warehouses
+  var wofAllowedWhIds = getAllowedWarehouseIds();
+  var isSupplierSingleWh = (wofAllowedWhIds !== null && wofAllowedWhIds.length === 1);
+
   // Populate warehouse dropdown (filtered by allowed_warehouses for supplier role)
   const whSel = document.getElementById('writeoff-warehouse');
+  const whRow = document.getElementById('writeoff-warehouse') ? document.getElementById('writeoff-warehouse').closest('.form-group') : null;
   whSel.innerHTML = '<option value="">— Выберите склад —</option>';
-  var wofAllowedWhIds = getAllowedWarehouseIds();
   var wofWarehouses = APP_DATA.warehouses || [];
   if (wofAllowedWhIds !== null) {
     wofWarehouses = wofWarehouses.filter(function(w) { return wofAllowedWhIds.indexOf(w.id) !== -1; });
@@ -5983,11 +6053,33 @@ async function openWriteoffModal(id) {
 
   // Populate account dropdown
   const accSel = document.getElementById('writeoff-account');
+  const accRow = accSel ? accSel.closest('.form-group') : null;
+  // For supplier: only show the account linked to the warehouse (or hide entirely if single warehouse)
   accSel.innerHTML = '<option value="">— Авто (из склада) —</option>';
-  (APP_DATA.accounts || []).forEach(function(a) {
+  var accountsToShow = APP_DATA.accounts || [];
+  if (wofAllowedWhIds !== null) {
+    // Find accounts linked to allowed warehouses
+    var linkedAccountIds = wofWarehouses.map(function(w) { return w.account_id; }).filter(Boolean);
+    accountsToShow = accountsToShow.filter(function(a) { return linkedAccountIds.indexOf(a.id) !== -1; });
+  }
+  accountsToShow.forEach(function(a) {
     const label = a.name + (a.is_cash_register ? ' 💵 (касса)' : '');
     accSel.innerHTML += '<option value="' + escapeHtml(a.id) + '">' + escapeHtml(label) + '</option>';
   });
+
+  // For supplier with 1 warehouse: hide warehouse + account selectors, auto-select
+  if (isSupplierSingleWh) {
+    if (whRow) whRow.style.display = 'none';
+    if (accRow) accRow.style.display = 'none';
+    whSel.value = wofAllowedWhIds[0];
+    // Auto-select the linked account
+    var singleWh = wofWarehouses.find(function(w) { return w.id === wofAllowedWhIds[0]; });
+    if (singleWh && singleWh.account_id) accSel.value = singleWh.account_id;
+  } else {
+    if (whRow) whRow.style.display = '';
+    // For supplier with multiple warehouses: hide account selector (auto from warehouse)
+    if (accRow) accRow.style.display = (wofAllowedWhIds !== null) ? 'none' : '';
+  }
 
   // Wire warehouse change → auto-select its linked account
   whSel.onchange = function() {
@@ -6099,12 +6191,18 @@ function searchWriteoffItems(input) {
   if (!row) return;
   // Get the selected warehouse to filter delivery items
   var whId = document.getElementById('writeoff-warehouse').value;
-  // Build a unique list of items: menu items + delivery items for this warehouse
+  // Determine role
+  var wofAllowedWhIds = getAllowedWarehouseIds();
+  // Build a unique list of items
   var candidates = {};
-  (APP_DATA.menu || []).forEach(function(m) {
-    candidates[m.name.toLowerCase()] = { name: m.name, cost: Number(m.cost) || 0, menu_item_id: m.id, pack: '' };
-  });
-  // Add delivery items for this warehouse
+  // For supplier: do NOT include menu items — only delivery items for this warehouse
+  if (wofAllowedWhIds === null) {
+    // Admin: include menu items
+    (APP_DATA.menu || []).forEach(function(m) {
+      candidates[m.name.toLowerCase()] = { name: m.name, cost: Number(m.cost) || 0, menu_item_id: m.id, pack: '' };
+    });
+  }
+  // Add delivery items for this warehouse (both admin and supplier)
   var deliveryIds = new Set();
   (APP_DATA.deliveries || []).forEach(function(d) {
     if (whId && d.warehouse_id !== whId) return;
