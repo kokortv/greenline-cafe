@@ -2245,6 +2245,9 @@ async function getStockReport(warehouseId) {
       }
     }
     const dStats = deliveryStats[m.id] || { count: 0, total: 0, qty: 0 };
+    const itemMarkup = Number(m.markup) || 0;
+    // Сумма = остаток × себестоимость × (1 + наценка/100)
+    const unitPriceWithMarkup = cost * (1 + itemMarkup / 100);
     return {
       id: m.id,
       name: m.name,
@@ -2253,7 +2256,8 @@ async function getStockReport(warehouseId) {
       sort: Number(m.sort) || 0,
       stock: stock,
       cost: cost,
-      stock_value: stock * cost, // остаток × себестоимость
+      markup: itemMarkup,
+      stock_value: stock * unitPriceWithMarkup, // остаток × цена с наценкой
       consumed_day: cons.day,
       consumed_week: cons.week,
       consumed_month: cons.month,
@@ -2280,6 +2284,8 @@ async function getStockReport(warehouseId) {
     .filter(function(key) { return deliveryOnlyItems[key].qty > 0; })
     .map(function(key) {
     const d = deliveryOnlyItems[key];
+    const dMarkup = d.markup || 0;
+    const dUnitPriceWithMarkup = d.unit_price * (1 + dMarkup / 100);
     return {
       id: 'custom_' + key, // synthetic id for sorting/display
       name: d.name,
@@ -2288,8 +2294,8 @@ async function getStockReport(warehouseId) {
       sort: 9999, // sort after menu items
       stock: d.qty,
       cost: d.unit_price,
-      markup: d.markup || 0,
-      stock_value: d.qty * d.unit_price,
+      markup: dMarkup,
+      stock_value: d.qty * dUnitPriceWithMarkup, // остаток × цена с наценкой
       consumed_day: 0,
       consumed_week: 0,
       consumed_month: 0,

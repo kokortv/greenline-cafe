@@ -3353,7 +3353,7 @@ function renderMenuList() {
       (needsCook ? 'готовка' : 'без готовки') +
       '</span></td>';
     // Actions — both buttons in one cell, no header
-    html += '<td class="no-ellipsis" style="padding:12px;text-align:right;white-space:nowrap;vertical-align:top;">' +
+    html += '<td class="no-ellipsis" style="padding:12px 16px 12px 12px;text-align:right;white-space:nowrap;vertical-align:top;">' +
       '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button> ' +
       '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
       '</td>';
@@ -4335,7 +4335,7 @@ async function loadStockReport() {
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остатки <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'markup\')">Наценка <span class="sort-arrow" id="sort-arrow-markup"></span></th>';
-    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма с нац. <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
     html += '<th class="st-th-center">Действия</th>';
     html += '</tr></thead><tbody>';
     // Keep a reference to the items so sortStockBy() can re-render the body
@@ -4391,16 +4391,13 @@ function renderStockRow(it, tracking) {
   row += '<td class="stock-cell st-td-num" style="' + stockColor + '">' + it.stock + '</td>';
   // Себестоимость
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
-  // Наценка (только для delivery-only items, у которых есть markup)
+  // Наценка — показываем для всех товаров (из меню и из поставок)
   var markupDisplay = '0%';
-  if (it.is_menu_item === false && Number(it.markup) > 0) {
+  if (Number(it.markup) > 0) {
     markupDisplay = Number(it.markup) + '%';
-  } else if (it.is_menu_item !== false) {
-    // For menu items, markup isn't tracked here — show '—'
-    markupDisplay = '—';
   }
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + markupDisplay + '</td>';
-  // Сумма = остаток × себестоимость
+  // Сумма = остаток × себестоимость × (1 + наценка/100)
   row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
   // Действия: 👁 просмотр поставок + 🧾 списание
   var actionsHtml = '';
@@ -4816,7 +4813,7 @@ async function loadSuppliersList() {
       html += '<td style="text-align:right;">' + st.count + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(st.total) + '</td>';
       html += '<td style="text-align:right;' + debtColor + '">' + (st.debt > 0 ? formatMoney(st.debt) : '—') + '</td>';
-      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;padding-right:12px;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openSupplierModal(\'' + s.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteSupplierUI(\'' + s.id + '\')">✕</button>' +
         '</td>';
@@ -5020,7 +5017,7 @@ async function loadWarehousesList() {
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(total) + '</td>';
       html += '<td style="text-align:right;' + accBalanceColor + '">' + accBalance + '</td>';
       html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(w.comment || '—') + '</td>';
-      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;padding-right:12px;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openWarehouseModal(\'' + w.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteWarehouseUI(\'' + w.id + '\')">✕</button>' +
         '</td>';
@@ -5165,7 +5162,7 @@ async function loadAccountsList() {
       html += '<td style="text-align:right;">' + initialDisplay + '</td>';
       html += '<td style="text-align:right;color:' + (paidFromAccount > 0 ? 'var(--danger);' : 'var(--text-muted);') + '">' + paidDisplay + '</td>';
       html += '<td style="text-align:right;font-weight:700;' + balanceColor + '">' + formatMoney(balance, a.currency) + '</td>';
-      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;padding-right:12px;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openAccountModal(\'' + a.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteAccountUI(\'' + a.id + '\')">✕</button>' +
         '</td>';
@@ -5358,7 +5355,7 @@ async function loadDeliveriesList() {
       html += '<td>' + statusBadge + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(d.total_amount) + '</td>';
       html += '<td style="text-align:right;' + debtColor + '">' + (debt > 0 ? formatMoney(debt) : '—') + '</td>';
-      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;padding-right:12px;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openDeliveryModal(\'' + d.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteDeliveryUI(\'' + d.id + '\')">✕</button>' +
         '</td>';
@@ -5729,7 +5726,7 @@ async function loadWriteoffsList() {
       html += '<td style="text-align:right;">' + (Number(firstItem.markup) || 0) + '%</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(Number(firstItem.total_price) || 0) + '</td>';
       html += '<td style="word-break:break-word;font-size:0.82rem;color:var(--text-muted);" rowspan="' + rowspan + '">' + escapeHtml(w.comment || '—') + '</td>';
-      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;" rowspan="' + rowspan + '">' +
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;padding-right:16px;" rowspan="' + rowspan + '">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openWriteoffModal(\'' + w.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteWriteoffUI(\'' + w.id + '\')">✕</button>' +
         '</td>';
