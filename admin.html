@@ -4324,7 +4324,7 @@ async function loadStockReport() {
         }
         html += '<div class="card" style="padding:10px 14px;background:#e3f2fd;margin-bottom:14px;font-size:0.9rem;">' +
           '📦 Склад: <b>' + escapeHtml(wh.name) + '</b>.' + accountInfo +
-          '<br>Показаны только товары, поставлявшиеся на этот склад. ' +
+          '<br>Показаны товары только из поставок на этот склад (независимо от меню ресторана). ' +
           'Остаток = сумме поставок. Товары без поставок здесь не отображаются.' +
         '</div>';
       }

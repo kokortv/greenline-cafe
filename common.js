@@ -2115,26 +2115,21 @@ async function getStockReport(warehouseId) {
   const deliveryStats = {};
   // whStock: per menu_item_id → total quantity received at the selected warehouse
   const whStock = {};
-  // deliveryOnlyItems: items that appear in deliveries but have NO menu_item_id
-  // (custom-named supplies like "Соль", "Моющее средство", etc.). These should
-  // appear in the warehouse stock list even though they're not on the restaurant menu.
-  // Keyed by item name (case-insensitive) → aggregated { name, qty, total, count, pack, unit_price }
+  // deliveryOnlyItems: items that appear in deliveries.
+  // When a specific warehouse is selected, ALL delivery items are aggregated by NAME
+  // (ignoring menu_item_id) — this ensures items on non-menu warehouses (e.g. supplies)
+  // are never mixed with the restaurant menu, even if their names happen to match.
+  // When NO warehouse filter (all warehouses), only items WITHOUT menu_item_id go here.
   const deliveryOnlyItems = {};
   allDeliveryItems.forEach(function(dit) {
     // Skip this item if it doesn't belong to a delivery at the selected warehouse
     if (filteredDeliveryIds && !filteredDeliveryIds.has(dit.delivery_id)) return;
     const mid = dit.menu_item_id;
     const itemName = String(dit.name || '').trim();
-    if (mid) {
-      // Linked to a menu item — aggregate by menu_item_id
-      if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0, qty: 0 };
-      deliveryStats[mid].count += 1;
-      deliveryStats[mid].total += Number(dit.total_price) || 0;
-      deliveryStats[mid].qty += Number(dit.quantity) || 0;
-      whStock[mid] = (whStock[mid] || 0) + (Number(dit.quantity) || 0);
-    } else if (itemName) {
-      // No menu_item_id — aggregate by name (case-insensitive) so the same
-      // custom item across multiple deliveries appears as one row
+    // When warehouse filter is active, aggregate EVERYTHING by name (ignore menu_item_id)
+    // so items on this warehouse are independent from the restaurant menu.
+    if (warehouseId) {
+      if (!itemName) return;
       const key = itemName.toLowerCase();
       if (!deliveryOnlyItems[key]) {
         deliveryOnlyItems[key] = {
@@ -2150,8 +2145,34 @@ async function getStockReport(warehouseId) {
       deliveryOnlyItems[key].qty += Number(dit.quantity) || 0;
       deliveryOnlyItems[key].total += Number(dit.total_price) || 0;
       deliveryOnlyItems[key].count += 1;
-      // Keep the latest non-zero markup
       if (Number(dit.markup) > 0) deliveryOnlyItems[key].markup = Number(dit.markup);
+    } else {
+      // No warehouse filter — use the original logic:
+      // items with menu_item_id go to deliveryStats, others go to deliveryOnlyItems
+      if (mid) {
+        if (!deliveryStats[mid]) deliveryStats[mid] = { count: 0, total: 0, qty: 0 };
+        deliveryStats[mid].count += 1;
+        deliveryStats[mid].total += Number(dit.total_price) || 0;
+        deliveryStats[mid].qty += Number(dit.quantity) || 0;
+        whStock[mid] = (whStock[mid] || 0) + (Number(dit.quantity) || 0);
+      } else if (itemName) {
+        const key = itemName.toLowerCase();
+        if (!deliveryOnlyItems[key]) {
+          deliveryOnlyItems[key] = {
+            name: itemName,
+            qty: 0,
+            total: 0,
+            count: 0,
+            pack: String(dit.pack || ''),
+            unit_price: Number(dit.unit_price) || 0,
+            markup: Number(dit.markup) || 0
+          };
+        }
+        deliveryOnlyItems[key].qty += Number(dit.quantity) || 0;
+        deliveryOnlyItems[key].total += Number(dit.total_price) || 0;
+        deliveryOnlyItems[key].count += 1;
+        if (Number(dit.markup) > 0) deliveryOnlyItems[key].markup = Number(dit.markup);
+      }
     }
   });
 
@@ -2196,15 +2217,15 @@ async function getStockReport(warehouseId) {
     };
   });
 
-  // When warehouse filter is active, filter menu items to only those with deliveries
-  // to this warehouse. Items with stock=0 at this warehouse are excluded — the user
-  // wants to see ONLY what's actually on this warehouse.
+  // When warehouse filter is active, DON'T show menu items at all —
+  // all items on this warehouse are shown as delivery-only items (aggregated by name).
+  // This ensures items on non-menu warehouses are never mixed with the restaurant menu.
   const filteredMenuItems = warehouseId
-    ? menuItems.filter(function(it) { return it.deliveries_count > 0; })
+    ? []
     : menuItems;
 
-  // When warehouse filter is active, also include delivery-only items
-  // (items that have deliveries to this warehouse but no menu_item_id)
+  // When warehouse filter is active, ALL items are delivery-only (aggregated by name).
+  // When no filter, deliveryOnlyArray is empty (deliveryOnlyItems only has items without menu_item_id).
   const deliveryOnlyArray = warehouseId ? Object.keys(deliveryOnlyItems).map(function(key) {
     const d = deliveryOnlyItems[key];
     return {
