@@ -4405,15 +4405,20 @@ async function loadStockReport() {
   // Check role + allowed warehouses
   var stockAllowedWhIds = getAllowedWarehouseIds();
   var isSupplierSingleWh = (stockAllowedWhIds !== null && stockAllowedWhIds.length === 1);
-  // Populate the warehouse dropdown (only on first load, and only if not supplier-with-1-warehouse)
+  // Populate the warehouse dropdown
   const whSelect = document.getElementById('stock-warehouse-select');
   const whFilter = document.getElementById('stock-warehouse-filter');
   const defaultBtn = document.getElementById('stock-warehouse-default-btn');
   if (isSupplierSingleWh) {
-    // Supplier with exactly 1 warehouse: hide the filter row entirely, show just the warehouse name
+    // Supplier with exactly 1 warehouse: hide the filter row entirely
     if (whFilter) whFilter.style.display = 'none';
-    // Auto-select the single allowed warehouse
-    if (whSelect) whSelect.value = stockAllowedWhIds[0];
+    if (defaultBtn) defaultBtn.style.display = 'none';
+    // Still populate the hidden select so .value works correctly
+    if (whSelect) {
+      let wh = (APP_DATA.warehouses || []).find(function(w) { return w.id === stockAllowedWhIds[0]; });
+      whSelect.innerHTML = '<option value="' + escapeHtml(stockAllowedWhIds[0]) + '">' + escapeHtml(wh ? wh.name : '') + '</option>';
+      whSelect.value = stockAllowedWhIds[0];
+    }
   } else {
     if (whFilter) whFilter.style.display = '';
     if (whSelect && !whSelect.dataset.populated) {
@@ -4429,7 +4434,6 @@ async function loadStockReport() {
       });
       whSelect.innerHTML = opts;
       whSelect.dataset.populated = '1';
-      // For supplier with multiple warehouses, no localStorage default (admin-only feature)
       if (stockAllowedWhIds === null) {
         try {
           const savedWh = localStorage.getItem('stockDefaultWarehouse');
@@ -4440,7 +4444,14 @@ async function loadStockReport() {
     // Show/hide "По умолчанию" button: only for admin
     if (defaultBtn) defaultBtn.style.display = (stockAllowedWhIds === null) ? '' : 'none';
   }
-  const selectedWh = whSelect ? whSelect.value : '';
+  // Determine the selected warehouse
+  var selectedWh;
+  if (isSupplierSingleWh) {
+    // For supplier with 1 warehouse, use the allowed ID directly (don't rely on select)
+    selectedWh = stockAllowedWhIds[0];
+  } else {
+    selectedWh = whSelect ? whSelect.value : '';
+  }
   // Update the "По умолчанию" button state (admin only)
   if (stockAllowedWhIds === null) updateDefaultWarehouseBtn(selectedWh);
   div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
