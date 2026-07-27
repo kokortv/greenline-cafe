@@ -3258,7 +3258,7 @@ function renderMenuList() {
   html += '<th style="width:9%;padding:12px;text-align:right;cursor:pointer;user-select:none;white-space:nowrap;" onclick="sortMenuBy(\'markup\')">Наценка % <span class="sort-arrow" id="menu-sort-arrow-markup"></span></th>';
   html += '<th style="width:11%;padding:12px;text-align:right;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'price\')">Цена <span class="sort-arrow" id="menu-sort-arrow-price"></span></th>';
   html += '<th style="width:11%;padding:12px;text-align:center;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'needs_cooking\')">Готовка <span class="sort-arrow" id="menu-sort-arrow-needs_cooking"></span></th>';
-  html += '<th class="no-ellipsis" style="width:76px;padding:12px;text-align:center;"></th>';
+  html += '<th class="no-ellipsis" style="width:100px;padding:12px;text-align:center;"></th>';
   html += '</tr></thead><tbody>';
 
   items.forEach(function(item) {
@@ -5326,7 +5326,7 @@ async function loadDeliveriesList() {
     html += '<th style="width:9%;">Статус</th>';
     html += th('total_amount', 'Сумма', 'width:10%;text-align:right;');
     html += th('debt', 'Долг', 'width:9%;text-align:right;');
-    html += '<th class="no-ellipsis" style="width:80px;text-align:right;white-space:nowrap;"></th>';
+    html += '<th class="no-ellipsis" style="width:100px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
     deliveries.forEach(function(d) {
       const debt = (Number(d.total_amount) || 0) - (Number(d.paid_amount) || 0);
@@ -5706,7 +5706,7 @@ async function loadWriteoffsList() {
     html += '<th style="width:6%;text-align:right;">Нац.%</th>';
     html += '<th style="width:8%;text-align:right;">Сумма</th>';
     html += '<th style="width:10%;">Комментарий</th>';
-    html += '<th class="no-ellipsis" style="width:80px;text-align:right;white-space:nowrap;"></th>';
+    html += '<th class="no-ellipsis" style="width:100px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
     writeoffs.forEach(function(w, idx) {
       const items = w.items || [];
