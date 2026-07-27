@@ -4288,8 +4288,9 @@ async function loadStockReport() {
     html += '<th class="st-th-cat" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'category_name\')">Категория <span class="sort-arrow" id="sort-arrow-category_name"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остатки <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'markup\')">Наценка <span class="sort-arrow" id="sort-arrow-markup"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
-    html += '<th class="st-th-center">Поставки</th>';
+    html += '<th class="st-th-center">Действия</th>';
     html += '</tr></thead><tbody>';
     // Keep a reference to the items so sortStockBy() can re-render the body
     window._stockItems = items;
@@ -4344,33 +4345,38 @@ function renderStockRow(it, tracking) {
   row += '<td class="stock-cell st-td-num" style="' + stockColor + '">' + it.stock + '</td>';
   // Себестоимость
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
+  // Наценка (только для delivery-only items, у которых есть markup)
+  var markupDisplay = '—';
+  if (it.is_menu_item === false && Number(it.markup) > 0) {
+    markupDisplay = Number(it.markup) + '%';
+  }
+  row += '<td class="st-td-num" style="color:var(--text-muted);">' + markupDisplay + '</td>';
   // Сумма = остаток × себестоимость
   row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
-  // Поставки — кликабельная ссылка "поставки" (expandable inline), или "—"
+  // Действия: 👁 просмотр поставок + 🧾 списание
+  var actionsHtml = '';
   if (hasDeliveries) {
-    // For delivery-only items (custom_ prefix), pass the item name + warehouse
-    // so we can query by name instead of menu_item_id
     var isCustom = String(it.id || '').indexOf('custom_') === 0;
     var toggleArgs;
     if (isCustom) {
-      // Encode the name for safe attribute passing
       var encodedName = encodeURIComponent(it.name);
       var whId = (document.getElementById('stock-warehouse-select') || {}).value || '';
       toggleArgs = '\'' + it.id + '\', this, \'' + encodedName + '\', \'' + whId + '\'';
     } else {
       toggleArgs = '\'' + it.id + '\', this';
     }
-    row += '<td class="st-td-center">' +
-      '<a href="#" style="color:var(--primary);font-weight:600;text-decoration:underline;cursor:pointer;" ' +
-      'onclick="event.preventDefault();toggleStockDeliveries(' + toggleArgs + ')">поставки</a></td>';
-  } else {
-    row += '<td class="st-td-center" style="color:var(--text-muted);">—</td>';
+    actionsHtml += '<button class="btn-icon btn-icon-view" title="Показать поставки" onclick="event.preventDefault();toggleStockDeliveries(' + toggleArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">👁</button> ';
   }
+  // Списание — иконка 🧾, открывает модалку списания с предзаполненным товаром
+  var whIdForWriteoff = (document.getElementById('stock-warehouse-select') || {}).value || '';
+  var writeoffArgs = '\'' + encodeURIComponent(it.name) + '\', \'' + whIdForWriteoff + '\', ' + cost + ', \'' + encodeURIComponent(it.pack || '') + '\'';
+  actionsHtml += '<button class="btn-icon btn-icon-success" title="Списать" onclick="writeoffFromStock(' + writeoffArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">🧾</button>';
+  row += '<td class="st-td-center" style="white-space:nowrap;">' + actionsHtml + '</td>';
   row += '</tr>';
   // Expandable row for delivery history (hidden by default)
   if (hasDeliveries) {
     row += '<tr id="stock-deliveries-' + it.id + '" style="display:none;">';
-    row += '<td colspan="6" style="padding:0;">';
+    row += '<td colspan="7" style="padding:0;">';
     row += '<div id="stock-deliveries-content-' + it.id + '" style="padding:8px 12px;background:var(--bg);">';
     row += '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
     row += '</div>';
@@ -4396,7 +4402,7 @@ function sortStockBy(key) {
     let av = a[key];
     let bv = b[key];
     // Numeric columns
-    if (key === 'stock' || key === 'cost' || key === 'stock_value' ||
+    if (key === 'stock' || key === 'cost' || key === 'stock_value' || key === 'markup' ||
         key === 'consumed_day' || key === 'consumed_week' || key === 'consumed_month' ||
         key === 'deliveries_count' || key === 'deliveries_total' || key === 'consumed_total') {
       av = Number(av) || 0;
@@ -5233,24 +5239,50 @@ async function loadDeliveriesList() {
   div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
   try {
     const data = await apiGet('getAllDeliveries', {});
-    const deliveries = data.deliveries || [];
+    let deliveries = data.deliveries || [];
     if (deliveries.length === 0) {
       div.innerHTML = '<div class="empty-state"><h3>Нет поставок</h3><p>Нажмите «+ Добавить поставку»</p></div>';
       return;
     }
+    // Sort state
+    if (!window._deliverySortKey) window._deliverySortKey = 'delivery_date';
+    if (!window._deliverySortDir) window._deliverySortDir = 'desc';
+    // Apply sort
+    const key = window._deliverySortKey;
+    const dir = window._deliverySortDir === 'asc' ? 1 : -1;
+    deliveries.sort(function(a, b) {
+      let av, bv;
+      if (key === 'delivery_date') { av = new Date(a.delivery_date || 0).getTime(); bv = new Date(b.delivery_date || 0).getTime(); }
+      else if (key === 'total_amount') { av = Number(a.total_amount) || 0; bv = Number(b.total_amount) || 0; }
+      else if (key === 'debt') { av = (Number(a.total_amount)||0) - (Number(a.paid_amount)||0); bv = (Number(b.total_amount)||0) - (Number(b.paid_amount)||0); }
+      else { av = String(a[key] || '').toLowerCase(); bv = String(b[key] || '').toLowerCase(); }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+
+    // Sort arrow helper
+    function arrow(k) {
+      if (window._deliverySortKey !== k) return '';
+      return window._deliverySortDir === 'asc' ? ' ▲' : ' ▼';
+    }
+    // Clickable header helper
+    function th(k, label, extra) {
+      return '<th style="cursor:pointer;user-select:none;' + (extra || '') + '" onclick="sortDeliveriesBy(\'' + k + '\')">' + label + '<span class="sort-arrow">' + arrow(k) + '</span></th>';
+    }
+
     let html = '<table class="admin-table"><thead><tr>';
-    html += '<th style="width:4%;">№</th>';
-    html += '<th style="width:13%;">Дата</th>';
-    html += '<th style="width:14%;">Поставщик</th>';
-    html += '<th style="width:10%;">Склад</th>';
-    html += '<th style="width:10%;">Счёт</th>';
-    html += '<th style="width:14%;">Товары</th>';
+    html += th('delivery_date', 'Дата', 'width:13%;');
+    html += th('supplier_name', 'Поставщик', 'width:14%;');
+    html += th('warehouse_name', 'Склад', 'width:11%;');
+    html += th('account_name', 'Счёт', 'width:11%;');
+    html += '<th style="width:13%;">Товары</th>';
     html += '<th style="width:9%;">Статус</th>';
-    html += '<th style="width:10%;text-align:right;">Сумма</th>';
-    html += '<th style="width:9%;text-align:right;">Долг</th>';
+    html += th('total_amount', 'Сумма', 'width:10%;text-align:right;');
+    html += th('debt', 'Долг', 'width:9%;text-align:right;');
     html += '<th style="width:80px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
-    deliveries.forEach(function(d, idx) {
+    deliveries.forEach(function(d) {
       const debt = (Number(d.total_amount) || 0) - (Number(d.paid_amount) || 0);
       const debtColor = debt > 0 ? 'color:var(--danger);font-weight:700;' : '';
       let statusBadge = '';
@@ -5269,12 +5301,11 @@ async function loadDeliveriesList() {
         : '—';
 
       html += '<tr>'
-      html += '<td style="font-weight:600;">' + (idx + 1) + '</td>';
       html += '<td style="font-size:0.85rem;">' + escapeHtml(formatDateTime(d.delivery_date)) + '</td>';
       html += '<td style="word-break:break-word;">' + escapeHtml(d.supplier_name || '—') + '</td>';
       html += '<td style="word-break:break-word;">' + escapeHtml(d.warehouse_name || '—') + '</td>';
       html += '<td style="word-break:break-word;">' + escapeHtml(d.account_name || '—') + '</td>';
-      html += '<td style="word-break:break-word;font-size:0.85rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;" title="' + escapeHtmlAttr(itemsLabel) + '">' + itemsLabel + '</td>';
+      html += '<td style="word-break:break-word;font-size:0.85rem;">' + itemsLabel + '</td>';
       html += '<td>' + statusBadge + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(d.total_amount) + '</td>';
       html += '<td style="text-align:right;' + debtColor + '">' + (debt > 0 ? formatMoney(debt) : '—') + '</td>';
@@ -5289,6 +5320,17 @@ async function loadDeliveriesList() {
   } catch (err) {
     div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
   }
+}
+
+// Sort deliveries table by a given column. First click = ascending, second = descending.
+function sortDeliveriesBy(key) {
+  if (window._deliverySortKey === key) {
+    window._deliverySortDir = (window._deliverySortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    window._deliverySortKey = key;
+    window._deliverySortDir = 'asc';
+  }
+  loadDeliveriesList();
 }
 
 // Open the delivery modal — for creating a new delivery or editing an existing one.
@@ -5657,6 +5699,34 @@ async function loadWriteoffsList() {
     div.innerHTML = html;
   } catch (err) {
     div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+// Open the writeoff modal with a pre-filled item (called from the Stock table 🧾 button)
+async function writeoffFromStock(encodedItemName, warehouseId, cost, encodedPack) {
+  await openWriteoffModal(null);
+  // Pre-select the warehouse
+  if (warehouseId) {
+    var whSel = document.getElementById('writeoff-warehouse');
+    if (whSel) whSel.value = warehouseId;
+    // Trigger the onchange to auto-select the linked account
+    if (whSel.onchange) whSel.onchange();
+  }
+  // Pre-fill the first item row with the item details
+  var itemName = decodeURIComponent(encodedItemName || '');
+  var pack = decodeURIComponent(encodedPack || '');
+  var itemsList = document.getElementById('writeoff-items-list');
+  if (itemsList && itemsList.children.length > 0) {
+    var firstRow = itemsList.children[0];
+    var nameInput = firstRow.querySelector('.wi-name');
+    var packInput = firstRow.querySelector('.wi-pack');
+    var costInput = firstRow.querySelector('.wi-price');
+    if (nameInput) nameInput.value = itemName;
+    if (packInput) packInput.value = pack;
+    if (costInput && cost > 0) costInput.value = cost.toFixed(2);
+    // Recalculate the row total (markup is 0 by default, so total = qty × cost)
+    if (costInput) recalcWriteoffItem(costInput);
+    updateWriteoffTotal();
   }
 }
 
