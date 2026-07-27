@@ -907,17 +907,15 @@
   <div class="tab-content" id="tab-stock" style="display:none;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <h2 class="section-title" style="margin:0;" id="stock-section-title">Склад — Остатки</h2>
-      <button class="btn btn-primary" id="stock-refresh-btn" onclick="refreshStockSubTab()">↻ Обновить</button>
     </div>
     <!-- Sub-tab contents (navigation moved to sidebar) -->
     <div id="stocksub-items" class="stocksub-content">
-      <!-- Warehouse selector + refresh -->
+      <!-- Warehouse selector (data auto-refreshes on tab switch) -->
       <div id="stock-warehouse-filter" style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
         <label style="font-size:0.9rem;color:var(--text-muted);">Склад:</label>
         <select id="stock-warehouse-select" onchange="loadStockReport()" style="min-width:200px;">
           <option value="">Все склады (по умолчанию)</option>
         </select>
-        <button class="btn btn-outline" onclick="loadStockReport()" style="font-size:0.85rem;padding:6px 12px;">↻ Обновить</button>
       </div>
       <div id="stock-report"></div>
     </div>
@@ -1505,10 +1503,12 @@
         Для обычного счёта — начальный баланс (не меняется автоматически).
       </p>
     </div>
-    <div class="form-group checkbox-field">
-      <input type="checkbox" id="account-is-cash-register" onchange="onAccountCashRegisterToggle()">
-      <label for="account-is-cash-register" style="margin:0;font-weight:600;">💵 Это счёт кассы ресторана</label>
-      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;line-height:1.4;">
+    <div class="form-group">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="account-is-cash-register" onchange="onAccountCashRegisterToggle()" style="margin:0;">
+        <label for="account-is-cash-register" style="margin:0;font-weight:600;cursor:pointer;">💵 Это счёт кассы ресторана</label>
+      </div>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.4;">
         Только один счёт может быть кассой. При закрытии смены официанта фактическая сумма в кассе сравнивается с ожидаемой. Поставки с этого счёта списываются из кассы автоматически.
       </p>
     </div>
@@ -3239,7 +3239,7 @@ function renderMenuList() {
       (needsCook ? 'готовка' : 'без готовки') +
       '</span></td>';
     // Actions — both buttons in one cell, no header
-    html += '<td style="padding:12px;text-align:center;white-space:nowrap;vertical-align:top;">' +
+    html += '<td style="padding:12px;text-align:right;white-space:nowrap;vertical-align:top;">' +
       '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button> ' +
       '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
       '</td>';
@@ -4089,17 +4089,21 @@ function switchStockSub(sub) {
     };
     titleEl.textContent = labels[sub] || 'Склад';
   }
-  // Load data for the sub-tab
-  if (sub === 'items') loadStockReport();
-  if (sub === 'deliveries') loadDeliveriesList();
-  if (sub === 'suppliers') loadSuppliersList();
-  if (sub === 'warehouses') loadWarehousesList();
-  if (sub === 'accounts') loadAccountsList();
+  // Load data for the sub-tab — force-refresh APP_DATA so dropdowns/lists are current
+  // (replaces the old manual "↻ Обновить" buttons)
+  loadAppDataForce().then(function() {
+    if (sub === 'items') loadStockReport();
+    if (sub === 'deliveries') loadDeliveriesList();
+    if (sub === 'suppliers') loadSuppliersList();
+    if (sub === 'warehouses') loadWarehousesList();
+    if (sub === 'accounts') loadAccountsList();
+  }).catch(function(e) { console.warn('Failed to refresh APP_DATA on tab switch', e.message); });
   // Close sidebar on mobile
   closeSidebarOnMobile();
 }
 
-// Refresh the currently-visible sub-tab (called from the "↻ Обновить" button)
+// Refresh the currently-visible sub-tab (kept for backwards compatibility —
+// no longer wired to a button, but may be called programmatically)
 function refreshStockSubTab() {
   if (window._currentStockSub) switchStockSub(window._currentStockSub);
 }
@@ -4157,12 +4161,20 @@ async function loadStockReport() {
     html += '</tr></thead><tbody>';
     // Keep a reference to the items so sortStockBy() can re-render the body
     window._stockItems = items;
-    window._stockSortKey = null;
+    // Default sort: alphabetical by name (user requested)
+    window._stockSortKey = 'name';
     window._stockSortDir = 'asc';
+    // Sort the items array in-place by name before rendering
+    items.sort(function(a, b) {
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
+    });
     items.forEach(function(it) {
       html += renderStockRow(it, tracking);
     });
     html += '</tbody></table>';
+    // Show the sort arrow on the Name column
+    const arrowEl = document.getElementById('sort-arrow-name');
+    if (arrowEl) arrowEl.textContent = '▲';
     div.innerHTML = html;
   } catch (err) {
     div.innerHTML = '<p style="color:var(--danger);">Ошибка: ' + err.message + '</p>';
@@ -4601,7 +4613,7 @@ async function loadSuppliersList() {
       html += '<td style="text-align:right;">' + st.count + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(st.total) + '</td>';
       html += '<td style="text-align:right;' + debtColor + '">' + (st.debt > 0 ? formatMoney(st.debt) : '—') + '</td>';
-      html += '<td style="text-align:center;white-space:nowrap;">' +
+      html += '<td style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openSupplierModal(\'' + s.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteSupplierUI(\'' + s.id + '\')">✕</button>' +
         '</td>';
@@ -4757,7 +4769,7 @@ async function loadWarehousesList() {
     html += '<th style="width:20%;">Счёт</th>';
     html += '<th style="width:30%;">Комментарий</th>';
     html += '<th style="width:15%;text-align:right;">Сумма</th>';
-    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '<th style="width:90px;text-align:right;"></th>';
     html += '</tr></thead><tbody>';
     warehouses.forEach(function(w, idx) {
       const total = whStats[w.id] || 0;
@@ -4769,7 +4781,7 @@ async function loadWarehousesList() {
       html += '<td style="font-size:0.9rem;">' + accLabel + '</td>';
       html += '<td style="word-break:break-word;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(w.comment || '—') + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(total) + '</td>';
-      html += '<td style="text-align:center;white-space:nowrap;">' +
+      html += '<td style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openWarehouseModal(\'' + w.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteWarehouseUI(\'' + w.id + '\')">✕</button>' +
         '</td>';
@@ -4867,7 +4879,7 @@ async function loadAccountsList() {
     html += '<th style="width:10%;">Валюта</th>';
     html += '<th style="width:18%;">Тип</th>';
     html += '<th style="width:17%;text-align:right;">Баланс</th>';
-    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '<th style="width:90px;text-align:right;"></th>';
     html += '</tr></thead><tbody>';
     const typeLabels = { cash: 'Наличный', card: 'Карта', bank: 'Безналичный' };
     const cashRegisterValue = Number((APP_DATA.settings && APP_DATA.settings.cash_register) || 0);
@@ -4881,7 +4893,7 @@ async function loadAccountsList() {
       html += '<td>' + escapeHtml(a.currency || '₾') + '</td>';
       html += '<td>' + escapeHtml(typeLabels[a.type] || a.type) + '</td>';
       html += '<td style="text-align:right;font-weight:600;' + (a.is_cash_register ? 'color:#e65100;' : '') + '">' + formatMoney(balance, a.currency) + '</td>';
-      html += '<td style="text-align:center;white-space:nowrap;">' +
+      html += '<td style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openAccountModal(\'' + a.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteAccountUI(\'' + a.id + '\')">✕</button>' +
         '</td>';
@@ -5014,7 +5026,7 @@ async function loadDeliveriesList() {
     html += '<th style="width:9%;">Статус</th>';
     html += '<th style="width:11%;text-align:right;">Сумма</th>';
     html += '<th style="width:10%;text-align:right;">Задолженность</th>';
-    html += '<th style="width:80px;text-align:center;"></th>';
+    html += '<th style="width:90px;text-align:right;"></th>';
     html += '</tr></thead><tbody>';
     deliveries.forEach(function(d) {
       const debt = (Number(d.total_amount) || 0) - (Number(d.paid_amount) || 0);
@@ -5044,7 +5056,7 @@ async function loadDeliveriesList() {
       html += '<td>' + statusBadge + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(d.total_amount) + '</td>';
       html += '<td style="text-align:right;' + debtColor + '">' + (debt > 0 ? formatMoney(debt) : '—') + '</td>';
-      html += '<td style="text-align:center;white-space:nowrap;">' +
+      html += '<td style="text-align:right;white-space:nowrap;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openDeliveryModal(\'' + d.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteDeliveryUI(\'' + d.id + '\')">✕</button>' +
         '</td>';
@@ -5130,7 +5142,8 @@ function addDeliveryItemRow(data) {
   row.className = 'delivery-item-row';
   row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 70px 100px 100px 32px;gap:6px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
   row.innerHTML =
-    '<input type="text" class="di-name" placeholder="Начните вводить название..." value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;" oninput="searchDeliveryItems(this)" onfocus="searchDeliveryItems(this)" onblur="setTimeout(function(){hideDeliverySuggestions();},200)">' +
+    '<input type="hidden" class="di-menu-id" value="' + escapeHtmlAttr((data && data.menu_item_id) || '') + '">' +
+    '<input type="text" class="di-name" placeholder="Начните вводить название..." value="' + escapeHtmlAttr((data && data.name) || '') + '" style="min-width:0;" oninput="searchDeliveryItems(this);var _r=this.closest(\'.delivery-item-row\');if(_r){var _id=_r.querySelector(\'.di-menu-id\');if(_id)_id.value=\'\';}" onfocus="searchDeliveryItems(this)" onblur="setTimeout(function(){hideDeliverySuggestions();},200)">' +
     '<input type="text" class="di-pack" placeholder="Фасовка" value="' + escapeHtmlAttr((data && data.pack) || '') + '" title="Фасовка (коробка, упаковка)">' +
     '<input type="number" class="di-qty" min="0" step="0.01" placeholder="Кол-во" value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
     '<input type="number" class="di-price" min="0" step="0.01" placeholder="Цена за ед." value="' + ((data && data.unit_price) || '') + '" title="Цена за единицу" oninput="updateDeliveryItemTotal(this);updateDeliveryTotal();">' +
@@ -5168,6 +5181,10 @@ function searchDeliveryItems(input) {
         var priceEl = row.querySelector('.di-price');
         var cost = Number(m.cost) || Number(m.price) || 0;
         if (priceEl && !priceEl.value) priceEl.value = cost.toFixed(2);
+        // Store the menu_item_id so getStockReport can match this delivery item
+        // to a menu item for warehouse stock calculation
+        var idEl = row.querySelector('.di-menu-id');
+        if (idEl) idEl.value = m.id;
         updateDeliveryItemTotal(input);
         updateDeliveryTotal();
       }
@@ -5257,10 +5274,13 @@ async function saveDeliveryUI() {
     const totalPrice = parseFloat(row.querySelector('.di-total').value) || 0;
     if (!name && !pack && !qty && !unitPrice) return; // skip empty rows
     if (!name) { showToast('У одного из товаров не заполнено наименование', 'warning'); return; }
-    // Try to find a menu_item_id by name match
-    let menuItemId = '';
-    const matched = (APP_DATA.menu || []).find(function(m) { return m.name === name; });
-    if (matched) menuItemId = matched.id;
+    // Use the menu_item_id stored in the hidden field (set by autocomplete).
+    // If empty (user typed a custom name), try to find a match by name.
+    let menuItemId = (row.querySelector('.di-menu-id') || {}).value || '';
+    if (!menuItemId) {
+      const matched = (APP_DATA.menu || []).find(function(m) { return m.name === name; });
+      if (matched) menuItemId = matched.id;
+    }
     items.push({
       menu_item_id: menuItemId,
       name: name,

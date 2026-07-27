@@ -990,10 +990,10 @@ async function waiterTransaction(data) {
     throw new Error('Недостаточно денег в кассе. Текущий остаток: ' + currentCash +
       ' (открытие ' + openingCash + ' + наличные ' + cashSales + ' − вычеты ' + existingTxTotal + ')');
   }
-  const newCash = currentCash - amount;
-  await saveSettingsToDB({ cash_register: String(newCash) });
 
-  // 6. For supply: create the delivery record
+  // 6. For supply: create the delivery record — saveDelivery() handles BOTH
+  //    the cash_register deduction AND the shift_transaction recording.
+  //    We do NOT deduct or record a transaction here (would be double-counting).
   let supplierName = (data.supplier_name || '').trim();
   let supplierId = data.supplier_id || '';
   if (data.type === 'supply') {
@@ -1019,27 +1019,30 @@ async function waiterTransaction(data) {
       items: data.items,
       apply_to_stock: data.apply_to_stock === true
     });
+    // saveDelivery already deducted cash_register + recorded shift_transaction
+    // Recompute new cash after saveDelivery's deduction
+    var newCash = currentCash - amount;
+  } else {
+    // 7. For incassation: deduct from cash_register + record shift_transaction
+    //    (no saveDelivery involved, so we handle it here)
+    await saveSettingsToDB({ cash_register: String(currentCash - amount) });
+    var newCash = currentCash - amount;
+    const txId = 'stx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+    await dbInsert('shift_transactions', {
+      id: txId,
+      shift_id: shift.id,
+      waiter_id: data.waiter_id,
+      waiter_name: data.waiter_name || '',
+      type: 'incassation',
+      amount: amount,
+      delivery_id: '',
+      supplier_name: '',
+      account_id: cashAcc.id,
+      comment: data.comment || 'Инкассация'
+    });
   }
 
-  // 7. Record the shift_transaction
-  const txId = 'stx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
-  await dbInsert('shift_transactions', {
-    id: txId,
-    shift_id: shift.id,
-    waiter_id: data.waiter_id,
-    waiter_name: data.waiter_name || '',
-    type: data.type === 'incassation' ? 'incassation' : 'supply_payment',
-    amount: amount,
-    delivery_id: deliveryResult ? deliveryResult.id : '',
-    supplier_name: supplierName,
-    account_id: cashAcc.id,
-    comment: data.comment || (data.type === 'incassation'
-      ? 'Инкассация'
-      : 'Поставка: ' + supplierName)
-  });
-
   return {
-    id: txId,
     type: data.type,
     amount: amount,
     new_cash_register: newCash,
@@ -1604,29 +1607,65 @@ async function saveDelivery(data) {
       const accs = await dbSelect('accounts', { id: data.account_id });
       const acc = accs.length > 0 ? accs[0] : null;
       if (acc && acc.is_cash_register === true) {
-        // Deduct from cash_register setting
-        const currentCash = Number(await getSetting('cash_register')) || 0;
-        const newCash = Math.max(0, currentCash - paidAmount);
-        await saveSettingsToDB({ cash_register: String(newCash) });
-        cashRegisterDeducted = true;
-
-        // Record a shift_transaction if there's an open shift for ANY waiter
-        // (admin creates the delivery, but the deduction should hit the active shift)
-        // We attribute the tx to the most-recently-opened shift across all waiters.
+        // Find the most-recently-opened shift to attribute the transaction to
+        let openShift = null;
         try {
           const { data: openShifts } = await _sb.from('shifts')
             .select('*')
             .eq('status', 'open')
             .order('opened_at', { ascending: false })
             .limit(1);
-          if (openShifts && openShifts.length > 0) {
-            const sh = openShifts[0];
+          if (openShifts && openShifts.length > 0) openShift = openShifts[0];
+        } catch (e) { console.warn('Failed to find open shift for delivery tx', e.message); }
+
+        // Compute the ACTUAL current cash (not the stale cash_register setting):
+        //   opening_cash + cash_sales_during_shift - existing_shift_transactions
+        // This prevents double-deduction when called from waiterTransaction
+        // (which already computed the same value and validated against it).
+        let currentCash;
+        if (openShift) {
+          const openingCash = Number(openShift.opening_cash) || 0;
+          let cashSales = 0;
+          try {
+            const { data: shiftOrders } = await _sb
+              .from('orders')
+              .select('total,payment_method')
+              .eq('waiter_id', openShift.waiter_id)
+              .eq('status', 'completed')
+              .gte('completed_at', openShift.opened_at);
+            (shiftOrders || []).forEach(function(o) {
+              if (o.payment_method === 'cash') cashSales += Number(o.total) || 0;
+            });
+          } catch (e) { console.warn('Failed to fetch shift orders', e.message); }
+          let existingTxTotal = 0;
+          try {
+            const { data: existingTxs } = await _sb.from('shift_transactions')
+              .select('amount')
+              .eq('shift_id', openShift.id);
+            (existingTxs || []).forEach(function(t) { existingTxTotal += Number(t.amount) || 0; });
+          } catch (e) { console.warn('Failed to fetch existing txs', e.message); }
+          currentCash = openingCash + cashSales - existingTxTotal;
+        } else {
+          // No open shift — use the cash_register setting as-is
+          currentCash = Number(await getSetting('cash_register')) || 0;
+        }
+
+        if (paidAmount > currentCash) {
+          throw new Error('Недостаточно денег в кассе для оплаты поставки. Текущий остаток: ' + currentCash + ', сумма поставки: ' + paidAmount);
+        }
+        const newCash = currentCash - paidAmount;
+        await saveSettingsToDB({ cash_register: String(newCash) });
+        cashRegisterDeducted = true;
+
+        // Record a shift_transaction for the open shift
+        if (openShift) {
+          try {
             const txId = 'stx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
             await dbInsert('shift_transactions', {
               id: txId,
-              shift_id: sh.id,
-              waiter_id: sh.waiter_id,
-              waiter_name: sh.waiter_name,
+              shift_id: openShift.id,
+              waiter_id: openShift.waiter_id,
+              waiter_name: openShift.waiter_name,
               type: 'supply_payment',
               amount: paidAmount,
               delivery_id: id,
@@ -1635,13 +1674,15 @@ async function saveDelivery(data) {
               comment: 'Поставка №' + (number || '') + (supplierName ? ' — ' + supplierName : '')
             });
             recordedShiftTxId = txId;
+          } catch (txErr) {
+            console.warn('Failed to record shift_transaction for delivery', txErr.message);
           }
-        } catch (txErr) {
-          console.warn('Failed to record shift_transaction for delivery', txErr.message);
         }
       }
     } catch (e) {
       console.warn('Failed to deduct cash_register for delivery', e.message);
+      // Re-throw if it's a "not enough cash" error so the user sees it
+      if (e.message && e.message.indexOf('Недостаточно денег') !== -1) throw e;
     }
   }
 
