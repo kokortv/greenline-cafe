@@ -3252,13 +3252,13 @@ function renderMenuList() {
   html += '<table class="menu-table" style="width:100%;table-layout:fixed;border-collapse:collapse;">';
   html += '<thead><tr>';
   if (dragEnabled && !window._menuSortKey) html += '<th style="width:32px;padding:12px 4px;"></th>';
-  html += '<th style="width:24%;padding:12px;text-align:left;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'name\')">Название <span class="sort-arrow" id="menu-sort-arrow-name"></span></th>';
+  html += '<th style="width:20%;padding:12px;text-align:left;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'name\')">Название <span class="sort-arrow" id="menu-sort-arrow-name"></span></th>';
   html += '<th style="width:16%;padding:12px;text-align:left;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'category\')">Категория <span class="sort-arrow" id="menu-sort-arrow-category"></span></th>';
   html += '<th style="width:12%;padding:12px;text-align:right;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'cost\')">Себестоимость <span class="sort-arrow" id="menu-sort-arrow-cost"></span></th>';
-  html += '<th style="width:10%;padding:12px;text-align:right;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'markup\')">Наценка <span class="sort-arrow" id="menu-sort-arrow-markup"></span></th>';
+  html += '<th style="width:9%;padding:12px;text-align:right;cursor:pointer;user-select:none;white-space:nowrap;" onclick="sortMenuBy(\'markup\')">Наценка % <span class="sort-arrow" id="menu-sort-arrow-markup"></span></th>';
   html += '<th style="width:11%;padding:12px;text-align:right;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'price\')">Цена <span class="sort-arrow" id="menu-sort-arrow-price"></span></th>';
   html += '<th style="width:11%;padding:12px;text-align:center;cursor:pointer;user-select:none;" onclick="sortMenuBy(\'needs_cooking\')">Готовка <span class="sort-arrow" id="menu-sort-arrow-needs_cooking"></span></th>';
-  html += '<th style="width:76px;padding:12px;text-align:center;"></th>';
+  html += '<th class="no-ellipsis" style="width:76px;padding:12px;text-align:center;"></th>';
   html += '</tr></thead><tbody>';
 
   items.forEach(function(item) {
@@ -3353,7 +3353,7 @@ function renderMenuList() {
       (needsCook ? 'готовка' : 'без готовки') +
       '</span></td>';
     // Actions — both buttons in one cell, no header
-    html += '<td style="padding:12px;text-align:right;white-space:nowrap;vertical-align:top;">' +
+    html += '<td class="no-ellipsis" style="padding:12px;text-align:right;white-space:nowrap;vertical-align:top;">' +
       '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openMenuModal(\'' + item.id + '\')">✎</button> ' +
       '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteMenuItem(\'' + item.id + '\')">✕</button>' +
       '</td>';
@@ -4420,7 +4420,7 @@ function renderStockRow(it, tracking) {
   var whIdForWriteoff = (document.getElementById('stock-warehouse-select') || {}).value || '';
   var writeoffArgs = '\'' + encodeURIComponent(it.name) + '\', \'' + whIdForWriteoff + '\', ' + cost + ', \'' + encodeURIComponent(it.pack || '') + '\'';
   actionsHtml += '<button class="btn-icon btn-icon-success" title="Списать" onclick="writeoffFromStock(' + writeoffArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">🧾</button>';
-  row += '<td class="st-td-center" style="white-space:nowrap;">' + actionsHtml + '</td>';
+  row += '<td class="st-td-center no-ellipsis" style="white-space:nowrap;">' + actionsHtml + '</td>';
   row += '</tr>';
   // Expandable row for delivery history (hidden by default)
   if (hasDeliveries) {
@@ -5660,6 +5660,8 @@ async function saveDeliveryUI() {
     closeModal('modal-delivery');
     await loadAppDataForce();
     loadDeliveriesList();
+    // Refresh the stock report if the Stock → Остатки tab is currently visible
+    if (window._currentStockSub === 'items') loadStockReport();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }
@@ -5697,15 +5699,16 @@ async function loadWriteoffsList() {
     }
     let html = '<table class="admin-table"><thead><tr>';
     html += '<th style="width:4%;">№</th>';
-    html += '<th style="width:13%;">Дата</th>';
-    html += '<th style="width:13%;">Склад</th>';
-    html += '<th style="width:13%;">Счёт</th>';
-    html += '<th style="width:14%;">Товар</th>';
-    html += '<th style="width:8%;">Упак.</th>';
-    html += '<th style="width:7%;text-align:right;">Кол-во</th>';
-    html += '<th style="width:9%;text-align:right;">Себест.</th>';
-    html += '<th style="width:7%;text-align:right;">Нац.%</th>';
-    html += '<th style="width:9%;text-align:right;">Сумма</th>';
+    html += '<th style="width:12%;">Дата</th>';
+    html += '<th style="width:11%;">Склад</th>';
+    html += '<th style="width:11%;">Счёт</th>';
+    html += '<th style="width:13%;">Товар</th>';
+    html += '<th style="width:7%;">Упак.</th>';
+    html += '<th style="width:6%;text-align:right;">Кол-во</th>';
+    html += '<th style="width:8%;text-align:right;">Себест.</th>';
+    html += '<th style="width:6%;text-align:right;">Нац.%</th>';
+    html += '<th style="width:8%;text-align:right;">Сумма</th>';
+    html += '<th style="width:10%;">Комментарий</th>';
     html += '<th class="no-ellipsis" style="width:80px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
     writeoffs.forEach(function(w, idx) {
@@ -5725,7 +5728,8 @@ async function loadWriteoffsList() {
       html += '<td style="text-align:right;">' + formatMoney(Number(firstItem.unit_price) || 0) + '</td>';
       html += '<td style="text-align:right;">' + (Number(firstItem.markup) || 0) + '%</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(Number(firstItem.total_price) || 0) + '</td>';
-      html += '<td style="text-align:right;white-space:nowrap;" rowspan="' + rowspan + '">' +
+      html += '<td style="word-break:break-word;font-size:0.82rem;color:var(--text-muted);" rowspan="' + rowspan + '">' + escapeHtml(w.comment || '—') + '</td>';
+      html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;" rowspan="' + rowspan + '">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openWriteoffModal(\'' + w.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteWriteoffUI(\'' + w.id + '\')">✕</button>' +
         '</td>';
@@ -5742,9 +5746,9 @@ async function loadWriteoffsList() {
         html += '<td style="text-align:right;font-weight:600;">' + formatMoney(Number(it.total_price) || 0) + '</td>';
         html += '</tr>';
       }
-      // If no items, show a placeholder row
+      // If no items, show a placeholder row (8 columns: товар/упак/кол-во/себест/нац/сумма/коммент/действия)
       if (items.length === 0) {
-        html += '<tr><td colspan="6" style="color:var(--text-muted);font-size:0.85rem;">Нет товаров</td></tr>';
+        html += '<tr><td colspan="8" style="color:var(--text-muted);font-size:0.85rem;">Нет товаров</td></tr>';
       }
     });
     html += '</tbody></table>';
@@ -6020,6 +6024,8 @@ async function saveWriteoffUI() {
     closeModal('modal-writeoff');
     await loadAppDataForce();
     loadWriteoffsList();
+    // Refresh the stock report if the Stock → Остатки tab is currently visible
+    if (window._currentStockSub === 'items') loadStockReport();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
   }

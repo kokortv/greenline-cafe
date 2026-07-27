@@ -2058,9 +2058,28 @@ async function replenishStock(menuItemId, quantity) {
 }
 
 async function getStockReport(warehouseId) {
-  const stockTracking = String(await getSetting('stock_tracking')) === 'true';
-  const threshold = Number(await getSetting('stock_threshold')) || 5;
-  const allMenu = await dbSelect('menu');
+  // Use cached settings from APP_DATA if available (avoids 2 extra DB queries)
+  let stockTracking, threshold;
+  if (typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
+    stockTracking = String(APP_DATA.settings.stock_tracking) === 'true';
+    threshold = Number(APP_DATA.settings.stock_threshold) || 5;
+  } else {
+    stockTracking = String(await getSetting('stock_tracking')) === 'true';
+    threshold = Number(await getSetting('stock_threshold')) || 5;
+  }
+
+  // Load ALL data in parallel — much faster than sequential awaits
+  const [allMenu, categories, allItemsResult, allDeliveries, allDeliveryItems, allWriteoffs, allWriteoffItems] = await Promise.all([
+    dbSelect('menu'),
+    dbSelect('categories'),
+    _sb.from('order_items').select('menu_item_id, quantity, order_id, created_at'),
+    dbSelect('deliveries'),
+    dbSelect('delivery_items'),
+    dbSelect('writeoffs'),
+    dbSelect('writeoff_items')
+  ]);
+  const allItems = allItemsResult.data || [];
+
   // Only show items that have a price > 0 — items with price 0/null are
   // likely category headers (e.g. "вареники", "вторые блюда") that shouldn't
   // appear in the stock table.
@@ -2069,15 +2088,8 @@ async function getStockReport(warehouseId) {
            Number(m.price) > 0;
   });
 
-  // Get all categories (to look up category names by id)
-  const categories = await dbSelect('categories');
   const catById = {};
   categories.forEach(function(c) { catById[c.id] = c; });
-
-  // Get all order items for consumption calculation
-  const { data: allItems } = await _sb
-    .from('order_items')
-    .select('menu_item_id, quantity, order_id, created_at');
 
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -2085,7 +2097,7 @@ async function getStockReport(warehouseId) {
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   const consumption = {};
-  (allItems || []).forEach(function(it) {
+  allItems.forEach(function(it) {
     const mid = it.menu_item_id;
     if (!mid) return;
     const created = new Date(it.created_at);
@@ -2096,13 +2108,6 @@ async function getStockReport(warehouseId) {
     if (created >= weekAgo) consumption[mid].week += qty;
     if (created >= monthAgo) consumption[mid].month += qty;
   });
-
-  // Get all delivery items (for the "Поставки" link / count / total)
-  const allDeliveries = await dbSelect('deliveries');
-  const allDeliveryItems = await dbSelect('delivery_items');
-  // Get all writeoff items (to subtract from stock)
-  const allWriteoffs = await dbSelect('writeoffs');
-  const allWriteoffItems = await dbSelect('writeoff_items');
 
   // ===== Per-warehouse filtering =====
   // If warehouseId is provided, only consider deliveries that went to that warehouse.
@@ -2269,7 +2274,11 @@ async function getStockReport(warehouseId) {
 
   // When warehouse filter is active, ALL items are delivery-only (aggregated by name).
   // When no filter, deliveryOnlyArray is empty (deliveryOnlyItems only has items without menu_item_id).
-  const deliveryOnlyArray = warehouseId ? Object.keys(deliveryOnlyItems).map(function(key) {
+  // Items with stock=0 (after writeoff deductions) are excluded — user said:
+  // "если списали полностью товар и его количество стало 0, то показывать его в остатках не нужно"
+  const deliveryOnlyArray = warehouseId ? Object.keys(deliveryOnlyItems)
+    .filter(function(key) { return deliveryOnlyItems[key].qty > 0; })
+    .map(function(key) {
     const d = deliveryOnlyItems[key];
     return {
       id: 'custom_' + key, // synthetic id for sorting/display
@@ -2294,7 +2303,11 @@ async function getStockReport(warehouseId) {
   }) : [];
 
   const items = filteredMenuItems.concat(deliveryOnlyArray);
-  const finalItems = items;
+  // Also filter out menu items with stock=0 when warehouse filter is active
+  // (they shouldn't show if all their stock was written off)
+  const finalItems = warehouseId
+    ? items.filter(function(it) { return Number(it.stock) > 0; })
+    : items;
   // Sort by sort field, then by name — keeps the order stable across reloads
   finalItems.sort(function(a, b) {
     const sa = Number(a.sort) || 0;
