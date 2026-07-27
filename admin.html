@@ -4142,8 +4142,8 @@ async function loadStockReport() {
       const wh = (APP_DATA.warehouses || []).find(function(w) { return w.id === selectedWh; });
       if (wh) {
         html += '<div class="card" style="padding:10px 14px;background:#e3f2fd;margin-bottom:14px;font-size:0.9rem;">' +
-          '📦 Показаны товары только для склада <b>' + escapeHtml(wh.name) + '</b>. ' +
-          'Остаток = сумме поставок на этот склад.' +
+          '📦 Показаны остатки для склада <b>' + escapeHtml(wh.name) + '</b>. ' +
+          'Остаток = сумме поставок на этот склад. У товаров без поставок будет 0 — создайте поставку, чтобы пополнить.' +
         '</div>';
       }
     }
@@ -5600,12 +5600,16 @@ async function renderStatisticsShifts() {
     html += '<th style="padding:8px;text-align:right;">Ожидалось</th>';
     html += '<th style="padding:8px;text-align:right;">Фактически</th>';
     html += '<th style="padding:8px;text-align:right;">Расхождение</th>';
+    html += '<th style="padding:8px;text-align:center;width:50px;"></th>';
     html += '</tr></thead><tbody>';
     allShifts.forEach(function(s, idx) {
       var isOpen = s.status === 'open' || !s.closed_at;
       var openingCash = Number(s.opening_cash) || 0;
       var cashTotal = Number(s.cash_total) || 0;
-      var expectedCash = openingCash + cashTotal;
+      var incTotal = Number(s.incassation_total) || 0;
+      var supTotal = Number(s.supply_payment_total) || 0;
+      // Expected = opening + cash sales - incassations - supply payments
+      var expectedCash = openingCash + cashTotal - incTotal - supTotal;
       // actual_cash may be missing on old shifts (closed before this feature)
       var hasActual = s.actual_cash !== undefined && s.actual_cash !== null && s.actual_cash !== '';
       var actualCash = hasActual ? Number(s.actual_cash) : expectedCash;
@@ -5639,6 +5643,12 @@ async function renderStatisticsShifts() {
         diffColor = 'color:var(--danger);font-weight:700;';
         diffText = formatMoney(diff);
       }
+      // Transactions detail toggle (only if there are transactions OR deductions were non-zero)
+      var txs = s.transactions || [];
+      var hasTxs = txs.length > 0 || incTotal > 0 || supTotal > 0;
+      var toggleCell = hasTxs
+        ? '<button class="btn-icon" title="Показать транзакции" onclick="toggleShiftTransactions(\'' + s.id + '\')" style="background:transparent;border:1px solid var(--border);">▼</button>'
+        : '';
       html += '<tr style="' + rowBg + 'border-bottom:1px solid var(--border);">';
       html += '<td style="padding:8px;text-align:center;font-weight:600;">' + (idx + 1) + '</td>';
       html += '<td>' + escapeHtml(s.waiter_name || '—') + '</td>';
@@ -5648,7 +5658,52 @@ async function renderStatisticsShifts() {
       html += '<td style="padding:8px;text-align:right;">' + (isOpen ? '—' : formatMoney(expectedCash)) + '</td>';
       html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : (hasActual ? formatMoney(actualCash) : '—')) + '</td>';
       html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + diffText + '</td>';
+      html += '<td style="padding:8px;text-align:center;">' + toggleCell + '</td>';
       html += '</tr>';
+      // Expandable transactions detail row
+      if (hasTxs) {
+        html += '<tr id="shift-txs-' + s.id + '" style="display:none;">';
+        html += '<td colspan="9" style="padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--border);">';
+        // Summary block
+        html += '<div style="margin-bottom:10px;padding:10px 12px;background:#fff;border-radius:6px;border:1px solid var(--border);font-size:0.88rem;">';
+        html += '<b>Расчёт ожидаемой суммы:</b><br>';
+        html += 'Касса на начало: <b>' + formatMoney(openingCash) + '</b><br>';
+        html += '+ Наличные за смену: <b>' + formatMoney(cashTotal) + '</b><br>';
+        if (incTotal > 0) html += '− Инкассации: <b style="color:#c62828;">' + formatMoney(incTotal) + '</b><br>';
+        if (supTotal > 0) html += '− Поставки из кассы: <b style="color:#c62828;">' + formatMoney(supTotal) + '</b><br>';
+        html += '<b>= Ожидается: ' + formatMoney(expectedCash) + '</b>';
+        html += '</div>';
+        // Transactions list
+        if (txs.length > 0) {
+          html += '<div style="font-weight:600;margin-bottom:6px;font-size:0.9rem;">📋 Транзакции по кассе (' + txs.length + '):</div>';
+          html += '<table class="admin-table" style="width:100%;font-size:0.85rem;">';
+          html += '<thead><tr>' +
+            '<th style="padding:6px;text-align:left;">Время</th>' +
+            '<th style="padding:6px;text-align:left;">Тип</th>' +
+            '<th style="padding:6px;text-align:left;">Куда / поставщик</th>' +
+            '<th style="padding:6px;text-align:left;">Комментарий</th>' +
+            '<th style="padding:6px;text-align:right;">Сумма</th>' +
+            '</tr></thead><tbody>';
+          txs.forEach(function(t) {
+            var tType = t.type === 'incassation' ? '💸 Инкассация' : '📦 Поставка';
+            var tTarget = t.type === 'incassation' ? 'Изъятие наличных' : escapeHtml(t.supplier_name || '—');
+            var tTime = t.created_at ? formatDateTime(t.created_at) : '—';
+            var tComment = t.comment ? escapeHtml(t.comment) : '';
+            html += '<tr>' +
+              '<td style="padding:6px;">' + tTime + '</td>' +
+              '<td style="padding:6px;">' + tType + '</td>' +
+              '<td style="padding:6px;">' + tTarget + '</td>' +
+              '<td style="padding:6px;color:var(--text-muted);">' + tComment + '</td>' +
+              '<td style="padding:6px;text-align:right;font-weight:600;color:#c62828;">−' + formatMoney(Number(t.amount) || 0) + '</td>' +
+            '</tr>';
+          });
+          html += '</tbody></table>';
+        } else if (incTotal > 0 || supTotal > 0) {
+          html += '<p style="font-size:0.85rem;color:var(--text-muted);">Вычеты зафиксированы в колонках смены, но детали транзакций недоступны (возможно, старая запись).</p>';
+        }
+        html += '</td>';
+        html += '</tr>';
+      }
     });
     html += '</tbody></table>';
     html += '</div>';
@@ -5656,6 +5711,17 @@ async function renderStatisticsShifts() {
     content.innerHTML = html;
   } catch (err) {
     content.innerHTML = '<div class="empty-state"><h3>Ошибка</h3><p>' + escapeHtml(err.message) + '</p></div>';
+  }
+}
+
+// Toggle the expandable transactions detail row for a shift
+function toggleShiftTransactions(shiftId) {
+  var row = document.getElementById('shift-txs-' + shiftId);
+  if (!row) return;
+  if (row.style.display === 'none') {
+    row.style.display = '';
+  } else {
+    row.style.display = 'none';
   }
 }
 

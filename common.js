@@ -962,10 +962,33 @@ async function waiterTransaction(data) {
     if (amount <= 0) throw new Error('Сумма инкассации должна быть больше нуля');
   }
 
-  // 5. Deduct from cash_register
-  const currentCash = Number(await getSetting('cash_register')) || 0;
+  // 5. Compute the ACTUAL current cash in the drawer:
+  //    opening_cash + cash sales during shift - sum of existing shift_transactions
+  //    (NOT the stale cash_register setting, which only updates at shift close)
+  const openingCash = Number(shift.opening_cash) || 0;
+  let cashSales = 0;
+  try {
+    const { data: shiftOrders } = await _sb
+      .from('orders')
+      .select('total,payment_method,completed_at')
+      .eq('waiter_id', data.waiter_id)
+      .eq('status', 'completed')
+      .gte('completed_at', shift.opened_at);
+    (shiftOrders || []).forEach(function(o) {
+      if (o.payment_method === 'cash') cashSales += Number(o.total) || 0;
+    });
+  } catch (e) { console.warn('Failed to fetch shift orders for cash calc', e.message); }
+  let existingTxTotal = 0;
+  try {
+    const { data: existingTxs } = await _sb.from('shift_transactions')
+      .select('amount')
+      .eq('shift_id', shift.id);
+    (existingTxs || []).forEach(function(t) { existingTxTotal += Number(t.amount) || 0; });
+  } catch (e) { console.warn('Failed to fetch existing shift_transactions', e.message); }
+  const currentCash = openingCash + cashSales - existingTxTotal;
   if (amount > currentCash) {
-    throw new Error('Недостаточно денег в кассе. Текущий остаток: ' + currentCash);
+    throw new Error('Недостаточно денег в кассе. Текущий остаток: ' + currentCash +
+      ' (открытие ' + openingCash + ' + наличные ' + cashSales + ' − вычеты ' + existingTxTotal + ')');
   }
   const newCash = currentCash - amount;
   await saveSettingsToDB({ cash_register: String(newCash) });
@@ -1038,6 +1061,77 @@ async function getShiftTransactions(shiftId, waiterId) {
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return { transactions: data || [] };
+}
+
+// Fetch all shifts WITH their transactions attached, for the admin statistics view.
+// Each shift gets a `transactions` array (may be empty).
+async function getAllShiftsWithTransactions() {
+  const shifts = await dbSelect('shifts');
+  if (shifts.length === 0) return { shifts: [] };
+  // Fetch ALL shift_transactions in one query (faster than per-shift)
+  const { data: allTxs, error } = await _sb.from('shift_transactions')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  // Group transactions by shift_id
+  const txsByShift = {};
+  (allTxs || []).forEach(function(t) {
+    if (!t.shift_id) return;
+    if (!txsByShift[t.shift_id]) txsByShift[t.shift_id] = [];
+    txsByShift[t.shift_id].push(t);
+  });
+  // Attach to each shift
+  shifts.forEach(function(s) {
+    s.transactions = txsByShift[s.id] || [];
+    // Recompute totals from transactions (in case the columns weren't saved)
+    let inc = 0, sup = 0;
+    s.transactions.forEach(function(t) {
+      if (t.type === 'incassation') inc += Number(t.amount) || 0;
+      else if (t.type === 'supply_payment') sup += Number(t.amount) || 0;
+    });
+    s.incassation_total = s.incassation_total !== undefined ? Number(s.incassation_total) || 0 : inc;
+    s.supply_payment_total = s.supply_payment_total !== undefined ? Number(s.supply_payment_total) || 0 : sup;
+  });
+  return { shifts: shifts };
+}
+
+// Compute the ACTUAL current cash for a waiter's open shift.
+// Returns a breakdown so the UI can display where the money came from / went.
+//   current_cash = opening_cash + cash_sales - sum(shift_transactions)
+async function getWaiterCurrentCash(waiterId) {
+  const shifts = await dbSelect('shifts', { waiter_id: waiterId, status: 'open' });
+  if (shifts.length === 0) {
+    return { has_open_shift: false, current_cash: 0, opening_cash: 0, cash_sales: 0, deductions: 0 };
+  }
+  const shift = shifts[0];
+  const openingCash = Number(shift.opening_cash) || 0;
+  let cashSales = 0;
+  try {
+    const { data: shiftOrders } = await _sb
+      .from('orders')
+      .select('total,payment_method')
+      .eq('waiter_id', waiterId)
+      .eq('status', 'completed')
+      .gte('completed_at', shift.opened_at);
+    (shiftOrders || []).forEach(function(o) {
+      if (o.payment_method === 'cash') cashSales += Number(o.total) || 0;
+    });
+  } catch (e) { console.warn('getWaiterCurrentCash: failed to fetch orders', e.message); }
+  let deductions = 0;
+  try {
+    const { data: txs } = await _sb.from('shift_transactions')
+      .select('amount')
+      .eq('shift_id', shift.id);
+    (txs || []).forEach(function(t) { deductions += Number(t.amount) || 0; });
+  } catch (e) { console.warn('getWaiterCurrentCash: failed to fetch transactions', e.message); }
+  return {
+    has_open_shift: true,
+    shift_id: shift.id,
+    opening_cash: openingCash,
+    cash_sales: cashSales,
+    deductions: deductions,
+    current_cash: openingCash + cashSales - deductions
+  };
 }
 
 async function getActiveShift(waiterId) {
@@ -1746,10 +1840,11 @@ async function getStockReport(warehouseId) {
       low_stock: stockTracking && stock <= threshold
     };
   });
-  // If warehouse filter is active, only show items that have at least one delivery to that warehouse
-  const finalItems = warehouseId
-    ? items.filter(function(it) { return it.deliveries_count > 0 || it.stock > 0; })
-    : items;
+  // If warehouse filter is active, show ALL active menu items so the user can see
+  // what's available and what's missing (stock will be 0 for items never delivered).
+  // Previously filtered to items with deliveries_count > 0, which made new warehouses
+  // appear empty until the first delivery was made — confusing.
+  const finalItems = items;
   // Sort by sort field, then by name — keeps the order stable across reloads
   finalItems.sort(function(a, b) {
     const sa = Number(a.sort) || 0;
@@ -2266,7 +2361,7 @@ async function apiGet(action, params) {
     case 'getActiveShift':
       return await getActiveShift(params.waiter_id);
     case 'getAllShifts':
-      return { shifts: await dbSelect('shifts') };
+      return await getAllShiftsWithTransactions();
     case 'getOrderLogs':
       return { logs: await getOrderLogs(params.order_id) };
     case 'getStockReport':
@@ -2477,6 +2572,8 @@ async function apiPost(action, body) {
       return await waiterTransaction(body);
     case 'getShiftTransactions':
       return await getShiftTransactions(body.shift_id, body.waiter_id);
+    case 'getWaiterCurrentCash':
+      return await getWaiterCurrentCash(params.waiter_id || body.waiter_id);
     case 'saveDelivery':
       return await saveDelivery(body);
     case 'deleteDelivery':

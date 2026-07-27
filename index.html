@@ -2164,7 +2164,7 @@ async function confirmCloseShift() {
 
 /* ====================== TRANSACTIONS (incassation / supply from cash) ====================== */
 // Opens the transaction modal. Pre-fills current cash. Resets to incassation mode.
-function showTransactionModal() {
+async function showTransactionModal() {
   if (!_activeShift) {
     showToast('Откройте смену, чтобы делать транзакции по кассе', 'warning');
     return;
@@ -2176,11 +2176,26 @@ function showTransactionModal() {
   document.getElementById('txn-supplier-suggestions').innerHTML = '';
   document.getElementById('txn-items-list').innerHTML = '';
   document.getElementById('txn-items-total').textContent = '0';
-  // Show current cash
-  document.getElementById('txn-current-cash-amount').textContent = formatMoney(state.currentCash || 0);
+  // Show loading state for current cash
+  document.getElementById('txn-current-cash-amount').textContent = '...';
   // Show/hide sections based on type
   onTxnTypeChange();
   openModal('modal-transaction');
+  // Fetch the ACTUAL current cash (opening + cash sales - deductions)
+  try {
+    const cashData = await apiGet('getWaiterCurrentCash', { waiter_id: state.currentUser.id });
+    state.currentCash = Number(cashData.current_cash) || 0;
+    window._txnCashBreakdown = cashData;
+    const breakdownText =
+      ' (открытие ' + formatMoney(Number(cashData.opening_cash) || 0) +
+      ' + наличные ' + formatMoney(Number(cashData.cash_sales) || 0) +
+      ' − вычеты ' + formatMoney(Number(cashData.deductions) || 0) + ')';
+    document.getElementById('txn-current-cash-amount').innerHTML =
+      formatMoney(state.currentCash) +
+      '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;font-weight:normal;">' + breakdownText + '</div>';
+  } catch (e) {
+    document.getElementById('txn-current-cash-amount').textContent = 'Ошибка: ' + e.message;
+  }
   setTimeout(function() {
     const inp = document.getElementById('txn-amount');
     if (inp) inp.focus();
