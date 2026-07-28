@@ -1654,12 +1654,12 @@
     <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
       <div style="display:flex;gap:24px;align-items:center;">
         <div>
-          <span style="font-size:0.85rem;color:var(--text-muted);">Себестоимость:</span>
-          <b id="delivery-total-cost" style="font-size:1.1rem;margin-left:6px;">0</b>
+          <span style="font-size:0.85rem;color:var(--text-muted);">Сумма поставки (себестоимость):</span>
+          <b id="delivery-total-cost" style="font-size:1.4rem;color:#1e40af;margin-left:6px;">0</b>
         </div>
-        <div>
-          <span style="font-size:0.85rem;color:var(--text-muted);">С наценкой:</span>
-          <b id="delivery-total" style="font-size:1.4rem;color:var(--primary);margin-left:6px;">0</b>
+        <div style="border-left:2px solid var(--border);padding-left:24px;">
+          <span style="font-size:0.82rem;color:var(--success);">С наценкой (цена продажи):</span>
+          <b id="delivery-total" style="font-size:1.1rem;color:var(--success);margin-left:6px;">0</b>
         </div>
       </div>
     </div>
@@ -1716,12 +1716,12 @@
     <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
       <div style="display:flex;gap:24px;align-items:center;">
         <div>
-          <span style="font-size:0.85rem;color:var(--text-muted);">Себестоимость:</span>
-          <b id="writeoff-total-cost" style="font-size:1.1rem;margin-left:6px;">0</b>
+          <span style="font-size:0.85rem;color:var(--text-muted);">Сумма списания (себестоимость):</span>
+          <b id="writeoff-total-cost" style="font-size:1.4rem;color:#1e40af;margin-left:6px;">0</b>
         </div>
-        <div>
-          <span style="font-size:0.85rem;color:var(--text-muted);">С наценкой:</span>
-          <b id="writeoff-total" style="font-size:1.4rem;color:var(--success);margin-left:6px;">0</b>
+        <div style="border-left:2px solid var(--border);padding-left:24px;">
+          <span style="font-size:0.82rem;color:var(--success);">С наценкой (цена продажи):</span>
+          <b id="writeoff-total" style="font-size:1.1rem;color:var(--success);margin-left:6px;">0</b>
         </div>
       </div>
     </div>
@@ -4613,7 +4613,7 @@ function renderStockRow(it, tracking) {
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
   // Сумма по себестоимости = остаток × себестоимость
   var stockCostValue = it.stock * cost;
-  row += '<td class="st-td-num" style="color:var(--text-muted);">' + (stockCostValue > 0 ? formatMoney(stockCostValue) : '—') + '</td>';
+  row += '<td class="st-td-num" style="color:#1e40af;font-weight:600;">' + (stockCostValue > 0 ? formatMoney(stockCostValue) : '—') + '</td>';
   // Наценка — показываем для всех товаров (из меню и из поставок)
   var markupDisplay = '0%';
   if (Number(it.markup) > 0) {
@@ -4621,7 +4621,7 @@ function renderStockRow(it, tracking) {
   }
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + markupDisplay + '</td>';
   // Сумма с наценкой = остаток × себестоимость × (1 + наценка/100)
-  row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
+  row += '<td class="st-td-num" style="color:var(--success);font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
   // Действия: 👁 история (поставки + списания) + 🧾 списание
   // Always show the eye icon — history includes both deliveries and writeoffs
   var actionsHtml = '';
@@ -5746,8 +5746,8 @@ function addDeliveryItemRow(data) {
     '<input type="text" class="di-qty" inputmode="decimal" placeholder="Кол." value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="recalcDeliveryItem(this);updateDeliveryTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="di-price" inputmode="decimal" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcDeliveryItem(this);updateDeliveryTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="di-markup" inputmode="numeric" placeholder="Нац.%" value="' + ((data && data.markup !== undefined) ? data.markup : '') + '" title="Наценка, %" oninput="recalcDeliveryItem(this);updateDeliveryTotal();" ' + fs + ' ' + ns + '>' +
-    '<input type="text" class="di-cost-total" inputmode="decimal" placeholder="Сумма" value="" title="Сумма по себестоимости" style="font-weight:600;color:var(--text-muted);min-width:0;-moz-appearance:textfield;" readonly>' +
-    '<input type="text" class="di-total" inputmode="decimal" placeholder="С нац." value="' + ((data && data.total_price) || '') + '" title="Сумма с наценкой" style="font-weight:700;min-width:0;-moz-appearance:textfield;" oninput="recalcDeliveryTotalFromTotal(this);updateDeliveryTotal();" ' + fs + '>' +
+    '<input type="text" class="di-cost-total" inputmode="decimal" placeholder="Сумма" value="" title="Сумма по себестоимости" style="font-weight:600;color:#1e40af;min-width:0;-moz-appearance:textfield;" readonly>' +
+    '<input type="text" class="di-total" inputmode="decimal" placeholder="С нац." value="' + ((data && data.total_price) || '') + '" title="Сумма с наценкой (цена продажи)" style="font-weight:600;color:var(--success);min-width:0;-moz-appearance:textfield;" oninput="recalcDeliveryTotalFromTotal(this);updateDeliveryTotal();" ' + fs + '>' +
     '<button type="button" class="btn-icon btn-icon-delete" onclick="this.parentElement.remove();updateDeliveryTotal();" title="Удалить" style="width:28px;height:28px;min-width:28px;min-height:28px;padding:0;font-size:0.8rem;">✕</button>';
   list.appendChild(row);
   // Recalculate the cost total for the initial values
@@ -6048,9 +6048,9 @@ async function loadWriteoffsList() {
       html += '<td style="font-size:0.82rem;color:var(--text-muted);">' + escapeHtml(firstItem.pack || '—') + '</td>';
       html += '<td style="text-align:right;">' + (Number(firstItem.quantity) || 0) + '</td>';
       html += '<td style="text-align:right;">' + formatMoney(Number(firstItem.unit_price) || 0) + '</td>';
-      html += '<td style="text-align:right;color:var(--text-muted);">' + formatMoney((Number(firstItem.quantity) || 0) * (Number(firstItem.unit_price) || 0)) + '</td>';
+      html += '<td style="text-align:right;color:#1e40af;font-weight:600;">' + formatMoney((Number(firstItem.quantity) || 0) * (Number(firstItem.unit_price) || 0)) + '</td>';
       html += '<td style="text-align:right;">' + (Number(firstItem.markup) || 0) + '%</td>';
-      html += '<td style="text-align:right;font-weight:600;">' + formatMoney(Number(firstItem.total_price) || 0) + '</td>';
+      html += '<td style="text-align:right;font-weight:600;color:var(--success);">' + formatMoney(Number(firstItem.total_price) || 0) + '</td>';
       html += '<td style="word-break:break-word;font-size:0.82rem;color:var(--text-muted);" rowspan="' + rowspan + '">' + escapeHtml(w.comment || '—') + '</td>';
       html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;padding-right:16px;" rowspan="' + rowspan + '">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openWriteoffModal(\'' + w.id + '\')">✎</button> ' +
@@ -6065,9 +6065,9 @@ async function loadWriteoffsList() {
         html += '<td style="font-size:0.82rem;color:var(--text-muted);">' + escapeHtml(it.pack || '—') + '</td>';
         html += '<td style="text-align:right;">' + (Number(it.quantity) || 0) + '</td>';
         html += '<td style="text-align:right;">' + formatMoney(Number(it.unit_price) || 0) + '</td>';
-        html += '<td style="text-align:right;color:var(--text-muted);">' + formatMoney((Number(it.quantity) || 0) * (Number(it.unit_price) || 0)) + '</td>';
+        html += '<td style="text-align:right;color:#1e40af;font-weight:600;">' + formatMoney((Number(it.quantity) || 0) * (Number(it.unit_price) || 0)) + '</td>';
         html += '<td style="text-align:right;">' + (Number(it.markup) || 0) + '%</td>';
-        html += '<td style="text-align:right;font-weight:600;">' + formatMoney(Number(it.total_price) || 0) + '</td>';
+        html += '<td style="text-align:right;font-weight:600;color:var(--success);">' + formatMoney(Number(it.total_price) || 0) + '</td>';
         html += '</tr>';
       }
       // If no items, show a placeholder row
@@ -6226,8 +6226,8 @@ function addWriteoffItemRow(data) {
     '<input type="text" class="wi-qty" inputmode="decimal" placeholder="Кол." value="' + defaultQty + '" title="Количество" oninput="recalcWriteoffItem(this);updateWriteoffTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="wi-price" inputmode="decimal" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcWriteoffItem(this);updateWriteoffTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="wi-markup" inputmode="numeric" placeholder="Нац.%" value="' + defaultMarkup + '" title="Наценка, %" oninput="recalcWriteoffItem(this);updateWriteoffTotal();" ' + fs + ' ' + ns + '>' +
-    '<input type="text" class="wi-cost-total" inputmode="decimal" placeholder="Сумма" value="" title="Сумма по себестоимости" style="font-weight:600;color:var(--text-muted);min-width:0;-moz-appearance:textfield;" readonly>' +
-    '<input type="text" class="wi-total" inputmode="decimal" placeholder="С нац." value="' + ((data && data.total_price) || '') + '" title="Сумма с наценкой" style="font-weight:700;min-width:0;-moz-appearance:textfield;" oninput="recalcWriteoffTotalFromTotal(this);updateWriteoffTotal();" ' + fs + '>' +
+    '<input type="text" class="wi-cost-total" inputmode="decimal" placeholder="Сумма" value="" title="Сумма по себестоимости" style="font-weight:600;color:#1e40af;min-width:0;-moz-appearance:textfield;" readonly>' +
+    '<input type="text" class="wi-total" inputmode="decimal" placeholder="С нац." value="' + ((data && data.total_price) || '') + '" title="Сумма с наценкой (цена продажи)" style="font-weight:600;color:var(--success);min-width:0;-moz-appearance:textfield;" oninput="recalcWriteoffTotalFromTotal(this);updateWriteoffTotal();" ' + fs + '>' +
     '<button type="button" class="btn-icon btn-icon-delete" onclick="this.parentElement.remove();updateWriteoffTotal();" title="Удалить" style="width:28px;height:28px;min-width:28px;min-height:28px;padding:0;font-size:0.8rem;">✕</button>';
   list.appendChild(row);
   recalcWriteoffItem(row.querySelector('.wi-qty'));
@@ -6538,9 +6538,9 @@ async function toggleStockDeliveries(menuItemId, linkEl, encodedItemName, wareho
       html += '<td style="padding:6px 8px;"><b style="color:' + h.color + '">' + h.sign + ' ' + escapeHtml(h.label) + '</b></td>';
       html += '<td style="padding:6px 8px;text-align:right;color:' + h.color + '">' + h.sign + h.quantity + '</td>';
       html += '<td style="padding:6px 8px;text-align:right;">' + formatMoney(h.unit_price) + '</td>';
-      html += '<td style="padding:6px 8px;text-align:right;color:var(--text-muted);">' + formatMoney(h.cost_total) + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;color:#1e40af;font-weight:600;">' + formatMoney(h.cost_total) + '</td>';
       html += '<td style="padding:6px 8px;text-align:right;">' + (Number(h.markup) || 0) + '%</td>';
-      html += '<td style="padding:6px 8px;text-align:right;font-weight:600;">' + formatMoney(h.total_price) + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--success);">' + formatMoney(h.total_price) + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
