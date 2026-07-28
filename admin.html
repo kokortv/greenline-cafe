@@ -199,6 +199,8 @@
     overflow-y: auto;
     z-index: 50;
     box-shadow: 1px 0 4px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
   }
   .sidebar-nav {
     display: flex;
@@ -715,6 +717,12 @@
           <span class="sidebar-icon">⚙️</span> Настройки
         </button>
       </nav>
+      <!-- Logout button at the bottom of the sidebar -->
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;margin-top:auto;">
+        <button class="sidebar-item" onclick="logoutAdmin()" style="width:100%;color:#dc2626;font-weight:600;">
+          <span class="sidebar-icon">🚪</span> Выход
+        </button>
+      </div>
     </aside>
 
     <!-- Mobile sidebar toggle -->
@@ -1905,6 +1913,16 @@ async function submitLogin() {
     document.getElementById('login-password').value = '';
     document.getElementById('login-password').focus();
   }
+}
+
+// Logout from admin/supplier panel — clears session and shows login screen
+function logoutAdmin() {
+  setCurrentSession(null);
+  adminState.currentUser = null;
+  adminState.sessionToken = null;
+  document.getElementById('app-main').style.display = 'none';
+  showLoginScreen();
+  showToast('Вы вышли из системы', 'info');
 }
 
 function startApp() {
@@ -6009,8 +6027,9 @@ async function loadWriteoffsList() {
     html += '<th style="width:7%;">Упак.</th>';
     html += '<th style="width:6%;text-align:right;">Кол-во</th>';
     html += '<th style="width:8%;text-align:right;">Себест.</th>';
+    html += '<th style="width:7%;text-align:right;">Сумма</th>';
     html += '<th style="width:6%;text-align:right;">Нац.%</th>';
-    html += '<th style="width:8%;text-align:right;">Сумма</th>';
+    html += '<th style="width:8%;text-align:right;">С нац.</th>';
     html += '<th style="width:10%;">Комментарий</th>';
     html += '<th class="no-ellipsis" style="width:100px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
@@ -6029,6 +6048,7 @@ async function loadWriteoffsList() {
       html += '<td style="font-size:0.82rem;color:var(--text-muted);">' + escapeHtml(firstItem.pack || '—') + '</td>';
       html += '<td style="text-align:right;">' + (Number(firstItem.quantity) || 0) + '</td>';
       html += '<td style="text-align:right;">' + formatMoney(Number(firstItem.unit_price) || 0) + '</td>';
+      html += '<td style="text-align:right;color:var(--text-muted);">' + formatMoney((Number(firstItem.quantity) || 0) * (Number(firstItem.unit_price) || 0)) + '</td>';
       html += '<td style="text-align:right;">' + (Number(firstItem.markup) || 0) + '%</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(Number(firstItem.total_price) || 0) + '</td>';
       html += '<td style="word-break:break-word;font-size:0.82rem;color:var(--text-muted);" rowspan="' + rowspan + '">' + escapeHtml(w.comment || '—') + '</td>';
@@ -6045,13 +6065,14 @@ async function loadWriteoffsList() {
         html += '<td style="font-size:0.82rem;color:var(--text-muted);">' + escapeHtml(it.pack || '—') + '</td>';
         html += '<td style="text-align:right;">' + (Number(it.quantity) || 0) + '</td>';
         html += '<td style="text-align:right;">' + formatMoney(Number(it.unit_price) || 0) + '</td>';
+        html += '<td style="text-align:right;color:var(--text-muted);">' + formatMoney((Number(it.quantity) || 0) * (Number(it.unit_price) || 0)) + '</td>';
         html += '<td style="text-align:right;">' + (Number(it.markup) || 0) + '%</td>';
         html += '<td style="text-align:right;font-weight:600;">' + formatMoney(Number(it.total_price) || 0) + '</td>';
         html += '</tr>';
       }
-      // If no items, show a placeholder row (8 columns: товар/упак/кол-во/себест/нац/сумма/коммент/действия)
+      // If no items, show a placeholder row
       if (items.length === 0) {
-        html += '<tr><td colspan="8" style="color:var(--text-muted);font-size:0.85rem;">Нет товаров</td></tr>';
+        html += '<tr><td colspan="9" style="color:var(--text-muted);font-size:0.85rem;">Нет товаров</td></tr>';
       }
     });
     html += '</tbody></table>';
@@ -6508,6 +6529,7 @@ async function toggleStockDeliveries(menuItemId, linkEl, encodedItemName, wareho
     html += '<th style="padding:6px 8px;text-align:right;">Кол.</th>';
     html += '<th style="padding:6px 8px;text-align:right;">Себест.</th>';
     html += '<th style="padding:6px 8px;text-align:right;">Сумма</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Нац.%</th>';
     html += '<th style="padding:6px 8px;text-align:right;">С нац.</th>';
     html += '</tr></thead><tbody>';
     history.forEach(function(h) {
@@ -6517,6 +6539,7 @@ async function toggleStockDeliveries(menuItemId, linkEl, encodedItemName, wareho
       html += '<td style="padding:6px 8px;text-align:right;color:' + h.color + '">' + h.sign + h.quantity + '</td>';
       html += '<td style="padding:6px 8px;text-align:right;">' + formatMoney(h.unit_price) + '</td>';
       html += '<td style="padding:6px 8px;text-align:right;color:var(--text-muted);">' + formatMoney(h.cost_total) + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;">' + (Number(h.markup) || 0) + '%</td>';
       html += '<td style="padding:6px 8px;text-align:right;font-weight:600;">' + formatMoney(h.total_price) + '</td>';
       html += '</tr>';
     });
