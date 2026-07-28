@@ -5900,7 +5900,8 @@ function updateDeliveryTotal() {
 function updateDeliveryPaidStatus() {
   const paid = parseFloat(document.getElementById('delivery-paid-amount').value) || 0;
   let total = 0;
-  document.querySelectorAll('.delivery-item-row .di-total').forEach(function(el) {
+  // Use cost total (себестоимость) — this is what you owe the supplier
+  document.querySelectorAll('.delivery-item-row .di-cost-total').forEach(function(el) {
     total += parseFloat(el.value) || 0;
   });
   const statusEl = document.getElementById('delivery-paid-status');
