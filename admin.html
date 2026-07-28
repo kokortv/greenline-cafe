@@ -1638,13 +1638,13 @@
     </div>
 
     <h3 style="margin:16px 0 8px;font-size:1rem;">Товары в поставке</h3>
-    <div id="delivery-items-header" style="display:grid;grid-template-columns:1fr 100px 50px 80px 60px 80px 80px 30px;gap:4px;align-items:center;padding:4px 6px;font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
+    <div id="delivery-items-header" style="display:grid;grid-template-columns:1fr 100px 50px 80px 80px 60px 80px 30px;gap:4px;align-items:center;padding:4px 6px;font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
       <span>Название</span>
       <span>Фасовка</span>
-      <span style="text-align:right;">Кол-во</span>
+      <span style="text-align:right;white-space:nowrap;">Кол-во</span>
       <span style="text-align:right;">Себест.</span>
-      <span style="text-align:right;white-space:nowrap;">Нац.%</span>
       <span style="text-align:right;">Сумма</span>
+      <span style="text-align:right;white-space:nowrap;">Нац.%</span>
       <span style="text-align:right;">С нац.</span>
       <span></span>
     </div>
@@ -1700,13 +1700,13 @@
     </div>
 
     <h3 style="margin:16px 0 8px;font-size:1rem;">Товары к списанию</h3>
-    <div id="writeoff-items-header" style="display:grid;grid-template-columns:1fr 100px 50px 80px 60px 80px 80px 30px;gap:4px;align-items:center;padding:4px 6px;font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
+    <div id="writeoff-items-header" style="display:grid;grid-template-columns:1fr 100px 50px 80px 80px 60px 80px 30px;gap:4px;align-items:center;padding:4px 6px;font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
       <span>Название</span>
       <span>Фасовка</span>
-      <span style="text-align:right;">Кол.</span>
+      <span style="text-align:right;white-space:nowrap;">Кол-во</span>
       <span style="text-align:right;">Себест.</span>
-      <span style="text-align:right;white-space:nowrap;">Нац.%</span>
       <span style="text-align:right;">Сумма</span>
+      <span style="text-align:right;white-space:nowrap;">Нац.%</span>
       <span style="text-align:right;">С нац.</span>
       <span></span>
     </div>
@@ -5731,8 +5731,8 @@ function addDeliveryItemRow(data) {
   const list = document.getElementById('delivery-items-list');
   const row = document.createElement('div');
   row.className = 'delivery-item-row';
-  // grid: name | pack | qty | cost | markup | total(cost) | total(markup) | delete
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 50px 80px 60px 80px 80px 30px;gap:4px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
+  // grid: name | pack | qty | cost | cost-total | markup | total(markup) | delete
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 50px 80px 80px 60px 80px 30px;gap:4px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
   // Helper for focus select-all + number inputs without spinners
   var fs = 'onfocus="this.select();"'; // select all on focus
   var ns = 'style="min-width:0;-moz-appearance:textfield;"'; // remove spinners (Firefox)
@@ -5745,8 +5745,8 @@ function addDeliveryItemRow(data) {
     '</select>' +
     '<input type="text" class="di-qty" inputmode="decimal" placeholder="Кол." value="' + ((data && data.quantity) || '') + '" title="Количество" oninput="recalcDeliveryItem(this);updateDeliveryTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="di-price" inputmode="decimal" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcDeliveryItem(this);updateDeliveryTotal();" ' + fs + ' ' + ns + '>' +
-    '<input type="text" class="di-markup" inputmode="numeric" placeholder="Нац.%" value="' + ((data && data.markup !== undefined) ? data.markup : '') + '" title="Наценка, %" oninput="recalcDeliveryItem(this);updateDeliveryTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="di-cost-total" inputmode="decimal" placeholder="Сумма" value="" title="Сумма по себестоимости" style="font-weight:600;color:#1e40af;min-width:0;-moz-appearance:textfield;" readonly>' +
+    '<input type="text" class="di-markup" inputmode="numeric" placeholder="Нац.%" value="' + ((data && data.markup !== undefined) ? data.markup : '') + '" title="Наценка, %" oninput="recalcDeliveryItem(this);updateDeliveryTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="di-total" inputmode="decimal" placeholder="С нац." value="' + ((data && data.total_price) || '') + '" title="Сумма с наценкой (цена продажи)" style="font-weight:600;color:var(--success);min-width:0;-moz-appearance:textfield;" oninput="recalcDeliveryTotalFromTotal(this);updateDeliveryTotal();" ' + fs + '>' +
     '<button type="button" class="btn-icon btn-icon-delete" onclick="this.parentElement.remove();updateDeliveryTotal();" title="Удалить" style="width:28px;height:28px;min-width:28px;min-height:28px;padding:0;font-size:0.8rem;">✕</button>';
   list.appendChild(row);
@@ -5769,9 +5769,9 @@ function recalcDeliveryItem(input) {
   var total = qty * unitPriceWithMarkup;
   // Update cost total (readonly field)
   var costTotalEl = row.querySelector('.di-cost-total');
-  if (costTotalEl) costTotalEl.value = costTotal.toFixed(2);
+  if (costTotalEl) costTotalEl.value = Math.ceil(costTotal);
   // Update total with markup
-  row.querySelector('.di-total').value = total.toFixed(2);
+  row.querySelector('.di-total').value = Math.ceil(total);
 }
 
 // Recalculate markup when the user manually edits the total-with-markup field.
@@ -6209,8 +6209,8 @@ function addWriteoffItemRow(data) {
   if (!list) return;
   const row = document.createElement('div');
   row.className = 'writeoff-item-row';
-  // grid: name | pack | qty | cost | markup | total(cost) | total(markup) | delete
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 50px 80px 60px 80px 80px 30px;gap:4px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
+  // grid: name | pack | qty | cost | cost-total | markup | total(markup) | delete
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 50px 80px 80px 60px 80px 30px;gap:4px;align-items:center;padding:6px;background:var(--bg);border-radius:6px;position:relative;';
   var fs = 'onfocus="this.select();"';
   var ns = 'style="min-width:0;-moz-appearance:textfield;"';
   // Default qty=1 and markup=0 for new rows (not editing existing)
@@ -6225,8 +6225,8 @@ function addWriteoffItemRow(data) {
     '</select>' +
     '<input type="text" class="wi-qty" inputmode="decimal" placeholder="Кол." value="' + defaultQty + '" title="Количество" oninput="recalcWriteoffItem(this);updateWriteoffTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="wi-price" inputmode="decimal" placeholder="Себест." value="' + ((data && data.unit_price) || '') + '" title="Себестоимость за единицу" oninput="recalcWriteoffItem(this);updateWriteoffTotal();" ' + fs + ' ' + ns + '>' +
-    '<input type="text" class="wi-markup" inputmode="numeric" placeholder="Нац.%" value="' + defaultMarkup + '" title="Наценка, %" oninput="recalcWriteoffItem(this);updateWriteoffTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="wi-cost-total" inputmode="decimal" placeholder="Сумма" value="" title="Сумма по себестоимости" style="font-weight:600;color:#1e40af;min-width:0;-moz-appearance:textfield;" readonly>' +
+    '<input type="text" class="wi-markup" inputmode="numeric" placeholder="Нац.%" value="' + defaultMarkup + '" title="Наценка, %" oninput="recalcWriteoffItem(this);updateWriteoffTotal();" ' + fs + ' ' + ns + '>' +
     '<input type="text" class="wi-total" inputmode="decimal" placeholder="С нац." value="' + ((data && data.total_price) || '') + '" title="Сумма с наценкой (цена продажи)" style="font-weight:600;color:var(--success);min-width:0;-moz-appearance:textfield;" oninput="recalcWriteoffTotalFromTotal(this);updateWriteoffTotal();" ' + fs + '>' +
     '<button type="button" class="btn-icon btn-icon-delete" onclick="this.parentElement.remove();updateWriteoffTotal();" title="Удалить" style="width:28px;height:28px;min-width:28px;min-height:28px;padding:0;font-size:0.8rem;">✕</button>';
   list.appendChild(row);
@@ -6245,8 +6245,8 @@ function recalcWriteoffItem(input) {
   var unitPriceWithMarkup = cost * (1 + effectiveMarkup / 100);
   var total = qty * unitPriceWithMarkup;
   var costTotalEl = row.querySelector('.wi-cost-total');
-  if (costTotalEl) costTotalEl.value = costTotal.toFixed(2);
-  row.querySelector('.wi-total').value = total.toFixed(2);
+  if (costTotalEl) costTotalEl.value = Math.ceil(costTotal);
+  row.querySelector('.wi-total').value = Math.ceil(total);
 }
 
 // Recalculate markup when total is manually edited

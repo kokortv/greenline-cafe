@@ -1544,10 +1544,14 @@ async function saveDelivery(data) {
     if (acc.length > 0) accountName = acc[0].name;
   }
 
-  // Calculate total from items
+  // Calculate total from items — total_amount = себестоимость (qty × unit_price)
+  // The markup-based total (total_price with markup) is stored per-item but NOT
+  // used as the delivery's total_amount. The delivery total = what you pay the supplier.
   const items = Array.isArray(data.items) ? data.items : [];
   const total = items.reduce(function(s, it) {
-    return s + (Number(it.total_price) || (Number(it.quantity) * Number(it.unit_price)) || 0);
+    var qty = Number(it.quantity) || 0;
+    var unitPrice = Number(it.unit_price) || 0;
+    return s + (qty * unitPrice);
   }, 0);
 
   // Determine if this is a new delivery (need to assign a number)
