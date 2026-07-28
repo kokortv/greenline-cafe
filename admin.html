@@ -4535,6 +4535,7 @@ async function loadStockReport() {
     html += '<th class="st-th-cat" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'category_name\')">Категория <span class="sort-arrow" id="sort-arrow-category_name"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остатки <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_cost_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_cost_value"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'markup\')">Наценка <span class="sort-arrow" id="sort-arrow-markup"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма с нац. <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
     html += '<th class="st-th-center">Действия</th>';
@@ -4592,17 +4593,21 @@ function renderStockRow(it, tracking) {
   row += '<td class="stock-cell st-td-num" style="' + stockColor + '">' + it.stock + '</td>';
   // Себестоимость
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
+  // Сумма по себестоимости = остаток × себестоимость
+  var stockCostValue = it.stock * cost;
+  row += '<td class="st-td-num" style="color:var(--text-muted);">' + (stockCostValue > 0 ? formatMoney(stockCostValue) : '—') + '</td>';
   // Наценка — показываем для всех товаров (из меню и из поставок)
   var markupDisplay = '0%';
   if (Number(it.markup) > 0) {
     markupDisplay = Number(it.markup) + '%';
   }
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + markupDisplay + '</td>';
-  // Сумма = остаток × себестоимость × (1 + наценка/100)
+  // Сумма с наценкой = остаток × себестоимость × (1 + наценка/100)
   row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
-  // Действия: 👁 просмотр поставок + 🧾 списание
+  // Действия: 👁 история (поставки + списания) + 🧾 списание
+  // Always show the eye icon — history includes both deliveries and writeoffs
   var actionsHtml = '';
-  if (hasDeliveries) {
+  {
     var isCustom = String(it.id || '').indexOf('custom_') === 0;
     var toggleArgs;
     if (isCustom) {
@@ -4612,7 +4617,7 @@ function renderStockRow(it, tracking) {
     } else {
       toggleArgs = '\'' + it.id + '\', this';
     }
-    actionsHtml += '<button class="btn-icon btn-icon-view" title="Показать поставки" onclick="event.preventDefault();toggleStockDeliveries(' + toggleArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">👁</button> ';
+    actionsHtml += '<button class="btn-icon btn-icon-view" title="История (поставки и списания)" onclick="event.preventDefault();toggleStockDeliveries(' + toggleArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">👁</button> ';
   }
   // Списание — иконка 🧾, открывает модалку списания с предзаполненным товаром
   var whIdForWriteoff = (document.getElementById('stock-warehouse-select') || {}).value || '';
@@ -4620,16 +4625,14 @@ function renderStockRow(it, tracking) {
   actionsHtml += '<button class="btn-icon btn-icon-success" title="Списать" onclick="writeoffFromStock(' + writeoffArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">🧾</button>';
   row += '<td class="st-td-center no-ellipsis" style="white-space:nowrap;">' + actionsHtml + '</td>';
   row += '</tr>';
-  // Expandable row for delivery history (hidden by default)
-  if (hasDeliveries) {
-    row += '<tr id="stock-deliveries-' + it.id + '" style="display:none;">';
-    row += '<td colspan="7" style="padding:0;">';
-    row += '<div id="stock-deliveries-content-' + it.id + '" style="padding:8px 12px;background:var(--bg);">';
-    row += '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
-    row += '</div>';
-    row += '</td>';
-    row += '</tr>';
-  }
+  // Expandable row for history (always created — eye icon is always shown)
+  row += '<tr id="stock-deliveries-' + it.id + '" style="display:none;">';
+  row += '<td colspan="8" style="padding:0;">';
+  row += '<div id="stock-deliveries-content-' + it.id + '" style="padding:8px 12px;background:var(--bg);">';
+  row += '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
+  row += '</div>';
+  row += '</td>';
+  row += '</tr>';
   return row;
 }
 
@@ -4650,10 +4653,16 @@ function sortStockBy(key) {
     let bv = b[key];
     // Numeric columns
     if (key === 'stock' || key === 'cost' || key === 'stock_value' || key === 'markup' ||
+        key === 'stock_cost_value' ||
         key === 'consumed_day' || key === 'consumed_week' || key === 'consumed_month' ||
         key === 'deliveries_count' || key === 'deliveries_total' || key === 'consumed_total') {
-      av = Number(av) || 0;
-      bv = Number(bv) || 0;
+      if (key === 'stock_cost_value') {
+        av = (Number(a.stock) || 0) * (Number(a.cost) || 0);
+        bv = (Number(b.stock) || 0) * (Number(b.cost) || 0);
+      } else {
+        av = Number(av) || 0;
+        bv = Number(bv) || 0;
+      }
       return (av - bv) * dir;
     }
     // String columns — case-insensitive locale compare
@@ -6403,48 +6412,113 @@ async function toggleStockDeliveries(menuItemId, linkEl, encodedItemName, wareho
     if (linkEl) { linkEl.textContent = '👁'; linkEl.style.background = ''; }
     return;
   }
-  // Open it — load delivery data if not yet loaded
+  // Open it — load history data (deliveries + writeoffs)
   row.style.display = 'table-row';
-  // Highlight the eye icon when expanded so user sees the row is open
   if (linkEl) { linkEl.textContent = '👁'; linkEl.style.background = '#c7d2fe'; }
   var contentDiv = document.getElementById('stock-deliveries-content-' + menuItemId);
   if (!contentDiv) return;
-  // Check if already loaded (skip if content is not "Загрузка...")
   if (contentDiv.getAttribute('data-loaded') === 'true') return;
-  contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
+  contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка истории...</p>';
   try {
-    var data;
-    // If encodedItemName is provided, this is a delivery-only item (custom_) —
-    // query by item name + warehouse_id instead of menu_item_id
+    var itemName = encodedItemName ? decodeURIComponent(encodedItemName) : '';
+    // Fetch deliveries
+    var delData;
     if (encodedItemName) {
-      var itemName = decodeURIComponent(encodedItemName);
-      data = await apiGet('getDeliveriesForItemName', { item_name: itemName, warehouse_id: warehouseId || '' });
+      delData = await apiGet('getDeliveriesForItemName', { item_name: itemName, warehouse_id: warehouseId || '' });
     } else {
-      data = await apiGet('getDeliveriesForMenuItem', { menu_item_id: menuItemId });
+      delData = await apiGet('getDeliveriesForMenuItem', { menu_item_id: menuItemId });
     }
-    var deliveries = data.deliveries || [];
-    if (deliveries.length === 0) {
-      contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Поставок нет</p>';
-      return;
-    }
-    var html = '<table class="admin-table">';
-    html += '<thead><tr style="background:#fff;border-bottom:2px solid var(--border);">';
-    html += '<th style="padding:6px 8px;text-align:left;">Дата поставки</th>';
-    html += '<th style="padding:6px 8px;text-align:left;">Поставщик</th>';
-    html += '<th style="padding:6px 8px;text-align:right;">Количество</th>';
-    html += '<th style="padding:6px 8px;text-align:right;">Цена за ед.</th>';
-    html += '<th style="padding:6px 8px;text-align:right;">Сумма</th>';
-    html += '</tr></thead><tbody>';
+    var deliveries = delData.deliveries || [];
+    // Fetch writeoffs — search APP_DATA for writeoff_items matching this item name
+    var writeoffEntries = [];
+    var allWriteoffs = APP_DATA.writeoffs || [];
+    var allWriteoffItems = APP_DATA.writeoff_items || [];
+    // Filter writeoffs by warehouse if needed
+    var wofFiltered = warehouseId ? allWriteoffs.filter(function(w) { return w.warehouse_id === warehouseId; }) : allWriteoffs;
+    var wofIds = new Set(wofFiltered.map(function(w) { return w.id; }));
+    // Match writeoff items by name (case-insensitive) or menu_item_id
+    var lowerItemName = (itemName || '').toLowerCase();
+    allWriteoffItems.forEach(function(wit) {
+      if (!wofIds.has(wit.writeoff_id)) return;
+      var witName = String(wit.name || '').toLowerCase().trim();
+      var matches = false;
+      if (encodedItemName) {
+        matches = witName === lowerItemName;
+      } else {
+        matches = wit.menu_item_id === menuItemId || witName === lowerItemName;
+      }
+      if (matches) {
+        var wof = wofFiltered.find(function(w) { return w.id === wit.writeoff_id; });
+        writeoffEntries.push({
+          date: wof ? wof.writeoff_date : '',
+          quantity: Number(wit.quantity) || 0,
+          unit_price: Number(wit.unit_price) || 0,
+          markup: Number(wit.markup) || 0,
+          total_price: Number(wit.total_price) || 0,
+          cost_total: (Number(wit.quantity) || 0) * (Number(wit.unit_price) || 0)
+        });
+      }
+    });
+
+    // Build combined history entries
+    var history = [];
+    // Add deliveries as + entries
     deliveries.forEach(function(d) {
       (d.items || []).forEach(function(it) {
-        html += '<tr style="border-bottom:1px solid var(--border);">';
-        html += '<td style="padding:6px 8px;">' + escapeHtml(formatDateTime(d.delivery_date)) + '</td>';
-        html += '<td style="padding:6px 8px;">' + escapeHtml(d.supplier_name || '—') + '</td>';
-        html += '<td style="padding:6px 8px;text-align:right;">' + it.quantity + '</td>';
-        html += '<td style="padding:6px 8px;text-align:right;">' + formatMoney(it.unit_price) + '</td>';
-        html += '<td style="padding:6px 8px;text-align:right;font-weight:700;">' + formatMoney(it.total_price) + '</td>';
-        html += '</tr>';
+        history.push({
+          date: d.delivery_date,
+          type: 'delivery',
+          label: 'Поставка' + (d.supplier_name ? ' — ' + d.supplier_name : ''),
+          quantity: Number(it.quantity) || 0,
+          unit_price: Number(it.unit_price) || 0,
+          markup: Number(it.markup) || 0,
+          cost_total: (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
+          total_price: Number(it.total_price) || 0,
+          sign: '+',
+          color: 'var(--success);'
+        });
       });
+    });
+    // Add writeoffs as - entries
+    writeoffEntries.forEach(function(w) {
+      history.push({
+        date: w.date,
+        type: 'writeoff',
+        label: 'Списание',
+        quantity: w.quantity,
+        unit_price: w.unit_price,
+        markup: w.markup,
+        cost_total: w.cost_total,
+        total_price: w.total_price,
+        sign: '−',
+        color: '#c62828;'
+      });
+    });
+    // Sort by date descending
+    history.sort(function(a, b) { return new Date(b.date || 0) - new Date(a.date || 0); });
+
+    if (history.length === 0) {
+      contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Истории нет</p>';
+      return;
+    }
+    var html = '<table class="admin-table" style="font-size:0.85rem;">';
+    html += '<thead><tr style="background:#fff;border-bottom:2px solid var(--border);">';
+    html += '<th style="padding:6px 8px;text-align:left;">Дата</th>';
+    html += '<th style="padding:6px 8px;text-align:left;">Тип</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Кол.</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Себест.</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Сумма</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">С нац.</th>';
+    html += '</tr></thead><tbody>';
+    history.forEach(function(h) {
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += '<td style="padding:6px 8px;">' + escapeHtml(formatDateTime(h.date)) + '</td>';
+      html += '<td style="padding:6px 8px;"><b style="color:' + h.color + '">' + h.sign + ' ' + escapeHtml(h.label) + '</b></td>';
+      html += '<td style="padding:6px 8px;text-align:right;color:' + h.color + '">' + h.sign + h.quantity + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;">' + formatMoney(h.unit_price) + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;color:var(--text-muted);">' + formatMoney(h.cost_total) + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;font-weight:600;">' + formatMoney(h.total_price) + '</td>';
+      html += '</tr>';
     });
     html += '</tbody></table>';
     contentDiv.innerHTML = html;
