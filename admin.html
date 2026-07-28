@@ -4334,8 +4334,14 @@ function switchStockSub(sub) {
     var label = labels[sub] || 'Склад';
     titleEl.textContent = (role === 'supplier') ? label.replace('Склад — ', '') : label;
   }
-  // Load data for the sub-tab — force-refresh APP_DATA so dropdowns/lists are current
-  // (replaces the old manual "↻ Обновить" buttons)
+  // Show data immediately with existing APP_DATA (don't block UI on loadAppDataForce)
+  if (sub === 'items') loadStockReport();
+  if (sub === 'deliveries') loadDeliveriesList();
+  if (sub === 'writeoffs') loadWriteoffsList();
+  if (sub === 'suppliers') loadSuppliersList();
+  if (sub === 'warehouses') loadWarehousesList();
+  if (sub === 'accounts') loadAccountsList();
+  // Refresh APP_DATA in the background and re-render if data changed
   loadAppDataForce().then(function() {
     if (sub === 'items') loadStockReport();
     if (sub === 'deliveries') loadDeliveriesList();
