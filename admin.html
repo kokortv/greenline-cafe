@@ -965,7 +965,7 @@
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
         <button class="btn btn-primary" onclick="openSupplierModal()">+ Добавить поставщика</button>
       </div>
-      <div id="suppliers-list"></div>
+      <div id="vendor-suppliers-list"></div>
     </div>
     <div id="stocksub-warehouses" class="stocksub-content" style="display:none;">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
@@ -4941,7 +4941,7 @@ async function saveTablesConfigUI() {
 
 /* ---------- SUPPLIERS ---------- */
 async function loadSuppliersList() {
-  const div = document.getElementById('suppliers-list');
+  const div = document.getElementById('vendor-suppliers-list');
   if (!div) return;
   div.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Загрузка...</p>';
   try {
