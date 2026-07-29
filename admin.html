@@ -199,6 +199,8 @@
     overflow-y: auto;
     z-index: 50;
     box-shadow: 1px 0 4px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
   }
   .sidebar-nav {
     display: flex;
@@ -439,6 +441,20 @@
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
+  }
+  /* Hide number input spinners (Chrome/Safari/Edge) */
+  input[type="text"][inputmode="decimal"],
+  input[type="text"][inputmode="numeric"] {
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    appearance: none;
+  }
+  input[type="text"][inputmode="decimal"]::-webkit-inner-spin-button,
+  input[type="text"][inputmode="numeric"]::-webkit-inner-spin-button,
+  input[type="text"][inputmode="decimal"]::-webkit-outer-spin-button,
+  input[type="text"][inputmode="numeric"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
   .admin-table tbody tr:last-child td { border-bottom: none; }
   .admin-table tbody tr:hover { background: #f9fafb; }
@@ -701,6 +717,12 @@
           <span class="sidebar-icon">⚙️</span> Настройки
         </button>
       </nav>
+      <!-- Logout button at the bottom of the sidebar -->
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;margin-top:auto;">
+        <button class="sidebar-item" onclick="logoutAdmin()" style="width:100%;color:#dc2626;font-weight:600;">
+          <span class="sidebar-icon">🚪</span> Выход
+        </button>
+      </div>
     </aside>
 
     <!-- Mobile sidebar toggle -->
@@ -1891,6 +1913,16 @@ async function submitLogin() {
     document.getElementById('login-password').value = '';
     document.getElementById('login-password').focus();
   }
+}
+
+// Logout from admin/supplier panel — clears session and shows login screen
+function logoutAdmin() {
+  setCurrentSession(null);
+  adminState.currentUser = null;
+  adminState.sessionToken = null;
+  document.getElementById('app-main').style.display = 'none';
+  showLoginScreen();
+  showToast('Вы вышли из системы', 'info');
 }
 
 function startApp() {
@@ -5559,9 +5591,34 @@ async function loadDeliveriesList() {
     html += th('debt', 'Долг', 'width:9%;text-align:right;');
     html += '<th class="no-ellipsis" style="width:100px;text-align:right;white-space:nowrap;"></th>';
     html += '</tr></thead><tbody>';
+    // Pre-compute writeoff profit per warehouse (markup = total_price - qty*unit_price)
+    var writeoffProfitByWh = {};
+    var allWriteoffsForProfit = APP_DATA.writeoffs || [];
+    var allWriteoffItemsForProfit = APP_DATA.writeoff_items || [];
+    allWriteoffItemsForProfit.forEach(function(wit) {
+      var wof = allWriteoffsForProfit.find(function(w) { return w.id === wit.writeoff_id; });
+      if (!wof) return;
+      var profit = (Number(wit.total_price) || 0) - ((Number(wit.quantity) || 0) * (Number(wit.unit_price) || 0));
+      if (!writeoffProfitByWh[wof.warehouse_id]) writeoffProfitByWh[wof.warehouse_id] = 0;
+      writeoffProfitByWh[wof.warehouse_id] += profit;
+    });
     deliveries.forEach(function(d) {
-      const debt = (Number(d.total_amount) || 0) - (Number(d.paid_amount) || 0);
-      const debtColor = debt > 0 ? 'color:var(--danger);font-weight:700;' : '';
+      // Raw debt = себестоимость - paid
+      var rawDebt = (Number(d.total_amount) || 0) - (Number(d.paid_amount) || 0);
+      // Subtract writeoff profit for this warehouse (earnings from sales reduce debt)
+      var whProfit = writeoffProfitByWh[d.warehouse_id] || 0;
+      var adjustedDebt = rawDebt - whProfit;
+      var debtColor, debtText;
+      if (adjustedDebt > 0) {
+        debtColor = 'color:var(--danger);font-weight:700;';
+        debtText = formatMoney(adjustedDebt);
+      } else if (adjustedDebt < 0) {
+        debtColor = 'color:var(--success);font-weight:700;';
+        debtText = '+' + formatMoney(Math.abs(adjustedDebt));
+      } else {
+        debtColor = '';
+        debtText = '—';
+      }
       let statusBadge = '';
       if (d.status === 'received') {
         statusBadge = '<span style="padding:2px 6px;border-radius:10px;font-size:0.75rem;background:#e8f5e9;color:var(--success);">получено</span>';
@@ -5585,7 +5642,7 @@ async function loadDeliveriesList() {
       html += '<td style="word-break:break-word;font-size:0.85rem;">' + itemsLabel + '</td>';
       html += '<td>' + statusBadge + '</td>';
       html += '<td style="text-align:right;font-weight:600;">' + formatMoney(d.total_amount) + '</td>';
-      html += '<td style="text-align:right;' + debtColor + '">' + (debt > 0 ? formatMoney(debt) : '—') + '</td>';
+      html += '<td style="text-align:right;' + debtColor + '">' + debtText + '</td>';
       html += '<td class="no-ellipsis" style="text-align:right;white-space:nowrap;padding-right:12px;">' +
         '<button class="btn-icon btn-icon-edit" title="Изменить" onclick="openDeliveryModal(\'' + d.id + '\')">✎</button> ' +
         '<button class="btn-icon btn-icon-delete" title="Удалить" onclick="deleteDeliveryUI(\'' + d.id + '\')">✕</button>' +
