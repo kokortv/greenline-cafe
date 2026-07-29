@@ -159,9 +159,7 @@ async function loadAppData(force) {
   if (APP_DATA && !force) return APP_DATA;
 
   // Load all reference data in parallel (no is_active filter — filter on client)
-  // writeoffs/writeoff_items are loaded with fallback to empty arrays — if RLS
-  // blocks them or tables don't exist, the rest of the app still works.
-  const [settings, categories, menu, users, modifications, tables, suppliers, warehouses, accounts, deliveries, deliveryItems, writeoffsResult, writeoffItemsResult] = await Promise.all([
+  const [settings, categories, menu, users, modifications, tables, suppliers, warehouses, accounts, deliveries, deliveryItems, writeoffs, writeoffItems] = await Promise.all([
     dbSelect('settings'),
     dbSelect('categories'),
     dbSelect('menu'),
@@ -173,11 +171,9 @@ async function loadAppData(force) {
     dbSelect('accounts'),
     dbSelect('deliveries'),
     dbSelect('delivery_items'),
-    dbSelect('writeoffs').catch(function(e) { console.warn('writeoffs load failed:', e.message); return []; }),
-    dbSelect('writeoff_items').catch(function(e) { console.warn('writeoff_items load failed:', e.message); return []; })
+    dbSelect('writeoffs'),
+    dbSelect('writeoff_items')
   ]);
-  const writeoffs = writeoffsResult;
-  const writeoffItems = writeoffItemsResult;
 
   // Filter active items on client side
   const activeCategories = categories.filter(function(c) { return c.is_active === true || c.is_active === 'true'; });
@@ -1090,10 +1086,7 @@ async function getAllShiftsWithTransactions() {
   const { data: allTxs, error } = await _sb.from('shift_transactions')
     .select('*')
     .order('created_at', { ascending: false });
-  if (error) {
-    console.warn('shift_transactions load failed:', error.message);
-    return { shifts: shifts };
-  }
+  if (error) throw new Error(error.message);
   // Group transactions by shift_id
   const txsByShift = {};
   (allTxs || []).forEach(function(t) {
@@ -1544,14 +1537,10 @@ async function saveDelivery(data) {
     if (acc.length > 0) accountName = acc[0].name;
   }
 
-  // Calculate total from items — total_amount = себестоимость (qty × unit_price)
-  // The markup-based total (total_price with markup) is stored per-item but NOT
-  // used as the delivery's total_amount. The delivery total = what you pay the supplier.
+  // Calculate total from items
   const items = Array.isArray(data.items) ? data.items : [];
   const total = items.reduce(function(s, it) {
-    var qty = Number(it.quantity) || 0;
-    var unitPrice = Number(it.unit_price) || 0;
-    return s + (qty * unitPrice);
+    return s + (Number(it.total_price) || (Number(it.quantity) * Number(it.unit_price)) || 0);
   }, 0);
 
   // Determine if this is a new delivery (need to assign a number)
@@ -1768,8 +1757,8 @@ async function getNextWriteoffNumber() {
 
 // Get all writeoffs with their items
 async function getAllWriteoffs() {
-  const writeoffs = await dbSelect('writeoffs').catch(function(e) { console.warn('writeoffs load failed:', e.message); return []; });
-  const items = await dbSelect('writeoff_items').catch(function(e) { console.warn('writeoff_items load failed:', e.message); return []; });
+  const writeoffs = await dbSelect('writeoffs');
+  const items = await dbSelect('writeoff_items');
   const itemsByWriteoff = {};
   items.forEach(function(it) {
     if (!itemsByWriteoff[it.writeoff_id]) itemsByWriteoff[it.writeoff_id] = [];
@@ -2082,15 +2071,14 @@ async function getStockReport(warehouseId) {
   }
 
   // Load ALL data in parallel — much faster than sequential awaits
-  // writeoffs/writeoff_items are loaded with fallback to empty arrays
   const [allMenu, categories, allItemsResult, allDeliveries, allDeliveryItems, allWriteoffs, allWriteoffItems] = await Promise.all([
     dbSelect('menu'),
     dbSelect('categories'),
     _sb.from('order_items').select('menu_item_id, quantity, order_id, created_at'),
     dbSelect('deliveries'),
     dbSelect('delivery_items'),
-    dbSelect('writeoffs').catch(function(e) { console.warn('writeoffs load failed in getStockReport:', e.message); return []; }),
-    dbSelect('writeoff_items').catch(function(e) { console.warn('writeoff_items load failed in getStockReport:', e.message); return []; })
+    dbSelect('writeoffs'),
+    dbSelect('writeoff_items')
   ]);
   const allItems = allItemsResult.data || [];
 

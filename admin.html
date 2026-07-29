@@ -4544,11 +4544,12 @@ async function loadStockReport() {
     }
     html += '<table class="stock-table" id="stock-table"><thead><tr>';
     html += '<th class="st-th-name" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'name\')">Название <span class="sort-arrow" id="sort-arrow-name"></span></th>';
-    html += '<th class="st-th-cat" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'category_name\')">Категория <span class="sort-arrow" id="sort-arrow-category_name"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock\')">Остатки <span class="sort-arrow" id="sort-arrow-stock"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'cost\')">Себестоимость <span class="sort-arrow" id="sort-arrow-cost"></span></th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_cost_value\')">Сумма <span class="sort-arrow" id="sort-arrow-stock_cost_value"></span></th>';
     html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'markup\')">Наценка <span class="sort-arrow" id="sort-arrow-markup"></span></th>';
-    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Сумма с нац. <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
+    html += '<th class="st-th-num">С нац./ед.</th>';
+    html += '<th class="st-th-num" style="cursor:pointer;user-select:none;" onclick="sortStockBy(\'stock_value\')">Итого с нац. <span class="sort-arrow" id="sort-arrow-stock_value"></span></th>';
     html += '<th class="st-th-center">Действия</th>';
     html += '</tr></thead><tbody>';
     // Keep a reference to the items so sortStockBy() can re-render the body
@@ -4590,7 +4591,6 @@ function renderStockRow(it, tracking) {
     return 'st-font-xs';
   }
   const nameClass = fontClass(it.name);
-  const catClass = fontClass(it.category_name);
   let row = '<tr' + lowClass + ' id="stock-row-' + it.id + '" data-stock="' + it.stock + '">';
   // Название (+ pack info for delivery-only items)
   var nameDisplay = escapeHtml(it.name);
@@ -4598,20 +4598,24 @@ function renderStockRow(it, tracking) {
     nameDisplay += ' <span style="color:var(--text-muted);font-size:0.78rem;">(' + escapeHtml(it.pack) + ')</span>';
   }
   row += '<td class="st-td-name ' + nameClass + '">' + nameDisplay + '</td>';
-  // Категория
-  row += '<td class="st-td-cat ' + catClass + '">' + escapeHtml(it.category_name || '—') + '</td>';
   // Остатки
   row += '<td class="stock-cell st-td-num" style="' + stockColor + '">' + it.stock + '</td>';
   // Себестоимость
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
-  // Наценка — показываем для всех товаров (из меню и из поставок)
+  // Сумма по себестоимости = остаток × себестоимость
+  var stockCostValue = it.stock * cost;
+  row += '<td class="st-td-num" style="color:#1e40af;font-weight:600;">' + (stockCostValue > 0 ? formatMoney(stockCostValue) : '—') + '</td>';
+  // Наценка
   var markupDisplay = '0%';
   if (Number(it.markup) > 0) {
     markupDisplay = Number(it.markup) + '%';
   }
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + markupDisplay + '</td>';
-  // Сумма = остаток × себестоимость × (1 + наценка/100)
-  row += '<td class="st-td-num" style="font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
+  // С наценкой за единицу = cost × (1 + markup/100)
+  var unitWithMarkup = cost * (1 + (Number(it.markup) || 0) / 100);
+  row += '<td class="st-td-num" style="color:var(--success);">' + (unitWithMarkup > 0 ? formatMoney(unitWithMarkup) : '—') + '</td>';
+  // Итоговая сумма с наценкой = остаток × себестоимость × (1 + наценка/100)
+  row += '<td class="st-td-num" style="color:var(--success);font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
   // Действия: 👁 просмотр поставок + 🧾 списание
   var actionsHtml = '';
   if (hasDeliveries) {
@@ -4624,18 +4628,18 @@ function renderStockRow(it, tracking) {
     } else {
       toggleArgs = '\'' + it.id + '\', this';
     }
-    actionsHtml += '<button class="btn-icon btn-icon-view" title="Показать поставки" onclick="event.preventDefault();toggleStockDeliveries(' + toggleArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">👁</button> ';
+    actionsHtml += '<button class="btn-icon btn-icon-view" title="История (поставки и списания)" onclick="event.preventDefault();toggleStockDeliveries(' + toggleArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">👁</button> ';
   }
   // Списание — иконка 🧾, открывает модалку списания с предзаполненным товаром
   var whIdForWriteoff = (document.getElementById('stock-warehouse-select') || {}).value || '';
-  var writeoffArgs = '\'' + encodeURIComponent(it.name) + '\', \'' + whIdForWriteoff + '\', ' + cost + ', \'' + encodeURIComponent(it.pack || '') + '\'';
+  var writeoffArgs = '\'' + encodeURIComponent(it.name) + '\', \'' + whIdForWriteoff + '\', ' + cost + ', \'' + encodeURIComponent(it.pack || '') + '\', ' + (Number(it.markup) || 0);
   actionsHtml += '<button class="btn-icon btn-icon-success" title="Списать" onclick="writeoffFromStock(' + writeoffArgs + ')" style="min-width:30px;min-height:30px;padding:4px;">🧾</button>';
   row += '<td class="st-td-center no-ellipsis" style="white-space:nowrap;">' + actionsHtml + '</td>';
   row += '</tr>';
   // Expandable row for delivery history (hidden by default)
   if (hasDeliveries) {
     row += '<tr id="stock-deliveries-' + it.id + '" style="display:none;">';
-    row += '<td colspan="7" style="padding:0;">';
+    row += '<td colspan="8" style="padding:0;">';
     row += '<div id="stock-deliveries-content-' + it.id + '" style="padding:8px 12px;background:var(--bg);">';
     row += '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Загрузка...</p>';
     row += '</div>';
@@ -4662,10 +4666,16 @@ function sortStockBy(key) {
     let bv = b[key];
     // Numeric columns
     if (key === 'stock' || key === 'cost' || key === 'stock_value' || key === 'markup' ||
+        key === 'stock_cost_value' ||
         key === 'consumed_day' || key === 'consumed_week' || key === 'consumed_month' ||
         key === 'deliveries_count' || key === 'deliveries_total' || key === 'consumed_total') {
-      av = Number(av) || 0;
-      bv = Number(bv) || 0;
+      if (key === 'stock_cost_value') {
+        av = (Number(a.stock) || 0) * (Number(a.cost) || 0);
+        bv = (Number(b.stock) || 0) * (Number(b.cost) || 0);
+      } else {
+        av = Number(av) || 0;
+        bv = Number(bv) || 0;
+      }
       return (av - bv) * dir;
     }
     // String columns — case-insensitive locale compare
@@ -6135,7 +6145,7 @@ async function loadWriteoffsList() {
 }
 
 // Open the writeoff modal with a pre-filled item (called from the Stock table 🧾 button)
-async function writeoffFromStock(encodedItemName, warehouseId, cost, encodedPack) {
+async function writeoffFromStock(encodedItemName, warehouseId, cost, encodedPack, markup) {
   await openWriteoffModal(null);
   // Pre-select the warehouse
   if (warehouseId) {
@@ -6147,16 +6157,19 @@ async function writeoffFromStock(encodedItemName, warehouseId, cost, encodedPack
   // Pre-fill the first item row with the item details
   var itemName = decodeURIComponent(encodedItemName || '');
   var pack = decodeURIComponent(encodedPack || '');
+  var itemMarkup = Number(markup) || 0;
   var itemsList = document.getElementById('writeoff-items-list');
   if (itemsList && itemsList.children.length > 0) {
     var firstRow = itemsList.children[0];
     var nameInput = firstRow.querySelector('.wi-name');
     var packInput = firstRow.querySelector('.wi-pack');
     var costInput = firstRow.querySelector('.wi-price');
+    var markupInput = firstRow.querySelector('.wi-markup');
     if (nameInput) nameInput.value = itemName;
     if (packInput) packInput.value = pack;
-    if (costInput && cost > 0) costInput.value = cost.toFixed(2);
-    // Recalculate the row total (markup is 0 by default, so total = qty × cost)
+    if (costInput && cost > 0) costInput.value = Math.ceil(cost);
+    if (markupInput) markupInput.value = itemMarkup;
+    // Recalculate the row total
     if (costInput) recalcWriteoffItem(costInput);
     updateWriteoffTotal();
   }
