@@ -2070,15 +2070,15 @@ async function getStockReport(warehouseId) {
     threshold = Number(await getSetting('stock_threshold')) || 5;
   }
 
-  // Load ALL data in parallel — much faster than sequential awaits
+  // Load ALL data in parallel — writeoffs/writeoff_items have .catch() fallback
   const [allMenu, categories, allItemsResult, allDeliveries, allDeliveryItems, allWriteoffs, allWriteoffItems] = await Promise.all([
     dbSelect('menu'),
     dbSelect('categories'),
     _sb.from('order_items').select('menu_item_id, quantity, order_id, created_at'),
     dbSelect('deliveries'),
     dbSelect('delivery_items'),
-    dbSelect('writeoffs'),
-    dbSelect('writeoff_items')
+    dbSelect('writeoffs').catch(function(e) { console.warn('writeoffs load failed in getStockReport:', e.message); return []; }),
+    dbSelect('writeoff_items').catch(function(e) { console.warn('writeoff_items load failed in getStockReport:', e.message); return []; })
   ]);
   const allItems = allItemsResult.data || [];
 

@@ -4604,18 +4604,18 @@ function renderStockRow(it, tracking) {
   row += '<td class="st-td-num" style="color:var(--text-muted);">' + (cost > 0 ? formatMoney(cost) : '—') + '</td>';
   // Сумма по себестоимости = остаток × себестоимость
   var stockCostValue = it.stock * cost;
-  row += '<td class="st-td-num" style="color:#1e40af;font-weight:600;">' + (stockCostValue > 0 ? formatMoney(stockCostValue) : '—') + '</td>';
-  // Наценка
-  var markupDisplay = '0%';
-  if (Number(it.markup) > 0) {
-    markupDisplay = Number(it.markup) + '%';
-  }
-  row += '<td class="st-td-num" style="color:var(--text-muted);">' + markupDisplay + '</td>';
-  // С наценкой за единицу = cost × (1 + markup/100)
-  var unitWithMarkup = cost * (1 + (Number(it.markup) || 0) / 100);
-  row += '<td class="st-td-num" style="color:var(--success);">' + (unitWithMarkup > 0 ? formatMoney(unitWithMarkup) : '—') + '</td>';
-  // Итоговая сумма с наценкой = остаток × себестоимость × (1 + наценка/100)
-  row += '<td class="st-td-num" style="color:var(--success);font-weight:600;">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
+  row += '<td class="st-td-num" style="color:#1e40af;font-weight:600;" id="stock-cost-val-' + it.id + '">' + (stockCostValue > 0 ? formatMoney(stockCostValue) : '—') + '</td>';
+  // Наценка — редактируемое поле
+  var markupVal = Number(it.markup) || 0;
+  row += '<td class="st-td-num" style="padding:2px;">' +
+    '<input type="text" inputmode="numeric" value="' + markupVal + '" style="width:50px;text-align:right;padding:2px 4px;font-size:0.9rem;border:1px solid var(--border);border-radius:4px;-moz-appearance:textfield;" ' +
+    'onfocus="this.select();" ' +
+    'oninput="recalcStockRow(\'' + it.id + '\', ' + it.stock + ', ' + cost + ')" ' +
+    'id="stock-markup-' + it.id + '"></td>';
+  // С наценкой за единицу = cost × (1 + markup/100) — вычисляется динамически
+  row += '<td class="st-td-num" style="color:var(--success);" id="stock-unit-markup-' + it.id + '">' + (cost > 0 ? formatMoney(cost * (1 + markupVal / 100)) : '—') + '</td>';
+  // Итоговая сумма с наценкой — вычисляется динамически
+  row += '<td class="st-td-num" style="color:var(--success);font-weight:600;" id="stock-total-markup-' + it.id + '">' + (stockValue > 0 ? formatMoney(stockValue) : '—') + '</td>';
   // Действия: 👁 просмотр поставок + 🧾 списание
   var actionsHtml = '';
   if (hasDeliveries) {
@@ -4647,6 +4647,29 @@ function renderStockRow(it, tracking) {
     row += '</tr>';
   }
   return row;
+}
+
+// Recalculate stock row when markup is changed in real-time
+function recalcStockRow(itemId, stock, cost) {
+  var markupInput = document.getElementById('stock-markup-' + itemId);
+  if (!markupInput) return;
+  var markup = parseFloat(markupInput.value) || 0;
+  var unitWithMarkup = cost * (1 + markup / 100);
+  var totalWithMarkup = stock * unitWithMarkup;
+  // Update "С нац./ед." cell
+  var unitEl = document.getElementById('stock-unit-markup-' + itemId);
+  if (unitEl) unitEl.textContent = (unitWithMarkup > 0 ? formatMoney(unitWithMarkup) : '—');
+  // Update "Итого с нац." cell
+  var totalEl = document.getElementById('stock-total-markup-' + itemId);
+  if (totalEl) totalEl.textContent = (totalWithMarkup > 0 ? formatMoney(totalWithMarkup) : '—');
+  // Update the item in window._stockItems so sortStockBy uses the new value
+  if (window._stockItems) {
+    var item = window._stockItems.find(function(it) { return it.id === itemId; });
+    if (item) {
+      item.markup = markup;
+      item.stock_value = totalWithMarkup;
+    }
+  }
 }
 
 // Sort the stock table by a given column. First click = ascending, second = descending, etc.
@@ -6519,28 +6542,99 @@ async function toggleStockDeliveries(menuItemId, linkEl, encodedItemName, wareho
       data = await apiGet('getDeliveriesForMenuItem', { menu_item_id: menuItemId });
     }
     var deliveries = data.deliveries || [];
-    if (deliveries.length === 0) {
-      contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Поставок нет</p>';
-      return;
-    }
-    var html = '<table class="admin-table">';
-    html += '<thead><tr style="background:#fff;border-bottom:2px solid var(--border);">';
-    html += '<th style="padding:6px 8px;text-align:left;">Дата поставки</th>';
-    html += '<th style="padding:6px 8px;text-align:left;">Поставщик</th>';
-    html += '<th style="padding:6px 8px;text-align:right;">Количество</th>';
-    html += '<th style="padding:6px 8px;text-align:right;">Цена за ед.</th>';
-    html += '<th style="padding:6px 8px;text-align:right;">Сумма</th>';
-    html += '</tr></thead><tbody>';
+
+    // Fetch writeoffs — search APP_DATA for writeoff_items matching this item
+    var writeoffEntries = [];
+    var allWriteoffs = APP_DATA.writeoffs || [];
+    var allWriteoffItems = APP_DATA.writeoff_items || [];
+    // Filter writeoffs by warehouse if needed
+    var wofFiltered = warehouseId ? allWriteoffs.filter(function(w) { return w.warehouse_id === warehouseId; }) : allWriteoffs;
+    var wofIds = new Set(wofFiltered.map(function(w) { return w.id; }));
+    // Match writeoff items by name (case-insensitive) or menu_item_id
+    var lowerItemName = (encodedItemName ? decodeURIComponent(encodedItemName) : '').toLowerCase();
+    allWriteoffItems.forEach(function(wit) {
+      if (!wofIds.has(wit.writeoff_id)) return;
+      var witName = String(wit.name || '').toLowerCase().trim();
+      var matches = false;
+      if (encodedItemName) {
+        matches = witName === lowerItemName;
+      } else {
+        matches = wit.menu_item_id === menuItemId || witName === lowerItemName;
+      }
+      if (matches) {
+        var wof = wofFiltered.find(function(w) { return w.id === wit.writeoff_id; });
+        writeoffEntries.push({
+          date: wof ? wof.writeoff_date : '',
+          quantity: Number(wit.quantity) || 0,
+          unit_price: Number(wit.unit_price) || 0,
+          markup: Number(wit.markup) || 0,
+          total_price: Number(wit.total_price) || 0,
+          cost_total: (Number(wit.quantity) || 0) * (Number(wit.unit_price) || 0)
+        });
+      }
+    });
+
+    // Build combined history entries
+    var history = [];
+    // Add deliveries as + entries
     deliveries.forEach(function(d) {
       (d.items || []).forEach(function(it) {
-        html += '<tr style="border-bottom:1px solid var(--border);">';
-        html += '<td style="padding:6px 8px;">' + escapeHtml(formatDateTime(d.delivery_date)) + '</td>';
-        html += '<td style="padding:6px 8px;">' + escapeHtml(d.supplier_name || '—') + '</td>';
-        html += '<td style="padding:6px 8px;text-align:right;">' + it.quantity + '</td>';
-        html += '<td style="padding:6px 8px;text-align:right;">' + formatMoney(it.unit_price) + '</td>';
-        html += '<td style="padding:6px 8px;text-align:right;font-weight:700;">' + formatMoney(it.total_price) + '</td>';
-        html += '</tr>';
+        history.push({
+          date: d.delivery_date,
+          type: 'delivery',
+          label: 'Поставка' + (d.supplier_name ? ' — ' + d.supplier_name : ''),
+          quantity: Number(it.quantity) || 0,
+          unit_price: Number(it.unit_price) || 0,
+          markup: Number(it.markup) || 0,
+          cost_total: (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
+          total_price: Number(it.total_price) || 0,
+          sign: '+',
+          color: 'var(--success);'
+        });
       });
+    });
+    // Add writeoffs as − entries
+    writeoffEntries.forEach(function(w) {
+      history.push({
+        date: w.date,
+        type: 'writeoff',
+        label: 'Списание',
+        quantity: w.quantity,
+        unit_price: w.unit_price,
+        markup: w.markup,
+        cost_total: w.cost_total,
+        total_price: w.total_price,
+        sign: '−',
+        color: '#c62828;'
+      });
+    });
+    // Sort by date descending
+    history.sort(function(a, b) { return new Date(b.date || 0) - new Date(a.date || 0); });
+
+    if (history.length === 0) {
+      contentDiv.innerHTML = '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">Истории нет</p>';
+      return;
+    }
+    var html = '<table class="admin-table" style="font-size:0.85rem;">';
+    html += '<thead><tr style="background:#fff;border-bottom:2px solid var(--border);">';
+    html += '<th style="padding:6px 8px;text-align:left;">Дата</th>';
+    html += '<th style="padding:6px 8px;text-align:left;">Тип</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Кол.</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Себест.</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Сумма</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">Нац.%</th>';
+    html += '<th style="padding:6px 8px;text-align:right;">С нац.</th>';
+    html += '</tr></thead><tbody>';
+    history.forEach(function(h) {
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += '<td style="padding:6px 8px;">' + escapeHtml(formatDateTime(h.date)) + '</td>';
+      html += '<td style="padding:6px 8px;"><b style="color:' + h.color + '">' + h.sign + ' ' + escapeHtml(h.label) + '</b></td>';
+      html += '<td style="padding:6px 8px;text-align:right;color:' + h.color + '">' + h.sign + h.quantity + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;">' + formatMoney(h.unit_price) + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;color:#1e40af;font-weight:600;">' + formatMoney(h.cost_total) + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;">' + (Number(h.markup) || 0) + '%</td>';
+      html += '<td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--success);">' + formatMoney(h.total_price) + '</td>';
+      html += '</tr>';
     });
     html += '</tbody></table>';
     contentDiv.innerHTML = html;
