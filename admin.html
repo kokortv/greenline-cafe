@@ -5296,12 +5296,26 @@ async function loadAccountsList() {
       if (!d.account_id) return;
       paidByAccount[d.account_id] = (paidByAccount[d.account_id] || 0) + (Number(d.total_amount) || 0);
     });
-    // Compute total writeoff revenue per account (выручка от продаж с наценкой)
+    // Compute total writeoff revenue + profit per account
+    // Revenue = total_price (с наценкой) — это выручка от продажи
+    // Profit = sum(total_price - qty*unit_price) — разница между ценой продажи и себестоимостью ПРОДАННЫХ товаров
     const writeoffs = APP_DATA.writeoffs || [];
+    const writeoffItems = APP_DATA.writeoff_items || [];
     const creditedByAccount = {};
+    const profitByAccount = {};
     writeoffs.forEach(function(w) {
       if (!w.account_id) return;
       creditedByAccount[w.account_id] = (creditedByAccount[w.account_id] || 0) + (Number(w.total_amount) || 0);
+    });
+    // Compute profit per account from writeoff items
+    writeoffItems.forEach(function(wit) {
+      var wof = writeoffs.find(function(w) { return w.id === wit.writeoff_id; });
+      if (!wof || !wof.account_id) return;
+      var itemCost = (Number(wit.quantity) || 0) * (Number(wit.unit_price) || 0);
+      var itemRevenue = Number(wit.total_price) || 0;
+      var itemProfit = itemRevenue - itemCost;
+      if (!profitByAccount[wof.account_id]) profitByAccount[wof.account_id] = 0;
+      profitByAccount[wof.account_id] += itemProfit;
     });
     // Check role — supplier can only see accounts linked to their warehouses
     var accAllowedWhIds = getAllowedWarehouseIds();
@@ -5319,8 +5333,8 @@ async function loadAccountsList() {
       if (linkedAccountIds && !linkedAccountIds.has(a.id)) return;
       const paidFromAccount = paidByAccount[a.id] || 0;
       const creditedToAccount = creditedByAccount[a.id] || 0;
-      // Profit = revenue from sales - cost of purchases
-      const profit = creditedToAccount - paidFromAccount;
+      // Profit = разница между ценой продажи (с наценкой) и себестоимостью ПРОДАННЫХ товаров
+      const profit = profitByAccount[a.id] || 0;
       // Balance = initial - cost_of_purchases + revenue_from_sales
       let balance, initialDisplay, paidDisplay;
       if (a.is_cash_register) {
@@ -5723,11 +5737,15 @@ function recalcDeliveryItem(input) {
   var qty = parseFloat(row.querySelector('.di-qty').value) || 0;
   var cost = parseFloat(row.querySelector('.di-price').value) || 0;
   var markup = parseFloat(row.querySelector('.di-markup').value) || 0;
-  // If markup field is empty, treat as 0 (no markup)
   var effectiveMarkup = row.querySelector('.di-markup').value === '' ? 0 : markup;
+  // Cost total (себестоимость) — round up to integer
+  var costTotal = Math.ceil(qty * cost);
+  var costTotalEl = row.querySelector('.di-cost-total');
+  if (costTotalEl) costTotalEl.value = costTotal;
+  // Total with markup — round up to integer
   var unitPriceWithMarkup = cost * (1 + effectiveMarkup / 100);
-  var total = qty * unitPriceWithMarkup;
-  row.querySelector('.di-total').value = total.toFixed(2);
+  var total = Math.ceil(qty * unitPriceWithMarkup);
+  row.querySelector('.di-total').value = total;
 }
 
 // Recalculate markup when the user manually edits the total field.
@@ -6184,9 +6202,14 @@ function recalcWriteoffItem(input) {
   var cost = parseFloat(row.querySelector('.wi-price').value) || 0;
   var markup = parseFloat(row.querySelector('.wi-markup').value) || 0;
   var effectiveMarkup = row.querySelector('.wi-markup').value === '' ? 0 : markup;
+  // Cost total (себестоимость) — round up to integer
+  var costTotal = Math.ceil(qty * cost);
+  var costTotalEl = row.querySelector('.wi-cost-total');
+  if (costTotalEl) costTotalEl.value = costTotal;
+  // Total with markup — round up to integer
   var unitPriceWithMarkup = cost * (1 + effectiveMarkup / 100);
-  var total = qty * unitPriceWithMarkup;
-  row.querySelector('.wi-total').value = total.toFixed(2);
+  var total = Math.ceil(qty * unitPriceWithMarkup);
+  row.querySelector('.wi-total').value = total;
 }
 
 // Recalculate markup when total is manually edited
