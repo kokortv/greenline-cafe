@@ -2587,9 +2587,9 @@ function formatMoney(amount, currency) {
     cur = APP_DATA.settings.currency;
   }
   if (!cur) cur = CONFIG.DEFAULT_CURRENCY;
-  const hasDec = (n % 1) !== 0;
-  const formatted = hasDec ? n.toFixed(2) : Math.round(n).toString();
-  return formatted + ' ' + cur;
+  // Округляем до целого: если сотые >= 0.5 — в большую, иначе в меньшую
+  const rounded = Math.round(n);
+  return rounded + ' ' + cur;
 }
 
 // Format a markup percentage: 50 -> "50%", 12.5 -> "12.5%"
