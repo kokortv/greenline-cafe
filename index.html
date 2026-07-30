@@ -1968,7 +1968,7 @@ async function confirmOpenShift() {
     });
     _activeShift = result;
     state.currentCash = openingCash;
-    showToast('Смена открыта. В кассе: ' + formatMoney(result.opening_cash), 'success');
+    showToast('Смена открыта. В кассе: ' + formatMoneyPrecise(result.opening_cash), 'success');
     closeModal('modal-shift-open');
     updateShiftButton();
   } catch (err) {
@@ -1991,7 +1991,7 @@ async function showCloseShiftModal() {
       let listHtml = '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">';
       blockingOrders.forEach(function(o) {
         listHtml += '<div style="padding:8px;background:#fff;border-radius:6px;border:1px solid var(--border);">' +
-          '<b>' + escapeHtml(formatTableLabel(o)) + '</b> — ' + formatMoney(o.total) +
+          '<b>' + escapeHtml(formatTableLabel(o)) + '</b> — ' + formatMoneyPrecise(o.total) +
         '</div>';
       });
       listHtml += '</div>';
@@ -2054,14 +2054,14 @@ async function showCloseShiftModal() {
             const amountColor = isWof ? 'var(--success);' : '#c62828;';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:0.88rem;">' +
               '<span>' + icon + ' ' + escapeHtml(label) + (t.comment ? ' <span style="color:var(--text-muted);">(' + escapeHtml(t.comment) + ')</span>' : '') + '</span>' +
-              '<b style="color:' + amountColor + '">' + amountPrefix + formatMoney(Number(t.amount) || 0) + '</b>' +
+              '<b style="color:' + amountColor + '">' + amountPrefix + formatMoneyPrecise(Number(t.amount) || 0) + '</b>' +
             '</div>';
           }).join('') +
           '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;font-size:0.85rem;">' +
-            '<span>Инкассации:</span><b style="color:#c62828;">−' + formatMoney(incassationTotal) + '</b>' +
+            '<span>Инкассации:</span><b style="color:#c62828;">−' + formatMoneyPrecise(incassationTotal) + '</b>' +
           '</div>' +
           '<div style="display:flex;justify-content:space-between;font-size:0.85rem;">' +
-            '<span>Поставки из кассы:</span><b style="color:#c62828;">−' + formatMoney(supplyPaymentTotal) + '</b>' +
+            '<span>Поставки из кассы:</span><b style="color:#c62828;">−' + formatMoneyPrecise(supplyPaymentTotal) + '</b>' +
           '</div>' +
           (writeoffTotal > 0 ? '<div style="display:flex;justify-content:space-between;font-size:0.85rem;">' +
             '<span>Списания в кассу:</span><b style="color:var(--success);">+' + formatMoney(writeoffTotal) + '</b>' +
@@ -2072,20 +2072,20 @@ async function showCloseShiftModal() {
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
         '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:0.85rem;color:var(--text-muted);">Заказов</div><div style="font-size:1.8rem;font-weight:700;">' + orders.length + '</div></div>' +
         '<div class="card" style="text-align:center;padding:12px;"><div style="font-size:0.85rem;color:var(--text-muted);">Гостей</div><div style="font-size:1.8rem;font-weight:700;">' + guestsCount + '</div></div>' +
-        '<div class="card" style="text-align:center;padding:12px;background:#e8f5e9;"><div style="font-size:0.85rem;color:var(--text-muted);">💵 Наличные</div><div style="font-size:1.4rem;font-weight:700;color:var(--success);">' + formatMoney(cashTotal) + '</div></div>' +
-        '<div class="card" style="text-align:center;padding:12px;background:#e3f2fd;"><div style="font-size:0.85rem;color:var(--text-muted);">💳 Карта</div><div style="font-size:1.4rem;font-weight:700;color:var(--info);">' + formatMoney(cardTotal) + '</div></div>' +
+        '<div class="card" style="text-align:center;padding:12px;background:#e8f5e9;"><div style="font-size:0.85rem;color:var(--text-muted);">💵 Наличные</div><div style="font-size:1.4rem;font-weight:700;color:var(--success);">' + formatMoneyPrecise(cashTotal) + '</div></div>' +
+        '<div class="card" style="text-align:center;padding:12px;background:#e3f2fd;"><div style="font-size:0.85rem;color:var(--text-muted);">💳 Карта</div><div style="font-size:1.4rem;font-weight:700;color:var(--info);">' + formatMoneyPrecise(cardTotal) + '</div></div>' +
       '</div>' +
       '<div style="margin-top:12px;padding:10px 14px;background:rgba(211,47,47,0.08);border-radius:8px;text-align:center;">' +
         '<span style="font-size:0.9rem;color:var(--text-muted);">Всего за сегодня:</span> ' +
-        '<b style="font-size:1.3rem;color:var(--primary);">' + formatMoney(grandTotal) + '</b>' +
+        '<b style="font-size:1.3rem;color:var(--primary);">' + formatMoneyPrecise(grandTotal) + '</b>' +
       '</div>' +
       '<div style="margin-top:12px;padding:12px;background:#fff8e1;border-radius:8px;">' +
-        '<div>Касса на начало смены: <b>' + formatMoney(openingCash) + '</b></div>' +
-        '<div>Наличные за смену: <b>+' + formatMoney(cashTotal) + '</b></div>' +
+        '<div>Касса на начало смены: <b>' + formatMoneyPrecise(openingCash) + '</b></div>' +
+        '<div>Наличные за смену: <b>+' + formatMoneyPrecise(cashTotal) + '</b></div>' +
         (writeoffTotal > 0 ? '<div>Списания в кассу: <b style="color:var(--success);">+' + formatMoney(writeoffTotal) + '</b></div>' : '') +
-        (incassationTotal > 0 ? '<div>Инкассации: <b style="color:#c62828;">−' + formatMoney(incassationTotal) + '</b></div>' : '') +
-        (supplyPaymentTotal > 0 ? '<div>Поставки из кассы: <b style="color:#c62828;">−' + formatMoney(supplyPaymentTotal) + '</b></div>' : '') +
-        '<div style="font-size:1.2rem;font-weight:700;color:var(--success);margin-top:4px;">Ожидается в кассе: ' + formatMoney(expectedCash) + '</div>' +
+        (incassationTotal > 0 ? '<div>Инкассации: <b style="color:#c62828;">−' + formatMoneyPrecise(incassationTotal) + '</b></div>' : '') +
+        (supplyPaymentTotal > 0 ? '<div>Поставки из кассы: <b style="color:#c62828;">−' + formatMoneyPrecise(supplyPaymentTotal) + '</b></div>' : '') +
+        '<div style="font-size:1.2rem;font-weight:700;color:var(--success);margin-top:4px;">Ожидается в кассе: ' + formatMoneyPrecise(expectedCash) + '</div>' +
       '</div>' +
       txBreakdownHtml +
       '<div class="form-group" style="margin-top:16px;">' +
@@ -2131,15 +2131,15 @@ function checkCloseShiftCash() {
   if (Math.abs(diff) < 0.01) {
     checkDiv.style.background = '#c8e6c9';
     checkDiv.style.color = '#1b5e20';
-    checkDiv.innerHTML = '✓ Сумма сходится! В кассе ровно ' + formatMoney(actual);
+    checkDiv.innerHTML = '✓ Сумма сходится! В кассе ровно ' + formatMoneyPrecise(actual);
   } else if (diff > 0) {
     checkDiv.style.background = '#fff3e0';
     checkDiv.style.color = '#e65100';
-    checkDiv.innerHTML = '⚠ Излишек: +' + formatMoney(diff) + ' (в кассе больше на ' + formatMoney(diff) + ')';
+    checkDiv.innerHTML = '⚠ Излишек: +' + formatMoneyPrecise(diff) + ' (в кассе больше на ' + formatMoneyPrecise(diff) + ')';
   } else {
     checkDiv.style.background = '#ffebee';
     checkDiv.style.color = '#c62828';
-    checkDiv.innerHTML = '⚠ Недостача: ' + formatMoney(diff) + ' (в кассе меньше на ' + formatMoney(Math.abs(diff)) + ')';
+    checkDiv.innerHTML = '⚠ Недостача: ' + formatMoneyPrecise(diff) + ' (в кассе меньше на ' + formatMoneyPrecise(Math.abs(diff)) + ')';
   }
 }
 
@@ -2159,11 +2159,11 @@ async function confirmCloseShift() {
     // Show result with difference info
     const diff = Number(result.cash_difference) || 0;
     if (Math.abs(diff) < 0.01) {
-      showToast('Смена закрыта. Касса сходится ✓ Итого: ' + formatMoney(result.final_cash), 'success');
+      showToast('Смена закрыта. Касса сходится ✓ Итого: ' + formatMoneyPrecise(result.final_cash), 'success');
     } else if (diff > 0) {
-      showToast('Смена закрыта. Излишек: +' + formatMoney(diff) + '. Итого в кассе: ' + formatMoney(result.final_cash), 'warning');
+      showToast('Смена закрыта. Излишек: +' + formatMoneyPrecise(diff) + '. Итого в кассе: ' + formatMoneyPrecise(result.final_cash), 'warning');
     } else {
-      showToast('Смена закрыта. Недостача: ' + formatMoney(diff) + '. Итого в кассе: ' + formatMoney(result.final_cash), 'error');
+      showToast('Смена закрыта. Недостача: ' + formatMoneyPrecise(diff) + '. Итого в кассе: ' + formatMoneyPrecise(result.final_cash), 'error');
     }
     closeModal('modal-shift-close');
     updateShiftButton();
@@ -2198,12 +2198,12 @@ async function showTransactionModal() {
     window._txnCashBreakdown = cashData;
     const wofCredits = Number(cashData.writeoff_credits) || 0;
     const breakdownText =
-      ' (открытие ' + formatMoney(Number(cashData.opening_cash) || 0) +
-      ' + наличные ' + formatMoney(Number(cashData.cash_sales) || 0) +
-      (wofCredits > 0 ? ' + списания ' + formatMoney(wofCredits) : '') +
-      ' − вычеты ' + formatMoney(Number(cashData.deductions) || 0) + ')';
+      ' (открытие ' + formatMoneyPrecise(Number(cashData.opening_cash) || 0) +
+      ' + наличные ' + formatMoneyPrecise(Number(cashData.cash_sales) || 0) +
+      (wofCredits > 0 ? ' + списания ' + formatMoneyPrecise(wofCredits) : '') +
+      ' − вычеты ' + formatMoneyPrecise(Number(cashData.deductions) || 0) + ')';
     document.getElementById('txn-current-cash-amount').innerHTML =
-      formatMoney(state.currentCash) +
+      formatMoneyPrecise(state.currentCash) +
       '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;font-weight:normal;">' + breakdownText + '</div>';
   } catch (e) {
     document.getElementById('txn-current-cash-amount').textContent = 'Ошибка: ' + e.message;
@@ -2319,7 +2319,7 @@ function updateTxnItemsTotal() {
     const price = Number(r.querySelector('.txn-item-price').value) || 0;
     total += qty * price;
   });
-  document.getElementById('txn-items-total').textContent = formatMoney(total);
+  document.getElementById('txn-items-total').textContent = formatMoneyPrecise(total);
   // Auto-fill amount field if empty
   const amountInput = document.getElementById('txn-amount');
   if (amountInput && !amountInput.value) {
@@ -2387,7 +2387,7 @@ async function confirmTransaction() {
     if (type === 'incassation') {
       if (amount <= 0) { showToast('Введите сумму больше нуля', 'warning'); return; }
       if (amount > currentCash) {
-        showToast('В кассе только ' + formatMoney(currentCash), 'error');
+        showToast('В кассе только ' + formatMoneyPrecise(currentCash), 'error');
         return;
       }
       const result = await apiPost('waiterTransaction', {
@@ -2397,7 +2397,7 @@ async function confirmTransaction() {
         waiter_name: state.currentUser.name
       });
       state.currentCash = result.new_cash_register;
-      showToast('Инкассация: ' + formatMoney(amount) + '. В кассе: ' + formatMoney(result.new_cash_register), 'success');
+      showToast('Инкассация: ' + formatMoneyPrecise(amount) + '. В кассе: ' + formatMoneyPrecise(result.new_cash_register), 'success');
       closeModal('modal-transaction');
       updateShiftButton();
     } else {
@@ -2426,7 +2426,7 @@ async function confirmTransaction() {
       if (items.length === 0) { showToast('Добавьте хотя бы один товар', 'warning'); return; }
       const total = items.reduce(function(s, it) { return s + (Number(it.total_price) || 0); }, 0);
       if (total > currentCash) {
-        showToast('Сумма поставки ' + formatMoney(total) + ' больше, чем в кассе (' + formatMoney(currentCash) + ')', 'error');
+        showToast('Сумма поставки ' + formatMoneyPrecise(total) + ' больше, чем в кассе (' + formatMoneyPrecise(currentCash) + ')', 'error');
         return;
       }
       const applyToStock = document.getElementById('txn-apply-to-stock').checked;
@@ -2440,7 +2440,7 @@ async function confirmTransaction() {
         apply_to_stock: applyToStock
       });
       state.currentCash = result.new_cash_register;
-      showToast('Поставка создана: ' + formatMoney(total) + '. В кассе: ' + formatMoney(result.new_cash_register), 'success');
+      showToast('Поставка создана: ' + formatMoneyPrecise(total) + '. В кассе: ' + formatMoneyPrecise(result.new_cash_register), 'success');
       closeModal('modal-transaction');
       updateShiftButton();
       // Refresh APP_DATA so the new delivery appears in admin
@@ -2624,7 +2624,7 @@ function renderHome() {
     if (myOrder) {
       inner += '<span class="table-order-info">' +
         '<span class="toi-time">🕐 ' + formatTime(myOrder.created_at) + '</span>' +
-        '<span class="toi-total">' + formatMoney(myOrder.total) + '</span>' +
+        '<span class="toi-total">' + formatMoneyPrecise(myOrder.total) + '</span>' +
       '</span>';
     }
     btn.innerHTML = inner;
@@ -2758,7 +2758,7 @@ function showVirtualOrderPicker(virtualName, orders) {
     html += '<div class="mod-pick-row" style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="openOrderDetail(\'' + o.id + '\');closeModificationPicker();">' +
       '<div><div style="font-size:1rem;font-weight:600;">' + escapeHtml(formatTableLabel(o)) + '</div>' +
       '<div style="font-size:0.85rem;color:var(--text-muted);">' + itemsLabel + '</div></div>' +
-      '<span style="font-weight:700;color:var(--primary);white-space:nowrap;flex:none;margin-left:8px;">' + formatMoney(o.total) + '</span>' +
+      '<span style="font-weight:700;color:var(--primary);white-space:nowrap;flex:none;margin-left:8px;">' + formatMoneyPrecise(o.total) + '</span>' +
     '</div>';
   });
   html += '</div>';
@@ -2916,7 +2916,7 @@ function renderOrderCart() {
   // Update total
   const total = state.cart.reduce(function(s, c) { return s + c.price * c.quantity; }, 0);
   const totalEl = document.getElementById('order-total');
-  if (totalEl) totalEl.textContent = formatMoney(total);
+  if (totalEl) totalEl.textContent = formatMoneyPrecise(total);
   // Enable/disable accept button based on cart contents
   const acceptBtn = document.getElementById('accept-order-btn');
   if (acceptBtn) {
@@ -3630,7 +3630,7 @@ function renderCartPanel() {
     const cn = document.getElementById('cart-count-num');
     if (cn) cn.textContent = count;
     const ct = document.getElementById('cart-total-amount');
-    if (ct) ct.textContent = formatMoney(total);
+    if (ct) ct.textContent = formatMoneyPrecise(total);
   }
 }
 
@@ -3675,7 +3675,7 @@ function renderCartItems() {
       '</div>';
     div.appendChild(card);
   });
-  document.getElementById('cart-grand-total').textContent = formatMoney(total);
+  document.getElementById('cart-grand-total').textContent = formatMoneyPrecise(total);
 }
 
 function setCartComment(idx, val) {
@@ -4216,7 +4216,7 @@ function renderActiveOrdersList() {
         (cookingItems.length > 0 ? ' · готово ' + readyCount + '/' + cookingItems.length : '') +
       '</div>' +
       '<div style="font-size:1.3rem;font-weight:700;color:var(--primary);margin-bottom:10px;white-space:nowrap;">' +
-        formatMoney(total) +
+        formatMoneyPrecise(total) +
       '</div>' +
       (order.waiter_note ? '<div style="font-size:0.85rem;color:var(--warning);margin-bottom:8px;">💬 ' + escapeHtml(order.waiter_note) + '</div>' : '') +
       '<div class="oc-actions">' + actions + '</div>';
@@ -4308,7 +4308,7 @@ function renderArchiveList() {
     html +=     '<div class="aor-num">Заказ №' + escapeHtml(String(dailyNum)) + '</div>';
     html +=     '<div class="aor-time">' + formatTime(order.created_at) + '</div>';
     html +=   '</div>';
-    html +=   '<div class="aor-total">' + formatMoney(total) + '</div>';
+    html +=   '<div class="aor-total">' + formatMoneyPrecise(total) + '</div>';
     html += '</div>';
   });
   listDiv.innerHTML = html;
@@ -4400,7 +4400,7 @@ function renderArchiveDetail(order) {
     var payLabel = order.payment_method === 'cash' ? '💵 Наличные' : order.payment_method === 'card' ? '💳 Карта' : order.payment_method === 'mixed' ? '💵 + 💳 Смешанная' : order.payment_method;
     html += '<div style="margin:12px 0;padding:10px 12px;background:var(--bg);border-radius:6px;font-size:0.95rem;"><b>Оплата:</b> ' + payLabel + '</div>';
   }
-  html += '<div class="adc-total">Итого: ' + formatMoney(total) + '</div>';
+  html += '<div class="adc-total">Итого: ' + formatMoneyPrecise(total) + '</div>';
   html += '</div>';
   detailDiv.innerHTML = html;
 }
@@ -4873,7 +4873,7 @@ function recalcOrderTotal() {
   });
   order.total = total;
   const totalEl = document.getElementById('order-detail-total');
-  if (totalEl) totalEl.textContent = formatMoney(total);
+  if (totalEl) totalEl.textContent = formatMoneyPrecise(total);
 }
 
 async function removeOrderItem(itemId) {
@@ -5147,14 +5147,14 @@ function calculateMixedTotal() {
   }
   const diff = sum - total;
   if (diff < 0) {
-    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--danger);">(не хватает ' + formatMoney(Math.abs(diff)) + ')</span>';
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--danger);">(не хватает ' + formatMoneyPrecise(Math.abs(diff)) + ')</span>';
     totalEl.style.background = '#ffebee';
   } else if (diff === 0) {
     totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' ✅';
     totalEl.style.background = '#e8f5e9';
     totalEl.style.color = 'var(--success)';
   } else {
-    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--warning);">(переплата ' + formatMoney(diff) + ')</span>';
+    totalEl.innerHTML = 'Итого: ' + formatMoney(sum) + ' <span style="font-size:0.9rem;color:var(--warning);">(переплата ' + formatMoneyPrecise(diff) + ')</span>';
     totalEl.style.background = '#fff8e1';
   }
   // Enable/disable confirm button based on whether total matches
@@ -5211,7 +5211,7 @@ async function confirmCompleteOrder() {
     cashAmount = Number(document.getElementById('mixed-cash-amount').value) || 0;
     cardAmount = Number(document.getElementById('mixed-card-amount').value) || 0;
     if (Math.round((cashAmount + cardAmount) * 100) !== Math.round(total * 100)) {
-      showToast('Сумма наличных и карты должна равняться ' + formatMoney(total), 'warning');
+      showToast('Сумма наличных и карты должна равняться ' + formatMoneyPrecise(total), 'warning');
       return;
     }
   }

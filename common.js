@@ -2592,6 +2592,19 @@ function formatMoney(amount, currency) {
   return rounded + ' ' + cur;
 }
 
+// Точная сумма с сотыми — для кассовых смен, заказов, платежей
+function formatMoneyPrecise(amount, currency) {
+  const n = Number(amount) || 0;
+  let cur = currency;
+  if (!cur && typeof APP_DATA !== 'undefined' && APP_DATA && APP_DATA.settings) {
+    cur = APP_DATA.settings.currency;
+  }
+  if (!cur) cur = CONFIG.DEFAULT_CURRENCY;
+  const hasDec = (n % 1) !== 0;
+  const formatted = hasDec ? n.toFixed(2) : Math.round(n).toString();
+  return formatted + ' ' + cur;
+}
+
 // Format a markup percentage: 50 -> "50%", 12.5 -> "12.5%"
 function formatPercent(value) {
   const n = Number(value) || 0;

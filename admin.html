@@ -2805,8 +2805,8 @@ async function refreshActiveOrdersCount() {
     grid.innerHTML =
       statCard('Принятых сейчас', activeCount, 'var(--warning)') +
       statCard('Показано заказов', total, 'var(--info)') +
-      statCard('Сумма активных', formatMoney(activeRevenue), 'var(--accent-dark)') +
-      statCard('Выручка (завершённые)', formatMoney(totalRevenue), 'var(--success)');
+      statCard('Сумма активных', formatMoneyPrecise(activeRevenue), 'var(--accent-dark)') +
+      statCard('Выручка (завершённые)', formatMoneyPrecise(totalRevenue), 'var(--success)');
   } catch (err) { /* ignore */ }
 }
 
@@ -2852,13 +2852,13 @@ function renderOrders() {
     if (hasWaiter) html += '<td>' + escapeHtml(order.waiter_name || '—') + '</td>';
     if (hasPayment) {
       let payLabel = '—';
-      if (order.payment_method === 'cash') payLabel = '💵 ' + formatMoney(order.cash_amount || order.total);
-      else if (order.payment_method === 'card') payLabel = '💳 ' + formatMoney(order.card_amount || order.total);
-      else if (order.payment_method === 'mixed') payLabel = '💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
+      if (order.payment_method === 'cash') payLabel = '💵 ' + formatMoneyPrecise(order.cash_amount || order.total);
+      else if (order.payment_method === 'card') payLabel = '💳 ' + formatMoneyPrecise(order.card_amount || order.total);
+      else if (order.payment_method === 'mixed') payLabel = '💵 ' + formatMoneyPrecise(order.cash_amount || 0) + ' + 💳 ' + formatMoneyPrecise(order.card_amount || 0);
       html += '<td>' + payLabel + '</td>';
     }
     html += '<td style="font-size:0.9rem;color:var(--text-muted);">' + formatDateTime(order.created_at) + '</td>';
-    html += '<td style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoney(order.total) + '</td>';
+    html += '<td style="text-align:right;font-weight:700;color:var(--primary);">' + formatMoneyPrecise(order.total) + '</td>';
     html += '<td>' +
       (order.status === 'accepted' ?
         '<span class="pill pill-warning"><span class="status-dot accepted"></span>Принят</span>' :
@@ -3041,9 +3041,9 @@ async function viewOrder(orderId) {
     }
     // Payment info with amounts
     let payInfo = '—';
-    if (order.payment_method === 'cash') payInfo = '💵 ' + formatMoney(order.cash_amount || order.total);
-    else if (order.payment_method === 'card') payInfo = '💳 ' + formatMoney(order.card_amount || order.total);
-    else if (order.payment_method === 'mixed') payInfo = '💵 ' + formatMoney(order.cash_amount || 0) + ' + 💳 ' + formatMoney(order.card_amount || 0);
+    if (order.payment_method === 'cash') payInfo = '💵 ' + formatMoneyPrecise(order.cash_amount || order.total);
+    else if (order.payment_method === 'card') payInfo = '💳 ' + formatMoneyPrecise(order.card_amount || order.total);
+    else if (order.payment_method === 'mixed') payInfo = '💵 ' + formatMoneyPrecise(order.cash_amount || 0) + ' + 💳 ' + formatMoneyPrecise(order.card_amount || 0);
 
     // Status label
     let statusLabel;
@@ -3092,7 +3092,7 @@ async function viewOrder(orderId) {
       cancelReasonHtml +
       editHintHtml +
       itemsHtml +
-      '<div style="text-align:right;font-size:1.5rem;font-weight:800;color:var(--primary);">Итого: ' + formatMoney(order.total) + '</div>';
+      '<div style="text-align:right;font-size:1.5rem;font-weight:800;color:var(--primary);">Итого: ' + formatMoneyPrecise(order.total) + '</div>';
     openModal('modal-order');
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
@@ -6780,12 +6780,12 @@ async function renderStatistics() {
     var html = '';
     // Summary cards
     html += '<div class="stats-grid" style="margin-bottom:20px;grid-template-columns:repeat(6,1fr);">';
-    html += statCard('Выручка', formatMoney(totalRevenue), 'var(--success)');
+    html += statCard('Выручка', formatMoneyPrecise(totalRevenue), 'var(--success)');
     html += statCard('Заказов', totalOrders, 'var(--info)');
-    html += statCard('Средний чек', formatMoney(avgCheck), 'var(--primary)');
+    html += statCard('Средний чек', formatMoneyPrecise(avgCheck), 'var(--primary)');
     html += statCard('Гостей', totalGuests, 'var(--accent-dark)');
-    html += statCard('💵 Наличные', formatMoney(totalCash), 'var(--success)');
-    html += statCard('💳 Карта', formatMoney(totalCard), 'var(--info)');
+    html += statCard('💵 Наличные', formatMoneyPrecise(totalCash), 'var(--success)');
+    html += statCard('💳 Карта', formatMoneyPrecise(totalCard), 'var(--info)');
     html += '</div>';
 
     // Chart 1: Revenue by day (bar chart)
@@ -6923,12 +6923,12 @@ async function renderStatisticsShifts() {
         // Surplus — orange
         rowBg = 'background:#fff3e0;';
         diffColor = 'color:#e65100;font-weight:700;';
-        diffText = '+' + formatMoney(diff);
+        diffText = '+' + formatMoneyPrecise(diff);
       } else {
         // Shortage — red
         rowBg = 'background:#ffebee;';
         diffColor = 'color:var(--danger);font-weight:700;';
-        diffText = formatMoney(diff);
+        diffText = formatMoneyPrecise(diff);
       }
       // Transactions detail toggle (only if there are transactions OR deductions were non-zero)
       var txs = s.transactions || [];
@@ -6941,9 +6941,9 @@ async function renderStatisticsShifts() {
       html += '<td>' + escapeHtml(s.waiter_name || '—') + '</td>';
       html += '<td>' + (s.opened_at ? formatDateTime(s.opened_at) : '—') + '</td>';
       html += '<td>' + (isOpen ? '<span style="color:var(--warning);font-weight:600;">не закрыта</span>' : formatDateTime(s.closed_at)) + '</td>';
-      html += '<td style="padding:8px;text-align:right;">' + formatMoney(openingCash) + '</td>';
-      html += '<td style="padding:8px;text-align:right;">' + (isOpen ? '—' : formatMoney(expectedCash)) + '</td>';
-      html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : (hasActual ? formatMoney(actualCash) : '—')) + '</td>';
+      html += '<td style="padding:8px;text-align:right;">' + formatMoneyPrecise(openingCash) + '</td>';
+      html += '<td style="padding:8px;text-align:right;">' + (isOpen ? '—' : formatMoneyPrecise(expectedCash)) + '</td>';
+      html += '<td style="padding:8px;text-align:right;font-weight:600;">' + (isOpen ? '—' : (hasActual ? formatMoneyPrecise(actualCash) : '—')) + '</td>';
       html += '<td style="padding:8px;text-align:right;' + diffColor + '">' + diffText + '</td>';
       html += '<td style="padding:8px;text-align:center;">' + toggleCell + '</td>';
       html += '</tr>';
@@ -6954,12 +6954,12 @@ async function renderStatisticsShifts() {
         // Summary block
         html += '<div style="margin-bottom:10px;padding:10px 12px;background:#fff;border-radius:6px;border:1px solid var(--border);font-size:0.88rem;">';
         html += '<b>Расчёт ожидаемой суммы:</b><br>';
-        html += 'Касса на начало: <b>' + formatMoney(openingCash) + '</b><br>';
-        html += '+ Наличные за смену: <b>' + formatMoney(cashTotal) + '</b><br>';
-        if (wofTotal > 0) html += '+ Списания в кассу: <b style="color:var(--success);">' + formatMoney(wofTotal) + '</b><br>';
-        if (incTotal > 0) html += '− Инкассации: <b style="color:#c62828;">' + formatMoney(incTotal) + '</b><br>';
-        if (supTotal > 0) html += '− Поставки из кассы: <b style="color:#c62828;">' + formatMoney(supTotal) + '</b><br>';
-        html += '<b>= Ожидается: ' + formatMoney(expectedCash) + '</b>';
+        html += 'Касса на начало: <b>' + formatMoneyPrecise(openingCash) + '</b><br>';
+        html += '+ Наличные за смену: <b>' + formatMoneyPrecise(cashTotal) + '</b><br>';
+        if (wofTotal > 0) html += '+ Списания в кассу: <b style="color:var(--success);">' + formatMoneyPrecise(wofTotal) + '</b><br>';
+        if (incTotal > 0) html += '− Инкассации: <b style="color:#c62828;">' + formatMoneyPrecise(incTotal) + '</b><br>';
+        if (supTotal > 0) html += '− Поставки из кассы: <b style="color:#c62828;">' + formatMoneyPrecise(supTotal) + '</b><br>';
+        html += '<b>= Ожидается: ' + formatMoneyPrecise(expectedCash) + '</b>';
         html += '</div>';
         // Transactions list
         if (txs.length > 0) {
@@ -6997,7 +6997,7 @@ async function renderStatisticsShifts() {
               '<td style="padding:6px;">' + tType + '</td>' +
               '<td style="padding:6px;">' + tTarget + '</td>' +
               '<td style="padding:6px;color:var(--text-muted);">' + tComment + '</td>' +
-              '<td style="padding:6px;text-align:right;font-weight:600;color:' + tAmountColor + '">' + tAmountPrefix + formatMoney(Number(t.amount) || 0) + '</td>' +
+              '<td style="padding:6px;text-align:right;font-weight:600;color:' + tAmountColor + '">' + tAmountPrefix + formatMoneyPrecise(Number(t.amount) || 0) + '</td>' +
             '</tr>';
           });
           html += '</tbody></table>';
