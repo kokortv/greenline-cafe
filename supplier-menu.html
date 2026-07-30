@@ -6,88 +6,89 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Каталог поставщика</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%232563eb' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
+<title>Прайс-лист</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d32f2f' d='M11 2H13V8H18V21H6V8H11V2Z'/%3E%3C/svg%3E">
+<style id="dynamic-styles"></style>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --vm-header-bg: #d32f2f;
+    --vm-accent: #d32f2f;
+    --vm-text: #1a1a1a;
+    --vm-bg: #fafafa;
+    --vm-border: #e0e0e0;
+    --vm-muted: #666;
+  }
+  [data-theme="dark"] {
+    --vm-text: #e0e0e0;
+    --vm-bg: #1a1a2e;
+    --vm-border: #2a2a4a;
+    --vm-muted: #888;
+  }
   html, body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 16px;
-    color: #1a1a1a;
-    background: #fafafa;
+    color: var(--vm-text);
+    background: var(--vm-bg);
     -webkit-tap-highlight-color: transparent;
   }
   /* Boot splash */
   #boot-splash {
     position: fixed; inset: 0; z-index: 9999;
-    background: #fafafa;
+    background: var(--vm-bg);
     display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px;
     transition: opacity 0.3s ease;
   }
   #boot-splash.done { opacity: 0; pointer-events: none; }
   .boot-spinner {
     width: 38px; height: 38px;
-    border: 3px solid #e0e0e0; border-top-color: #2563eb;
+    border: 3px solid var(--vm-border); border-top-color: var(--vm-accent);
     border-radius: 50%; animation: bootSpin 0.9s linear infinite;
   }
   @keyframes bootSpin { to { transform: rotate(360deg); } }
-  .boot-text { color: #666; font-size: 0.92rem; }
+  .boot-text { color: var(--vm-muted); font-size: 0.92rem; }
 
   /* Header */
   .header {
     position: fixed; top: 0; left: 0; right: 0; z-index: 60;
-    background: #2563eb; color: #fff; padding: 14px 16px;
+    background: var(--vm-header-bg); color: #fff; padding: 14px 16px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   }
-  .header h1 { font-size: 1.3rem; margin: 0; }
-  .header .subtitle { font-size: 0.8rem; opacity: 0.85; margin-top: 2px; }
-  .header-spacer { height: 64px; }
+  .header h1 { font-size: 1.4rem; margin: 0; }
+  .header-spacer { height: 60px; }
 
   /* Content */
   .content { padding: 12px 16px 40px; max-width: 700px; margin: 0 auto; }
-  .empty { text-align: center; color: #666; padding: 40px 0; font-size: 0.95rem; }
+  .empty { text-align: center; color: var(--vm-muted); padding: 40px 0; font-size: 0.95rem; }
 
-  /* Item card */
+  /* Item */
   .item-card {
-    background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+    background: var(--vm-bg); border-radius: 10px; padding: 14px 16px; margin-bottom: 8px;
     display: flex; justify-content: space-between; align-items: center; gap: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #eee;
+    border: 1px solid var(--vm-border);
   }
-  .item-info { flex: 1; min-width: 0; }
-  .item-name { font-weight: 600; font-size: 1rem; word-break: break-word; }
-  .item-pack { font-size: 0.78rem; color: #666; margin-top: 2px; }
-  .item-cost { font-size: 0.82rem; color: #999; margin-top: 2px; }
+  .item-name {
+    font-weight: 600; font-size: 1rem; word-break: break-word;
+  }
+  .item-pack {
+    font-size: 0.78rem; color: var(--vm-muted); margin-top: 2px;
+  }
   .item-price {
-    font-size: 1.1rem; font-weight: 700; color: #2563eb; white-space: nowrap;
-    text-align: right;
+    font-size: 1.1rem; font-weight: 700; color: var(--vm-accent); white-space: nowrap;
   }
 
   /* Error */
   .error-msg { color: #dc2626; text-align: center; padding: 40px 16px; font-size: 0.9rem; }
-
-  /* Dark theme */
-  @media (prefers-color-scheme: dark) {
-    html, body { background: #1a1a2e; color: #e0e0e0; }
-    .item-card { background: #16213e; border-color: #2a2a4a; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-    .item-name { color: #e0e0e0; }
-    .item-pack, .item-cost { color: #888; }
-    .item-price { color: #60a5fa; }
-    .header { background: #1e40af; }
-    #boot-splash { background: #1a1a2e; }
-    .boot-text { color: #888; }
-    .boot-spinner { border-color: #2a2a4a; border-top-color: #60a5fa; }
-  }
 </style>
 </head>
 <body>
 <div id="boot-splash">
   <div class="boot-spinner"></div>
-  <div class="boot-text" id="boot-text">Загрузка каталога…</div>
+  <div class="boot-text" id="boot-text">Загрузка прайс-листа…</div>
 </div>
 
 <div class="header" id="header" style="visibility:hidden;">
-  <h1 id="supplier-name">Каталог</h1>
-  <div class="subtitle" id="warehouse-name"></div>
+  <h1>Прайс-лист</h1>
 </div>
 <div class="header-spacer" id="header-spacer" style="visibility:hidden;"></div>
 
@@ -98,7 +99,6 @@
 <script src="config.js"></script>
 <script src="supabase.min.js"></script>
 <script>
-// ===== Self-contained supplier menu — NO common.js, NO admin access =====
 (function() {
   try {
     if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL) return;
@@ -108,9 +108,6 @@
     var pc = document.createElement('link');
     pc.rel = 'preconnect'; pc.crossOrigin = 'anonymous'; pc.href = url;
     head.appendChild(pc);
-    var dns = document.createElement('link');
-    dns.rel = 'dns-prefetch'; dns.href = url;
-    head.appendChild(dns);
   } catch (e) {}
 })();
 
@@ -128,17 +125,16 @@ function escHtml(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function fmtMoney(n) {
-  n = Number(n) || 0;
-  return Math.round(n) + ' ₾';
-}
-
-// Get supplier_id from URL hash: #sup_xxx or query: ?supplier=sup_xxx
 function getSupplierId() {
   var hash = window.location.hash.replace(/^#/, '');
   if (hash) return hash;
   var params = new URLSearchParams(window.location.search);
   return params.get('supplier') || params.get('id') || '';
+}
+
+function getSystemTheme() {
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+  return 'light';
 }
 
 async function init() {
@@ -152,20 +148,34 @@ async function init() {
       return;
     }
 
-    // Load user (supplier) record
-    var { data: users, error: userErr } = await _sb.from('users').select('*').eq('id', supplierId).limit(1);
-    if (userErr) throw new Error(userErr.message);
+    // Load settings (for color scheme) + user record in parallel
+    var results = await Promise.all([
+      _sb.from('settings').select('*'),
+      _sb.from('users').select('*').eq('id', supplierId).limit(1)
+    ]);
+    var settingsRows = results[0].data || [];
+    var users = results[1].data || [];
+    if (results[1].error) throw new Error(results[1].error.message);
     if (!users || users.length === 0) throw new Error('Поставщик не найден');
     var supplier = users[0];
     if (supplier.role !== 'supplier') throw new Error('Доступ запрещён');
 
-    // Get allowed warehouses
-    var whIds = String(supplier.allowed_warehouses || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    if (whIds.length === 0) throw new Error('Нет складов');
+    // Apply settings (color scheme)
+    var s = {};
+    settingsRows.forEach(function(x) { s[x.key] = x.value; });
+    var priceColor = s.qr_menu_color_price || '#d32f2f';
+    var headerColor = s.qr_menu_color_header || priceColor;
+    // Apply dynamic styles
+    document.getElementById('dynamic-styles').textContent =
+      ':root { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; } ' +
+      '[data-theme="dark"] { --vm-header-bg: ' + headerColor + ' !important; --vm-accent: ' + priceColor + ' !important; }';
 
-    // Load warehouses
-    var { data: warehouses } = await _sb.from('warehouses').select('*').in('id', whIds);
-    warehouses = warehouses || [];
+    // Apply theme
+    document.documentElement.setAttribute('data-theme', getSystemTheme());
+
+    // Get allowed warehouses
+    var whIds = String(supplier.allowed_warehouses || '').split(',').map(function(x) { return x.trim(); }).filter(Boolean);
+    if (whIds.length === 0) throw new Error('Нет складов');
 
     // Load deliveries for these warehouses
     var { data: deliveries } = await _sb.from('deliveries').select('*').in('warehouse_id', whIds);
@@ -181,14 +191,12 @@ async function init() {
 
     // Load writeoffs for these warehouses (to subtract from stock)
     var allWriteoffItems = [];
-    if (deliveryIds.length > 0) {
-      var { data: writeoffs } = await _sb.from('writeoffs').select('*').in('warehouse_id', whIds);
-      writeoffs = writeoffs || [];
-      var wofIds = writeoffs.map(function(w) { return w.id; });
-      if (wofIds.length > 0) {
-        var { data: wItems } = await _sb.from('writeoff_items').select('*').in('writeoff_id', wofIds);
-        allWriteoffItems = wItems || [];
-      }
+    var { data: writeoffs } = await _sb.from('writeoffs').select('*').in('warehouse_id', whIds);
+    writeoffs = writeoffs || [];
+    var wofIds = writeoffs.map(function(w) { return w.id; });
+    if (wofIds.length > 0) {
+      var { data: wItems } = await _sb.from('writeoff_items').select('*').in('writeoff_id', wofIds);
+      allWriteoffItems = wItems || [];
     }
 
     // Aggregate items by name (case-insensitive)
@@ -207,7 +215,6 @@ async function init() {
         };
       }
       itemsByName[key].qty += Number(dit.quantity) || 0;
-      // Keep latest non-zero price + markup
       if (Number(dit.unit_price) > 0) itemsByName[key].unit_price = Number(dit.unit_price);
       if (Number(dit.markup) > 0) itemsByName[key].markup = Number(dit.markup);
     });
@@ -227,12 +234,7 @@ async function init() {
       .filter(function(it) { return it.qty > 0; })
       .sort(function(a, b) { return a.name.localeCompare(b.name, 'ru'); });
 
-    // Set header
-    document.getElementById('supplier-name').textContent = supplier.name || 'Каталог поставщика';
-    var whNames = warehouses.map(function(w) { return w.name; }).join(', ');
-    document.getElementById('warehouse-name').textContent = whNames;
-
-    // Render items
+    // Render items — only name + pack + price with markup
     var contentEl = document.getElementById('content');
     if (items.length === 0) {
       contentEl.innerHTML = '<div class="empty">Нет товаров в наличии</div>';
@@ -241,14 +243,12 @@ async function init() {
       items.forEach(function(it) {
         var unitPrice = it.unit_price * (1 + (it.markup || 0) / 100);
         var packInfo = it.pack ? '<div class="item-pack">' + escHtml(it.pack) + '</div>' : '';
-        var costInfo = '<div class="item-cost">Себест.: ' + fmtMoney(it.unit_price) + (it.markup > 0 ? ' • Нац.: ' + it.markup + '%' : '') + '</div>';
         html += '<div class="item-card">' +
-          '<div class="item-info">' +
+          '<div style="flex:1;min-width:0;">' +
             '<div class="item-name">' + escHtml(it.name) + '</div>' +
             packInfo +
-            costInfo +
           '</div>' +
-          '<div class="item-price">' + fmtMoney(unitPrice) + '</div>' +
+          '<div class="item-price">' + Math.round(unitPrice) + ' ' + (s.currency || '₾') + '</div>' +
         '</div>';
       });
       contentEl.innerHTML = html;
