@@ -7095,6 +7095,7 @@ function renderStaffList() {
         (u.has_password
           ? '<span class="user-role-badge" style="background:#c8e6c9;color:#1b5e20;">🔑 есть пароль</span>'
           : '<span class="user-role-badge" style="background:#ffe0b2;color:#e65100;">нет пароля</span>') +
+        (role === 'supplier' ? '<button class="btn-icon" onclick="copySupplierMenuLink(\'' + u.id + '\', \'' + escapeHtml(u.name).replace(/'/g, "\\'") + '\')" title="Скопировать ссылку на каталог" style="background:#dbeafe;color:#2563eb;">🔗</button>' : '') +
         lastLogin +
         '<button class="btn-icon btn-icon-edit" onclick="openUserModal(\'' + u.id + '\')" title="Изменить">✎</button>' +
         '<button class="btn-icon btn-icon-info" onclick="openPasswordModal(\'' + u.id + '\')" title="Пароль">🔑</button>' +
@@ -7131,6 +7132,22 @@ async function toggleUserHidden(userId) {
     renderStaffList();
   } catch (err) {
     showToast('Ошибка: ' + err.message, 'error');
+  }
+}
+
+// Copy the supplier menu link to clipboard
+function copySupplierMenuLink(supplierId, supplierName) {
+  var baseUrl = window.location.href.replace(/\/[^\/]*$/, '/');
+  var link = baseUrl + 'supplier-menu.html#' + supplierId;
+  // Try clipboard API, fallback to prompt
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(function() {
+      showToast('Ссылка скопирована: ' + link, 'success');
+    }).catch(function() {
+      prompt('Скопируйте ссылку на каталог поставщика ' + supplierName + ':', link);
+    });
+  } else {
+    prompt('Скопируйте ссылку на каталог поставщика ' + supplierName + ':', link);
   }
 }
 
