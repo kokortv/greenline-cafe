@@ -7140,7 +7140,10 @@ async function toggleUserHidden(userId) {
 
 // Copy the supplier menu link to clipboard
 function copySupplierMenuLink(supplierId, supplierName) {
-  var baseUrl = window.location.href.replace(/\/[^\/]*$/, '/');
+  // Build base URL without hash/search — just origin + directory path
+  var path = window.location.pathname; // e.g. /greenline-cafe/admin.html
+  var dir = path.substring(0, path.lastIndexOf('/') + 1); // /greenline-cafe/
+  var baseUrl = window.location.origin + dir;
   var link = baseUrl + 'supplier-menu.html#' + supplierId;
   // Try clipboard API, fallback to prompt
   if (navigator.clipboard && navigator.clipboard.writeText) {
