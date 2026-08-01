@@ -1235,8 +1235,14 @@
   <div class="tab-content" id="tab-statistics" style="display:none;">
     <!-- Sub-section: Overview (charts + summary) -->
     <div class="statssub-content" id="statssub-overview">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
         <h2 class="section-title" style="margin:0;">📊 Обзор статистики</h2>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn btn-primary stats-period-btn" data-period="day" onclick="setStatsPeriod('day')" style="font-size:0.85rem;padding:5px 12px;">День</button>
+          <button class="btn btn-outline stats-period-btn" data-period="week" onclick="setStatsPeriod('week')" style="font-size:0.85rem;padding:5px 12px;">Неделя</button>
+          <button class="btn btn-outline stats-period-btn" data-period="month" onclick="setStatsPeriod('month')" style="font-size:0.85rem;padding:5px 12px;">Месяц</button>
+          <button class="btn btn-outline stats-period-btn" data-period="all" onclick="setStatsPeriod('all')" style="font-size:0.85rem;padding:5px 12px;">Всё время</button>
+        </div>
         <button class="btn btn-outline" onclick="renderStatistics()">↻ Обновить</button>
       </div>
       <div id="statistics-content">
@@ -6683,19 +6689,63 @@ async function showDeliveriesForMenuItem(menuItemId, itemName) {
 }
 
 /* ---------- STATISTICS ---------- */
+// Stats period selector
+window._statsPeriod = 'day';
+
+function setStatsPeriod(period) {
+  window._statsPeriod = period;
+  // Update button styles
+  document.querySelectorAll('.stats-period-btn').forEach(function(btn) {
+    if (btn.dataset.period === period) {
+      btn.classList.remove('btn-outline');
+      btn.classList.add('btn-primary');
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+    }
+  });
+  renderStatistics();
+}
+
 async function renderStatistics() {
   const content = document.getElementById('statistics-content');
   if (!content) return;
   content.innerHTML = '<div class="empty-state"><h3>Загрузка статистики...</h3></div>';
   try {
     const data = await apiGet('getOrders', { status: 'all' });
-    const orders = (data.orders || []).filter(function(o) { return o.status === 'completed'; });
+    var allOrders = (data.orders || []).filter(function(o) { return o.status === 'completed'; });
+
+    // === Filter by period ===
+    var period = window._statsPeriod || 'day';
+    var now = new Date();
+    var periodStart = null;
+    var periodLabel = '';
+    if (period === 'day') {
+      periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      periodLabel = 'за последние 24 часа';
+    } else if (period === 'week') {
+      periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      periodLabel = 'за последнюю неделю';
+    } else if (period === 'month') {
+      periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      periodLabel = 'за последние 30 дней';
+    } else {
+      periodLabel = 'за всё время';
+    }
+
+    var orders = allOrders.filter(function(o) {
+      if (!periodStart) return true;
+      var d = new Date(o.completed_at || o.created_at || 0);
+      return d >= periodStart;
+    });
+
     if (orders.length === 0) {
-      content.innerHTML = '<div class="empty-state"><h3>Нет данных</h3><p>Завершённых заказов пока нет. Статистика появится после первых продаж.</p></div>';
+      content.innerHTML = '<div class="empty-state"><h3>Нет данных</h3><p>Завершённых заказов ' + periodLabel + ' нет. Статистика появится после первых продаж.</p></div>';
       return;
     }
+
     // === 1. Revenue by day (last 7 days) ===
-    var dayMap = {}; // { 'YYYY-MM-DD': { cash: n, card: n, total: n, count: n } }
+    var dayMap = {};
     orders.forEach(function(o) {
       var d = (o.completed_at || o.created_at || '').substring(0, 10);
       if (!d) return;
@@ -6707,9 +6757,7 @@ async function renderStatistics() {
       else if (o.payment_method === 'card') dayMap[d].card += total;
       else { dayMap[d].cash += Number(o.cash_amount) || 0; dayMap[d].card += Number(o.card_amount) || 0; }
     });
-    // Build last 7 days
     var days = [];
-    var now = new Date();
     for (var i = 6; i >= 0; i--) {
       var dt = new Date(now.getTime() - i * 86400000);
       var key = dt.toISOString().substring(0, 10);
@@ -6718,10 +6766,7 @@ async function renderStatistics() {
       days.push({
         label: dayNames[dt.getDay()],
         date: key.substring(8) + '.' + key.substring(5, 7),
-        total: info.total,
-        cash: info.cash,
-        card: info.card,
-        count: info.count
+        total: info.total, cash: info.cash, card: info.card, count: info.count
       });
     }
     var maxDay = Math.max.apply(null, days.map(function(d) { return d.total; }));
@@ -6729,7 +6774,7 @@ async function renderStatistics() {
 
     // === 2. Revenue by hour (today) ===
     var todayKey = now.toISOString().substring(0, 10);
-    var hourMap = {}; // { hour: total }
+    var hourMap = {};
     orders.forEach(function(o) {
       var d = (o.completed_at || o.created_at || '');
       if (d.substring(0, 10) !== todayKey) return;
@@ -6746,13 +6791,15 @@ async function renderStatistics() {
     var maxHour = Math.max.apply(null, hours.length > 0 ? hours.map(function(h) { return h.total; }) : [1]);
     if (maxHour === 0) maxHour = 1;
 
-    // === 3. Popular dishes ===
-    var dishMap = {}; // { name: { count, revenue } }
+    // === 3. Popular dishes — filter out category headers (price 0) ===
+    var dishMap = {};
     orders.forEach(function(o) {
       (o.items || []).forEach(function(it) {
         var name = it.name || '?';
         var qty = Number(it.quantity) || 1;
         var price = Number(it.price) || 0;
+        // Skip items with price 0 — they are category headers like "вареники", "вторые блюда"
+        if (price === 0) return;
         if (!dishMap[name]) dishMap[name] = { count: 0, revenue: 0 };
         dishMap[name].count += qty;
         dishMap[name].revenue += price * qty;
