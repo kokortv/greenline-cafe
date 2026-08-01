@@ -1237,13 +1237,26 @@
     <div class="statssub-content" id="statssub-overview">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
         <h2 class="section-title" style="margin:0;">📊 Обзор статистики</h2>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <button class="btn btn-primary stats-period-btn" data-period="day" onclick="setStatsPeriod('day')" style="font-size:0.85rem;padding:5px 12px;">День</button>
-          <button class="btn btn-outline stats-period-btn" data-period="week" onclick="setStatsPeriod('week')" style="font-size:0.85rem;padding:5px 12px;">Неделя</button>
-          <button class="btn btn-outline stats-period-btn" data-period="month" onclick="setStatsPeriod('month')" style="font-size:0.85rem;padding:5px 12px;">Месяц</button>
-          <button class="btn btn-outline stats-period-btn" data-period="all" onclick="setStatsPeriod('all')" style="font-size:0.85rem;padding:5px 12px;">Всё время</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="stats-period-select" onchange="onStatsPeriodChange()" style="font-size:0.88rem;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);cursor:pointer;">
+            <option value="day">День</option>
+            <option value="week">Неделя</option>
+            <option value="month">Месяц</option>
+            <option value="all">Всё время</option>
+            <option value="period">Свой период</option>
+          </select>
+          <!-- Calendar for "День" mode -->
+          <div id="stats-day-wrap" style="display:none;align-items:center;gap:6px;">
+            <input type="date" id="stats-day-input" onchange="renderStatistics()" style="font-size:0.85rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+          </div>
+          <!-- Date range for "Свой период" mode -->
+          <div id="stats-period-wrap" style="display:none;align-items:center;gap:6px;">
+            <input type="date" id="stats-from-input" onchange="renderStatistics()" style="font-size:0.85rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+            <span style="color:var(--text-muted);">—</span>
+            <input type="date" id="stats-to-input" onchange="renderStatistics()" style="font-size:0.85rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+          </div>
+          <button class="btn btn-outline" onclick="renderStatistics()">↻ Обновить</button>
         </div>
-        <button class="btn btn-outline" onclick="renderStatistics()">↻ Обновить</button>
       </div>
       <div id="statistics-content">
         <div class="empty-state"><h3>Загрузка статистики...</h3></div>
@@ -2129,7 +2142,23 @@ function switchStatisticsSub(sub) {
   const target = document.getElementById('statssub-' + sub);
   if (target) target.style.display = 'block';
   // Load data
-  if (sub === 'overview') renderStatistics();
+  if (sub === 'overview') {
+    // Pre-fill the day calendar with today the first time the overview opens,
+    // so the UI matches the default "День" period.
+    var di = document.getElementById('stats-day-input');
+    if (di && !di.value) {
+      var n = new Date();
+      di.value = n.toISOString().substring(0, 10);
+    }
+    // Sync the select to the current _statsPeriod (in case it was set programmatically).
+    var sel = document.getElementById('stats-period-select');
+    if (sel && sel.value !== (window._statsPeriod || 'day')) {
+      sel.value = window._statsPeriod || 'day';
+      onStatsPeriodChange();
+    } else {
+      renderStatistics();
+    }
+  }
   if (sub === 'shifts') renderStatisticsShifts();
   closeSidebarOnMobile();
 }
@@ -6692,19 +6721,84 @@ async function showDeliveriesForMenuItem(menuItemId, itemName) {
 // Stats period selector
 window._statsPeriod = 'day';
 
-function setStatsPeriod(period) {
-  window._statsPeriod = period;
-  // Update button styles
-  document.querySelectorAll('.stats-period-btn').forEach(function(btn) {
-    if (btn.dataset.period === period) {
-      btn.classList.remove('btn-outline');
-      btn.classList.add('btn-primary');
-    } else {
-      btn.classList.remove('btn-primary');
-      btn.classList.add('btn-outline');
+// Update the visible date pickers when the user changes the select.
+function onStatsPeriodChange() {
+  var sel = document.getElementById('stats-period-select');
+  if (!sel) return;
+  window._statsPeriod = sel.value;
+  var dayWrap = document.getElementById('stats-day-wrap');
+  var periodWrap = document.getElementById('stats-period-wrap');
+  if (dayWrap) dayWrap.style.display = (sel.value === 'day') ? 'flex' : 'none';
+  if (periodWrap) periodWrap.style.display = (sel.value === 'period') ? 'flex' : 'none';
+
+  // Default the calendar to "today" the first time the user picks "day" mode
+  if (sel.value === 'day') {
+    var di = document.getElementById('stats-day-input');
+    if (di && !di.value) {
+      var n = new Date();
+      di.value = n.toISOString().substring(0, 10);
     }
-  });
+  }
+  // Default the period to "last 7 days" the first time the user picks "period" mode
+  if (sel.value === 'period') {
+    var fi = document.getElementById('stats-from-input');
+    var ti = document.getElementById('stats-to-input');
+    if (fi && !fi.value) {
+      var n0 = new Date(Date.now() - 6 * 86400000);
+      fi.value = n0.toISOString().substring(0, 10);
+    }
+    if (ti && !ti.value) {
+      var n1 = new Date();
+      ti.value = n1.toISOString().substring(0, 10);
+    }
+  }
   renderStatistics();
+}
+
+// Back-compat: programmatic setStatsPeriod('day'|'week'|'month'|'all') — syncs the select.
+function setStatsPeriod(period) {
+  var sel = document.getElementById('stats-period-select');
+  if (sel) sel.value = period;
+  onStatsPeriodChange();
+}
+
+// Compute the [start, end] window for the currently selected period.
+// Returns { start: Date|null, label: string }.
+function getStatsPeriodWindow() {
+  var period = window._statsPeriod || 'day';
+  var now = new Date();
+  if (period === 'day') {
+    var di = document.getElementById('stats-day-input');
+    var dayStr = di && di.value ? di.value : now.toISOString().substring(0, 10);
+    // Day window: from 00:00:00 local on dayStr to 00:00:00 local on the next day.
+    var start = new Date(dayStr + 'T00:00:00');
+    var end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    var label = 'за ' + dayStr.split('-').reverse().join('.');
+    return { start: start, end: end, label: label };
+  }
+  if (period === 'week') {
+    var startW = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return { start: startW, end: now, label: 'за последнюю неделю' };
+  }
+  if (period === 'month') {
+    var startM = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return { start: startM, end: now, label: 'за последние 30 дней' };
+  }
+  if (period === 'period') {
+    var fi = document.getElementById('stats-from-input');
+    var ti = document.getElementById('stats-to-input');
+    var fStr = fi && fi.value ? fi.value : '';
+    var tStr = ti && ti.value ? ti.value : '';
+    if (!fStr || !tStr) return { start: null, end: null, label: 'за всё время' };
+    var startP = new Date(fStr + 'T00:00:00');
+    var endP = new Date(tStr + 'T00:00:00');
+    // Include the entire "to" day.
+    endP = new Date(endP.getTime() + 24 * 60 * 60 * 1000);
+    var labelP = 'с ' + fStr.split('-').reverse().join('.') + ' по ' + tStr.split('-').reverse().join('.');
+    return { start: startP, end: endP, label: labelP };
+  }
+  // 'all'
+  return { start: null, end: null, label: 'за всё время' };
 }
 
 async function renderStatistics() {
@@ -6716,27 +6810,16 @@ async function renderStatistics() {
     var allOrders = (data.orders || []).filter(function(o) { return o.status === 'completed'; });
 
     // === Filter by period ===
-    var period = window._statsPeriod || 'day';
-    var now = new Date();
-    var periodStart = null;
-    var periodLabel = '';
-    if (period === 'day') {
-      periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      periodLabel = 'за последние 24 часа';
-    } else if (period === 'week') {
-      periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      periodLabel = 'за последнюю неделю';
-    } else if (period === 'month') {
-      periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      periodLabel = 'за последние 30 дней';
-    } else {
-      periodLabel = 'за всё время';
-    }
+    var win = getStatsPeriodWindow();
+    var periodStart = win.start;
+    var periodEnd = win.end;
+    var periodLabel = win.label;
 
     var orders = allOrders.filter(function(o) {
-      if (!periodStart) return true;
       var d = new Date(o.completed_at || o.created_at || 0);
-      return d >= periodStart;
+      if (periodStart && d < periodStart) return false;
+      if (periodEnd && d >= periodEnd) return false;
+      return true;
     });
 
     if (orders.length === 0) {
@@ -6744,7 +6827,7 @@ async function renderStatistics() {
       return;
     }
 
-    // === 1. Revenue by day (last 7 days) ===
+    // === 1. Revenue by day (last 7 days of the selected window, or last 7 days if "all") ===
     var dayMap = {};
     orders.forEach(function(o) {
       var d = (o.completed_at || o.created_at || '').substring(0, 10);
@@ -6757,12 +6840,18 @@ async function renderStatistics() {
       else if (o.payment_method === 'card') dayMap[d].card += total;
       else { dayMap[d].cash += Number(o.cash_amount) || 0; dayMap[d].card += Number(o.card_amount) || 0; }
     });
+
+    // Build last-7-days axis anchored on the latest day in the selected window
+    // (or today if the window extends to now).
+    var anchor = periodEnd ? new Date(periodEnd.getTime()) : new Date();
+    // Roll back to midnight
+    anchor = new Date(anchor.toISOString().substring(0, 10) + 'T00:00:00');
     var days = [];
+    var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
     for (var i = 6; i >= 0; i--) {
-      var dt = new Date(now.getTime() - i * 86400000);
+      var dt = new Date(anchor.getTime() - i * 86400000);
       var key = dt.toISOString().substring(0, 10);
       var info = dayMap[key] || { cash: 0, card: 0, total: 0, count: 0 };
-      var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
       days.push({
         label: dayNames[dt.getDay()],
         date: key.substring(8) + '.' + key.substring(5, 7),
@@ -6772,12 +6861,12 @@ async function renderStatistics() {
     var maxDay = Math.max.apply(null, days.map(function(d) { return d.total; }));
     if (maxDay === 0) maxDay = 1;
 
-    // === 2. Revenue by hour (today) ===
-    var todayKey = now.toISOString().substring(0, 10);
+    // === 2. Revenue by hour (last day in window, or today) ===
+    var hourAnchorKey = (periodEnd ? new Date(periodEnd.getTime() - 86400000) : new Date()).toISOString().substring(0, 10);
     var hourMap = {};
     orders.forEach(function(o) {
       var d = (o.completed_at || o.created_at || '');
-      if (d.substring(0, 10) !== todayKey) return;
+      if (d.substring(0, 10) !== hourAnchorKey) return;
       var h = new Date(d).getHours();
       if (!hourMap[h]) hourMap[h] = 0;
       hourMap[h] += Number(o.total) || 0;
@@ -6791,18 +6880,34 @@ async function renderStatistics() {
     var maxHour = Math.max.apply(null, hours.length > 0 ? hours.map(function(h) { return h.total; }) : [1]);
     if (maxHour === 0) maxHour = 1;
 
-    // === 3. Popular dishes — filter out category headers (price 0) ===
+    // === 3. Popular dishes — combine name + modification_name so that
+    //         "вареники" + "с вишней" is reported as "вареники с вишней",
+    //         not lumped together under "вареники". ===
     var dishMap = {};
     orders.forEach(function(o) {
       (o.items || []).forEach(function(it) {
-        var name = it.name || '?';
+        var baseName = String(it.name || '?').trim();
+        var modName  = String(it.modification_name || '').trim();
+        // Build the full dish name. If the modification already contains the
+        // base name (e.g. "Вареники с вишней" stored as the modification),
+        // prefer the modification alone. Otherwise concatenate.
+        var fullName;
+        if (modName) {
+          if (baseName && modName.toLowerCase().indexOf(baseName.toLowerCase()) === 0) {
+            fullName = modName;
+          } else {
+            fullName = baseName + ' ' + modName;
+          }
+        } else {
+          fullName = baseName;
+        }
         var qty = Number(it.quantity) || 1;
         var price = Number(it.price) || 0;
-        // Skip items with price 0 — they are category headers like "вареники", "вторые блюда"
+        // Skip items with price 0 — they are category headers ("вареники", "вторые блюда").
         if (price === 0) return;
-        if (!dishMap[name]) dishMap[name] = { count: 0, revenue: 0 };
-        dishMap[name].count += qty;
-        dishMap[name].revenue += price * qty;
+        if (!dishMap[fullName]) dishMap[fullName] = { count: 0, revenue: 0 };
+        dishMap[fullName].count += qty;
+        dishMap[fullName].revenue += price * qty;
       });
     });
     var dishes = Object.keys(dishMap).map(function(name) {
@@ -6825,6 +6930,12 @@ async function renderStatistics() {
 
     // === Build HTML ===
     var html = '';
+    // Period label + count of orders used
+    html += '<div style="margin-bottom:14px;padding:8px 12px;background:var(--bg);border-radius:6px;font-size:0.85rem;color:var(--text-muted);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
+    html += '<span>📅 <b style="color:var(--text);">' + escapeHtml(periodLabel) + '</b></span>';
+    html += '<span>обработано заказов: <b style="color:var(--text);">' + totalOrders + '</b> (из ' + allOrders.length + ' завершённых всего)</span>';
+    html += '</div>';
+
     // Summary cards
     html += '<div class="stats-grid" style="margin-bottom:20px;grid-template-columns:repeat(6,1fr);">';
     html += statCard('Выручка', formatMoneyPrecise(totalRevenue), 'var(--success)');
@@ -6863,10 +6974,10 @@ async function renderStatistics() {
     html += '</div>';
     html += '</div>';
 
-    // Chart 2: Revenue by hour (today)
+    // Chart 2: Revenue by hour (last day in window)
     if (hours.length > 0) {
       html += '<div class="settings-card" style="margin-bottom:16px;">';
-      html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">🕐 Выручка по часам (сегодня)</h3>';
+      html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">🕐 Выручка по часам (' + hourAnchorKey.split('-').reverse().join('.') + ')</h3>';
       html += '<div style="display:flex;align-items:flex-end;gap:4px;height:160px;padding:0 4px;">';
       hours.forEach(function(h) {
         var pct = (h.total / maxHour) * 100;
@@ -6882,7 +6993,8 @@ async function renderStatistics() {
       html += '</div>';
     }
 
-    // Chart 3: Popular dishes (horizontal bar)
+    // Chart 3: Popular dishes (horizontal bar) — shows the exact dish including
+    // modification name (e.g. "Вареники с вишней", "Омлет с сыром и сосисками").
     if (dishes.length > 0) {
       html += '<div class="settings-card" style="margin-bottom:16px;">';
       html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">🍽 Популярные блюда (топ-10)</h3>';

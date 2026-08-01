@@ -302,43 +302,89 @@ async function loadAppDataForce() {
 }
 
 /* ---------- Orders ---------- */
+// When status='all' we are computing statistics, so we need ALL completed orders.
+// Supabase caps each response at 1000 rows, so we paginate to fetch every page.
 async function getOrders(status, waiterId) {
-  // Query orders and order_items separately to avoid join issues
-  let orderQuery = _sb.from('orders').select('*');
-
-  if (status === 'accepted') {
-    orderQuery = orderQuery.in('status', ['accepted', 'paused']);
-  } else if (status === 'accepted_only') {
-    orderQuery = orderQuery.eq('status', 'accepted');
-  } else if (status && status !== 'all') {
-    orderQuery = orderQuery.eq('status', status);
+  // Build a FRESH query builder each time. We cannot share one builder across
+  // parallel .range() calls — the Range header is set on the builder itself,
+  // so concurrent calls would race and overwrite each other.
+  function buildQuery() {
+    let q = _sb.from('orders').select('*');
+    if (status === 'accepted') {
+      q = q.in('status', ['accepted', 'paused']);
+    } else if (status === 'accepted_only') {
+      q = q.eq('status', 'accepted');
+    } else if (status && status !== 'all') {
+      q = q.eq('status', status);
+    }
+    if (waiterId) {
+      q = q.or(`waiter_id.eq.${waiterId},table_type.eq.virtual,table_type.eq.tab`);
+    }
+    q = q.order('created_at', { ascending: false });
+    return q;
   }
 
-  if (waiterId) {
-    orderQuery = orderQuery.or(`waiter_id.eq.${waiterId},table_type.eq.virtual,table_type.eq.tab`);
+  // For live waiter screens we only need recent orders — keep the 200-row cap.
+  // For statistics (status === 'all' and no waiterId filter) we paginate to fetch everything.
+  const isStatsFetch = (status === 'all') && !waiterId;
+  let orders = [];
+  if (isStatsFetch) {
+    // Paginate through ALL completed orders — 1000 rows per page, in parallel batches of 5.
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let keepGoing = true;
+    while (keepGoing) {
+      // Fire up to 5 page requests in parallel. Each gets its own fresh builder.
+      const batch = [];
+      for (let b = 0; b < 5; b++) {
+        const startIdx = from + b * PAGE_SIZE;
+        batch.push(buildQuery().range(startIdx, startIdx + PAGE_SIZE - 1));
+      }
+      const results = await Promise.all(batch);
+      let anyEmpty = false;
+      for (const r of results) {
+        if (r.error) throw new Error(r.error.message);
+        const rows = r.data || [];
+        if (rows.length === 0) { anyEmpty = true; break; }
+        orders = orders.concat(rows);
+        if (rows.length < PAGE_SIZE) { anyEmpty = true; break; }
+      }
+      if (anyEmpty) {
+        keepGoing = false;
+        break;
+      }
+      from += batch.length * PAGE_SIZE;
+      // Safety cap — 50 000 orders ought to be enough.
+      if (from >= 50000) break;
+    }
+  } else {
+    const { data, error: orderError } = await buildQuery().limit(200);
+    if (orderError) {
+      console.error('getOrders error:', orderError);
+      throw new Error(orderError.message);
+    }
+    orders = data || [];
   }
 
-  orderQuery = orderQuery.order('created_at', { ascending: false }).limit(200);
-
-  // Fetch orders first
-  const { data: orders, error: orderError } = await orderQuery;
-  if (orderError) {
-    console.error('getOrders error:', orderError);
-    throw new Error(orderError.message);
-  }
-
-  // Fetch items for these orders IN PARALLEL with a single query
+  // Fetch items for these orders — paginate over the order IDs in chunks of 500
+  // (PostgREST has a hard limit on the size of an `.in(...)` clause).
   const orderIds = (orders || []).map(function(o) { return o.id; });
   let items = [];
   if (orderIds.length > 0) {
-    const { data: itemsData, error: itemsError } = await _sb
-      .from('order_items')
-      .select('*')
-      .in('order_id', orderIds);
-    if (itemsError) {
-      console.error('getOrders items error:', itemsError);
-    } else {
-      items = itemsData || [];
+    const CHUNK = 500;
+    const chunks = [];
+    for (let i = 0; i < orderIds.length; i += CHUNK) {
+      chunks.push(orderIds.slice(i, i + CHUNK));
+    }
+    const itemResults = await Promise.all(chunks.map(function(ids) {
+      return _sb.from('order_items').select('*').in('order_id', ids);
+    }));
+    for (const r of itemResults) {
+      if (r.error) {
+        console.error('getOrders items error:', r.error);
+      } else if (r.data) {
+        items = items.concat(r.data);
+      }
     }
   }
 
