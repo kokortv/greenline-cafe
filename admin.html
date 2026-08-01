@@ -1237,25 +1237,34 @@
     <div class="statssub-content" id="statssub-overview">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
         <h2 class="section-title" style="margin:0;">📊 Обзор статистики</h2>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <select id="stats-period-select" onchange="onStatsPeriodChange()" style="font-size:0.88rem;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);cursor:pointer;">
-            <option value="day">День</option>
-            <option value="week">Неделя</option>
-            <option value="month">Месяц</option>
-            <option value="all">Всё время</option>
-            <option value="period">Свой период</option>
-          </select>
-          <!-- Calendar for "День" mode -->
-          <div id="stats-day-wrap" style="display:none;align-items:center;gap:6px;">
-            <input type="date" id="stats-day-input" onchange="renderStatistics()" style="font-size:0.85rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+        <div class="stats-period-dropdown" style="position:relative;">
+          <button type="button" class="btn btn-outline" onclick="toggleStatsDropdown(event)" id="stats-dropdown-btn" style="display:flex;align-items:center;gap:8px;font-size:0.88rem;padding:6px 14px;">
+            <span style="font-size:1rem;">📅</span>
+            <span id="stats-dropdown-label">Сегодня</span>
+            <span style="color:var(--text-muted);font-size:0.7rem;">▼</span>
+          </button>
+          <div id="stats-dropdown-panel" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--card, #fff);border:1px solid var(--border);border-radius:10px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:1000;width:min(560px, 92vw);">
+            <div style="display:flex;gap:18px;flex-wrap:wrap;">
+              <!-- LEFT: Calendar -->
+              <div style="flex:1;min-width:260px;">
+                <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:8px;">Выберите даты</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                  <input type="date" id="stats-from-input" style="flex:1;font-size:0.85rem;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+                  <span style="color:var(--text-muted);">—</span>
+                  <input type="date" id="stats-to-input" style="flex:1;font-size:0.85rem;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+                </div>
+                <button type="button" class="btn btn-primary" onclick="applyStatsCalendar()" style="width:100%;font-size:0.85rem;">Применить период</button>
+              </div>
+              <!-- RIGHT: Presets -->
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:170px;">
+                <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:8px;">Быстрый выбор</div>
+                <button type="button" class="btn btn-outline stats-preset-btn" data-preset="today" onclick="setStatsPreset('today')" style="text-align:left;font-size:0.85rem;padding:7px 12px;">Сегодня</button>
+                <button type="button" class="btn btn-outline stats-preset-btn" data-preset="week" onclick="setStatsPreset('week')" style="text-align:left;font-size:0.85rem;padding:7px 12px;">Последние 7 дней</button>
+                <button type="button" class="btn btn-outline stats-preset-btn" data-preset="month" onclick="setStatsPreset('month')" style="text-align:left;font-size:0.85rem;padding:7px 12px;">Последние 30 дней</button>
+                <button type="button" class="btn btn-outline stats-preset-btn" data-preset="all" onclick="setStatsPreset('all')" style="text-align:left;font-size:0.85rem;padding:7px 12px;">За всё время</button>
+              </div>
+            </div>
           </div>
-          <!-- Date range for "Свой период" mode -->
-          <div id="stats-period-wrap" style="display:none;align-items:center;gap:6px;">
-            <input type="date" id="stats-from-input" onchange="renderStatistics()" style="font-size:0.85rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
-            <span style="color:var(--text-muted);">—</span>
-            <input type="date" id="stats-to-input" onchange="renderStatistics()" style="font-size:0.85rem;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
-          </div>
-          <button class="btn btn-outline" onclick="renderStatistics()">↻ Обновить</button>
         </div>
       </div>
       <div id="statistics-content">
@@ -2143,21 +2152,18 @@ function switchStatisticsSub(sub) {
   if (target) target.style.display = 'block';
   // Load data
   if (sub === 'overview') {
-    // Pre-fill the day calendar with today the first time the overview opens,
-    // so the UI matches the default "День" period.
-    var di = document.getElementById('stats-day-input');
-    if (di && !di.value) {
-      var n = new Date();
-      di.value = n.toISOString().substring(0, 10);
-    }
-    // Sync the select to the current _statsPeriod (in case it was set programmatically).
-    var sel = document.getElementById('stats-period-select');
-    if (sel && sel.value !== (window._statsPeriod || 'day')) {
-      sel.value = window._statsPeriod || 'day';
-      onStatsPeriodChange();
-    } else {
-      renderStatistics();
-    }
+    // Initialize the period dropdown the first time the overview opens:
+    // default to "Сегодня" preset and sync the calendar inputs + label.
+    if (!window._statsPreset) window._statsPreset = 'today';
+    var fi = document.getElementById('stats-from-input');
+    var ti = document.getElementById('stats-to-input');
+    var now = new Date();
+    var todayStr = ymdLocal(now);
+    if (fi && !fi.value) fi.value = todayStr;
+    if (ti && !ti.value) ti.value = todayStr;
+    updateStatsPresetButtons();
+    updateStatsDropdownLabel();
+    renderStatistics();
   }
   if (sub === 'shifts') renderStatisticsShifts();
   closeSidebarOnMobile();
@@ -6718,87 +6724,157 @@ async function showDeliveriesForMenuItem(menuItemId, itemName) {
 }
 
 /* ---------- STATISTICS ---------- */
-// Stats period selector
-window._statsPeriod = 'day';
+// Current preset: 'today' | 'week' | 'month' | 'all' | 'custom'
+// 'custom' is set automatically when the user edits the calendar inputs.
+window._statsPreset = 'today';
 
-// Update the visible date pickers when the user changes the select.
-function onStatsPeriodChange() {
-  var sel = document.getElementById('stats-period-select');
-  if (!sel) return;
-  window._statsPeriod = sel.value;
-  var dayWrap = document.getElementById('stats-day-wrap');
-  var periodWrap = document.getElementById('stats-period-wrap');
-  if (dayWrap) dayWrap.style.display = (sel.value === 'day') ? 'flex' : 'none';
-  if (periodWrap) periodWrap.style.display = (sel.value === 'period') ? 'flex' : 'none';
+// Helper: format a Date as YYYY-MM-DD using LOCAL time (not UTC).
+function ymdLocal(d) {
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var dd = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + dd;
+}
 
-  // Default the calendar to "today" the first time the user picks "day" mode
-  if (sel.value === 'day') {
-    var di = document.getElementById('stats-day-input');
-    if (di && !di.value) {
-      var n = new Date();
-      di.value = n.toISOString().substring(0, 10);
-    }
+// Open / close the period dropdown panel.
+function toggleStatsDropdown(ev) {
+  if (ev) ev.stopPropagation();
+  var panel = document.getElementById('stats-dropdown-panel');
+  if (!panel) return;
+  panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+}
+
+// Close the dropdown when clicking outside of it.
+document.addEventListener('click', function(e) {
+  var dd = document.querySelector('.stats-period-dropdown');
+  if (!dd) return;
+  if (!dd.contains(e.target)) {
+    var panel = document.getElementById('stats-dropdown-panel');
+    if (panel) panel.style.display = 'none';
   }
-  // Default the period to "last 7 days" the first time the user picks "period" mode
-  if (sel.value === 'period') {
-    var fi = document.getElementById('stats-from-input');
-    var ti = document.getElementById('stats-to-input');
-    if (fi && !fi.value) {
-      var n0 = new Date(Date.now() - 6 * 86400000);
-      fi.value = n0.toISOString().substring(0, 10);
-    }
-    if (ti && !ti.value) {
-      var n1 = new Date();
-      ti.value = n1.toISOString().substring(0, 10);
-    }
+});
+
+// Apply a preset: today / week / month / all.
+// Sets the calendar inputs to the matching range and re-renders the stats.
+function setStatsPreset(preset) {
+  window._statsPreset = preset;
+  var now = new Date();
+  var fi = document.getElementById('stats-from-input');
+  var ti = document.getElementById('stats-to-input');
+  if (preset === 'today') {
+    if (fi) fi.value = ymdLocal(now);
+    if (ti) ti.value = ymdLocal(now);
+  } else if (preset === 'week') {
+    var w = new Date(now.getTime() - 6 * 86400000);
+    if (fi) fi.value = ymdLocal(w);
+    if (ti) ti.value = ymdLocal(now);
+  } else if (preset === 'month') {
+    var m = new Date(now.getTime() - 29 * 86400000);
+    if (fi) fi.value = ymdLocal(m);
+    if (ti) ti.value = ymdLocal(now);
+  } else if (preset === 'all') {
+    if (fi) fi.value = '';
+    if (ti) ti.value = '';
   }
+  updateStatsPresetButtons();
+  updateStatsDropdownLabel();
+  var panel = document.getElementById('stats-dropdown-panel');
+  if (panel) panel.style.display = 'none';
   renderStatistics();
 }
 
-// Back-compat: programmatic setStatsPeriod('day'|'week'|'month'|'all') — syncs the select.
-function setStatsPeriod(period) {
-  var sel = document.getElementById('stats-period-select');
-  if (sel) sel.value = period;
-  onStatsPeriodChange();
+// Called when the user clicks "Применить период" inside the dropdown.
+function applyStatsCalendar() {
+  window._statsPreset = 'custom';
+  updateStatsPresetButtons();
+  updateStatsDropdownLabel();
+  var panel = document.getElementById('stats-dropdown-panel');
+  if (panel) panel.style.display = 'none';
+  renderStatistics();
+}
+
+// Highlight the active preset button (or none if 'custom' is selected).
+function updateStatsPresetButtons() {
+  var preset = window._statsPreset || 'custom';
+  document.querySelectorAll('.stats-preset-btn').forEach(function(btn) {
+    if (btn.dataset.preset === preset) {
+      btn.classList.remove('btn-outline');
+      btn.classList.add('btn-primary');
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+    }
+  });
+}
+
+// Update the label shown on the dropdown button based on the current selection.
+function updateStatsDropdownLabel() {
+  var labelEl = document.getElementById('stats-dropdown-label');
+  if (!labelEl) return;
+  var preset = window._statsPreset || 'custom';
+  if (preset === 'today') { labelEl.textContent = 'Сегодня'; return; }
+  if (preset === 'week')  { labelEl.textContent = 'Последние 7 дней'; return; }
+  if (preset === 'month') { labelEl.textContent = 'Последние 30 дней'; return; }
+  if (preset === 'all')   { labelEl.textContent = 'За всё время'; return; }
+  // custom
+  var fi = document.getElementById('stats-from-input');
+  var ti = document.getElementById('stats-to-input');
+  var fStr = fi && fi.value ? fi.value : '';
+  var tStr = ti && ti.value ? ti.value : '';
+  if (fStr && tStr) {
+    labelEl.textContent = fStr.split('-').reverse().join('.') + ' — ' + tStr.split('-').reverse().join('.');
+  } else if (fStr) {
+    labelEl.textContent = 'с ' + fStr.split('-').reverse().join('.');
+  } else if (tStr) {
+    labelEl.textContent = 'по ' + tStr.split('-').reverse().join('.');
+  } else {
+    labelEl.textContent = 'За всё время';
+  }
 }
 
 // Compute the [start, end] window for the currently selected period.
-// Returns { start: Date|null, label: string }.
+// Returns { start: Date|null, end: Date|null, label: string }.
 function getStatsPeriodWindow() {
-  var period = window._statsPeriod || 'day';
+  var preset = window._statsPreset || 'today';
   var now = new Date();
-  if (period === 'day') {
-    var di = document.getElementById('stats-day-input');
-    var dayStr = di && di.value ? di.value : now.toISOString().substring(0, 10);
-    // Day window: from 00:00:00 local on dayStr to 00:00:00 local on the next day.
-    var start = new Date(dayStr + 'T00:00:00');
-    var end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-    var label = 'за ' + dayStr.split('-').reverse().join('.');
-    return { start: start, end: end, label: label };
+  var fi = document.getElementById('stats-from-input');
+  var ti = document.getElementById('stats-to-input');
+  var fStr = fi && fi.value ? fi.value : '';
+  var tStr = ti && ti.value ? ti.value : '';
+
+  // 'all' or empty custom range → no filter
+  if (preset === 'all' || (preset === 'custom' && !fStr && !tStr)) {
+    return { start: null, end: null, label: 'за всё время' };
   }
-  if (period === 'week') {
-    var startW = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return { start: startW, end: now, label: 'за последнюю неделю' };
+
+  // Determine start and end dates
+  var startDate, endDate;
+  if (preset === 'today') {
+    startDate = ymdLocal(now);
+    endDate = startDate;
+  } else if (preset === 'week') {
+    var w = new Date(now.getTime() - 6 * 86400000);
+    startDate = ymdLocal(w);
+    endDate = ymdLocal(now);
+  } else if (preset === 'month') {
+    var m = new Date(now.getTime() - 29 * 86400000);
+    startDate = ymdLocal(m);
+    endDate = ymdLocal(now);
+  } else {
+    // custom
+    startDate = fStr;
+    endDate = tStr || fStr;
   }
-  if (period === 'month') {
-    var startM = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    return { start: startM, end: now, label: 'за последние 30 дней' };
+
+  var start = new Date(startDate + 'T00:00:00');
+  var end = new Date(endDate + 'T00:00:00');
+  // Include the entire end day.
+  end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+  var label = 'с ' + startDate.split('-').reverse().join('.') + ' по ' + endDate.split('-').reverse().join('.');
+  if (startDate === endDate) {
+    label = 'за ' + startDate.split('-').reverse().join('.');
   }
-  if (period === 'period') {
-    var fi = document.getElementById('stats-from-input');
-    var ti = document.getElementById('stats-to-input');
-    var fStr = fi && fi.value ? fi.value : '';
-    var tStr = ti && ti.value ? ti.value : '';
-    if (!fStr || !tStr) return { start: null, end: null, label: 'за всё время' };
-    var startP = new Date(fStr + 'T00:00:00');
-    var endP = new Date(tStr + 'T00:00:00');
-    // Include the entire "to" day.
-    endP = new Date(endP.getTime() + 24 * 60 * 60 * 1000);
-    var labelP = 'с ' + fStr.split('-').reverse().join('.') + ' по ' + tStr.split('-').reverse().join('.');
-    return { start: startP, end: endP, label: labelP };
-  }
-  // 'all'
-  return { start: null, end: null, label: 'за всё время' };
+  return { start: start, end: end, label: label };
 }
 
 async function renderStatistics() {
@@ -6827,7 +6903,10 @@ async function renderStatistics() {
       return;
     }
 
-    // === 1. Revenue by day (last 7 days of the selected window, or last 7 days if "all") ===
+    // === 1. Revenue-by-day axis — ADAPTIVE to the selected period ===
+    //   ≤ 31 days : one bar per day (full calendar grid)
+    //   32-365 days: one bar per week, labelled by the Monday of that week
+    //   > 365 days : one bar per month (YYYY-MM)
     var dayMap = {};
     orders.forEach(function(o) {
       var d = (o.completed_at || o.created_at || '').substring(0, 10);
@@ -6841,28 +6920,104 @@ async function renderStatistics() {
       else { dayMap[d].cash += Number(o.cash_amount) || 0; dayMap[d].card += Number(o.card_amount) || 0; }
     });
 
-    // Build last-7-days axis anchored on the latest day in the selected window
-    // (or today if the window extends to now).
-    var anchor = periodEnd ? new Date(periodEnd.getTime()) : new Date();
-    // Roll back to midnight
-    anchor = new Date(anchor.toISOString().substring(0, 10) + 'T00:00:00');
-    var days = [];
-    var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-    for (var i = 6; i >= 0; i--) {
-      var dt = new Date(anchor.getTime() - i * 86400000);
-      var key = dt.toISOString().substring(0, 10);
-      var info = dayMap[key] || { cash: 0, card: 0, total: 0, count: 0 };
-      days.push({
-        label: dayNames[dt.getDay()],
-        date: key.substring(8) + '.' + key.substring(5, 7),
-        total: info.total, cash: info.cash, card: info.card, count: info.count
+    // Determine the axis span from the selected period.
+    var axisStart = periodStart ? new Date(periodStart) : null;
+    var axisEnd   = periodEnd   ? new Date(periodEnd)   : new Date();
+    if (!axisStart) {
+      // "All time" — derive the span from the oldest order we have.
+      var oldestStr = '';
+      orders.forEach(function(o) {
+        var d = (o.completed_at || o.created_at || '').substring(0, 10);
+        if (d && (!oldestStr || d < oldestStr)) oldestStr = d;
       });
+      axisStart = oldestStr ? new Date(oldestStr + 'T00:00:00') : new Date(axisEnd.getTime() - 6 * 86400000);
     }
+    // Truncate to midnight.
+    axisStart = new Date(ymdLocal(axisStart) + 'T00:00:00');
+    axisEnd   = new Date(ymdLocal(new Date(axisEnd.getTime() - 1)) + 'T00:00:00');
+
+    var spanDays = Math.max(1, Math.round((axisEnd.getTime() - axisStart.getTime()) / 86400000) + 1);
+    var dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    var monthNames = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    var days = [];
+    var bars = []; // each: { label, sub, total, cash, card, count }
+    if (spanDays <= 31) {
+      // One bar per day
+      for (var i = 0; i < spanDays; i++) {
+        var dt = new Date(axisStart.getTime() + i * 86400000);
+        var key = ymdLocal(dt);
+        var info = dayMap[key] || { cash: 0, card: 0, total: 0, count: 0 };
+        bars.push({
+          label: dayNames[dt.getDay()],
+          sub:   key.substring(8) + '.' + key.substring(5, 7),
+          total: info.total, cash: info.cash, card: info.card, count: info.count
+        });
+      }
+    } else if (spanDays <= 365) {
+      // One bar per ISO week — labelled with the Monday date.
+      // Walk day-by-day from axisStart; whenever we hit a Monday (or run past axisEnd),
+      // close out the current week bucket.
+      var curBucket = null;
+      for (var i = 0; i < spanDays; i++) {
+        var dt = new Date(axisStart.getTime() + i * 86400000);
+        var key = ymdLocal(dt);
+        var dow = dt.getDay(); // 0=Sun, 1=Mon
+        var isoMonday = (dow === 0) ? 6 : (dow - 1);
+        var mondayKey = ymdLocal(new Date(dt.getTime() - isoMonday * 86400000));
+        if (!curBucket || curBucket._monday !== mondayKey) {
+          if (curBucket) bars.push(curBucket);
+          var mondayDate = new Date(mondayKey + 'T00:00:00');
+          curBucket = {
+            label: dayNames[mondayDate.getDay()],
+            sub:   mondayKey.substring(8) + '.' + mondayKey.substring(5, 7),
+            total: 0, cash: 0, card: 0, count: 0, _monday: mondayKey
+          };
+        }
+        var info = dayMap[key];
+        if (info) {
+          curBucket.total += info.total;
+          curBucket.cash  += info.cash;
+          curBucket.card  += info.card;
+          curBucket.count += info.count;
+        }
+      }
+      if (curBucket) bars.push(curBucket);
+    } else {
+      // One bar per month
+      var curMonth = null;
+      for (var i = 0; i < spanDays; i++) {
+        var dt = new Date(axisStart.getTime() + i * 86400000);
+        var key = ymdLocal(dt);
+        var monthKey = key.substring(0, 7);
+        if (!curMonth || curMonth._month !== monthKey) {
+          if (curMonth) bars.push(curMonth);
+          curMonth = {
+            label: monthNames[dt.getMonth()],
+            sub:   key.substring(0, 4),
+            total: 0, cash: 0, card: 0, count: 0, _month: monthKey
+          };
+        }
+        var info = dayMap[key];
+        if (info) {
+          curMonth.total += info.total;
+          curMonth.cash  += info.cash;
+          curMonth.card  += info.card;
+          curMonth.count += info.count;
+        }
+      }
+      if (curMonth) bars.push(curMonth);
+    }
+    var days = bars;
     var maxDay = Math.max.apply(null, days.map(function(d) { return d.total; }));
     if (maxDay === 0) maxDay = 1;
 
-    // === 2. Revenue by hour (last day in window, or today) ===
-    var hourAnchorKey = (periodEnd ? new Date(periodEnd.getTime() - 86400000) : new Date()).toISOString().substring(0, 10);
+    // Axis title reflects the granularity
+    var dayChartTitle = '📈 Выручка по ' +
+      (spanDays <= 31 ? 'дням' : (spanDays <= 365 ? 'неделям' : 'месяцам')) +
+      ' (' + spanDays + ' дн. в периоде)';
+
+    // === 2. Revenue by hour — anchor on the LAST day of the selected window ===
+    var hourAnchorKey = ymdLocal(new Date(axisEnd.getTime()));
     var hourMap = {};
     orders.forEach(function(o) {
       var d = (o.completed_at || o.created_at || '');
@@ -6946,14 +7101,20 @@ async function renderStatistics() {
     html += statCard('💳 Карта', formatMoneyPrecise(totalCard), 'var(--info)');
     html += '</div>';
 
-    // Chart 1: Revenue by day (bar chart)
+    // Chart 1: Revenue by day (adaptive bar chart)
     html += '<div class="settings-card" style="margin-bottom:16px;">';
-    html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">📈 Выручка по дням (последние 7 дней)</h3>';
-    html += '<div style="display:flex;align-items:flex-end;gap:6px;height:200px;padding:0 4px;">';
+    html += '<h3 style="margin:0 0 16px;font-size:1.1rem;">' + dayChartTitle + '</h3>';
+    // For wide axis (many bars) use overflow-x:auto so labels stay readable.
+    var barWrapStyle = (days.length > 14)
+      ? 'display:flex;align-items:flex-end;gap:4px;height:200px;padding:0 4px;overflow-x:auto;overflow-y:hidden;'
+      : 'display:flex;align-items:flex-end;gap:6px;height:200px;padding:0 4px;';
+    html += '<div style="' + barWrapStyle + '">';
     days.forEach(function(d) {
       var pct = (d.total / maxDay) * 100;
       var cashPct = maxDay > 0 ? (d.cash / d.total) * 100 : 0;
-      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">';
+      var barWidth = (days.length > 31) ? '48px' : '0';
+      var flexAttr = (days.length > 31) ? '' : 'flex:1;';
+      html += '<div style="' + flexAttr + 'min-width:' + barWidth + ';display:flex;flex-direction:column;align-items:center;gap:4px;">';
       html += '<div style="font-size:0.72rem;font-weight:700;color:var(--text);">' + (d.total > 0 ? formatMoney(d.total).replace(' ₾','').replace(' ₽','') : '—') + '</div>';
       html += '<div style="width:100%;height:160px;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px 6px 0 0;overflow:hidden;background:#f0f0f0;">';
       if (d.total > 0) {
@@ -6964,7 +7125,7 @@ async function renderStatistics() {
       }
       html += '</div>';
       html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);">' + d.label + '</div>';
-      html += '<div style="font-size:0.68rem;color:var(--text-muted);">' + d.date + '</div>';
+      html += '<div style="font-size:0.68rem;color:var(--text-muted);">' + d.sub + '</div>';
       html += '</div>';
     });
     html += '</div>';
